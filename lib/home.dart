@@ -26,7 +26,6 @@ import 'package:myapp/app_localizations.dart'; // 🆕 Localization
 // _homeNavItems icons only — labels come from JSON
 const _homeNavIcons = <IconData>[
   Icons.home_outlined,
-  Icons.chat_bubble_outline_rounded,
   Icons.dry_cleaning_outlined,
   Icons.grid_view_rounded,
   Icons.explore_outlined,
@@ -34,7 +33,6 @@ const _homeNavIcons = <IconData>[
 // Keep original for fallback / non-localized usage
 const _homeNavItems = <({IconData icon, String label})>[
   (icon: Icons.home_outlined, label: 'Home'),
-  (icon: Icons.chat_bubble_outline_rounded, label: 'Chat'),
   (icon: Icons.dry_cleaning_outlined, label: 'Wardrobe'),
   (icon: Icons.grid_view_rounded, label: 'Planner'),
   (icon: Icons.explore_outlined, label: 'Explore'),
@@ -320,7 +318,7 @@ class _Screen4State extends State<Screen4>
     );
 
     _navRiseCtrls = List.generate(
-      5,
+      4,
       (i) => AnimationController(
         vsync: this,
         duration: const Duration(milliseconds: 280),
@@ -618,8 +616,21 @@ class _Screen4State extends State<Screen4>
     }
 
     if (idx == 1) {
-      _activateTab(1);
-      _openNavScreen(const ChatScreen());
+      // 🔧 FIX: Shell కి delegate చేసే ముందు local tab highlight చేయి
+      _navRiseCtrls[_activeNavIdx].animateTo(
+        0.0,
+        curve: const Cubic(0.4, 0.0, 0.2, 1.0),
+      );
+      _navRiseCtrls[1].animateTo(
+        1.0,
+        curve: const Cubic(0.34, 1.56, 0.64, 1.0),
+      );
+      setState(() => _activeNavIdx = 1);
+      if (widget.onShellNavTap != null) {
+        widget.onShellNavTap!(1);
+        return;
+      }
+      _openNavScreen(const WardrobeScreen());
       return;
     }
     if (idx == 2) {
@@ -637,28 +648,10 @@ class _Screen4State extends State<Screen4>
         widget.onShellNavTap!(2);
         return;
       }
-      _openNavScreen(const WardrobeScreen());
-      return;
-    }
-    if (idx == 3) {
-      // 🔧 FIX: Shell కి delegate చేసే ముందు local tab highlight చేయి
-      _navRiseCtrls[_activeNavIdx].animateTo(
-        0.0,
-        curve: const Cubic(0.4, 0.0, 0.2, 1.0),
-      );
-      _navRiseCtrls[3].animateTo(
-        1.0,
-        curve: const Cubic(0.34, 1.56, 0.64, 1.0),
-      );
-      setState(() => _activeNavIdx = 3);
-      if (widget.onShellNavTap != null) {
-        widget.onShellNavTap!(3);
-        return;
-      }
       _openNavScreen(const BoardsScreen());
       return;
     }
-    if (idx == 4) {
+    if (idx == 3) {
       _showComingSoon();
       return;
     }
@@ -2778,7 +2771,6 @@ class _Screen4State extends State<Screen4>
     // 🆕 Nav labels localized
     final navLabelKeys = [
       'nav_home',
-      'nav_chat',
       'nav_wardrobe',
       'nav_planner',
       'nav_explore',

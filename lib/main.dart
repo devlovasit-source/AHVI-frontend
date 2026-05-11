@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:myapp/boards.dart';
 import 'package:myapp/home.dart' as home;
-import 'package:myapp/chat.dart';
 import 'package:myapp/onboarding1.dart';
 import 'package:myapp/onboarding2.dart';
 import 'package:myapp/onboarding3.dart';
@@ -339,10 +338,6 @@ class _MainNavigationShellState extends State<MainNavigationShell>
     final navItems = <({IconData icon, String label})>[
       (icon: Icons.home_outlined, label: l?.translate('home') ?? 'Home'),
       (
-        icon: Icons.chat_bubble_outline_rounded,
-        label: l?.translate('chat') ?? 'Chat',
-      ),
-      (
         icon: Icons.dry_cleaning_outlined,
         label: l?.translate('wardrobe') ?? 'Wardrobe',
       ),
@@ -357,13 +352,12 @@ class _MainNavigationShellState extends State<MainNavigationShell>
     ];
 
     // ✅ Built here so locale changes cause a full rebuild of all screens
-    // Order must match navItems exactly: Home(0), Chat(1), Wardrobe(2), Planner(3), Explore(4)
+    // Order must match navItems exactly: Home(0), Wardrobe(1), Planner(2), Explore(3)
     final pages = <Widget>[
       _HomePageHost(
         key: const PageStorageKey('home'),
         onNavTapRequested: _switchToIndex,
       ),
-      const ChatScreen(key: PageStorageKey('chat'), showBackButton: false),
       const WardrobeScreen(key: PageStorageKey('wardrobe')),
       const BoardsScreen(key: PageStorageKey('boards')),
       const SizedBox.shrink(),
