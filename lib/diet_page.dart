@@ -368,7 +368,7 @@ class _MainScreenState extends State<MainScreen> {
             right: 0,
             top: _isChatOpen ? 0 : MediaQuery.of(context).size.height,
             bottom: _isChatOpen ? 0 : -MediaQuery.of(context).size.height,
-            child: ChatScreen(
+            child: _DietChatPanel(
               onSavePlan: (p) {
                 _savePlanFromChat(p);
                 setState(() => _isChatOpen = false);
@@ -1597,19 +1597,19 @@ class _MealEntryState extends State<_MealEntry> {
   }
 }
 
-class ChatScreen extends StatefulWidget {
+class _DietChatPanel extends StatefulWidget {
   final ValueChanged<MealPlan> onSavePlan;
   final VoidCallback onClose;
-  const ChatScreen({
+  const _DietChatPanel({
     super.key,
     required this.onSavePlan,
     required this.onClose,
   });
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  State<_DietChatPanel> createState() => _DietChatPanelState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _DietChatPanelState extends State<_DietChatPanel> {
   final _msgCtrl = TextEditingController();
   final _msgFocus = FocusNode();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();

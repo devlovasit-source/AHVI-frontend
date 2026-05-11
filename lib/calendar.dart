@@ -351,7 +351,7 @@ class _CalendarShellState extends State<CalendarShell> {
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
                   child: _isChatOpen
-                      ? StyleChatScreen(
+                      ? _CalendarChatPanel(
                           key: const ValueKey('chat'),
                           occasion: _activeOccasion,
                           icon: _activeIcon,
@@ -1323,13 +1323,13 @@ class ChatMessage {
   });
 }
 
-class StyleChatScreen extends StatefulWidget {
+class _CalendarChatPanel extends StatefulWidget {
   final String occasion;
   final IconData icon;
   final VoidCallback onBack;
   final Function(String, String) onSavePlan;
 
-  const StyleChatScreen({
+  const _CalendarChatPanel({
     super.key,
     required this.occasion,
     required this.icon,
@@ -1338,10 +1338,10 @@ class StyleChatScreen extends StatefulWidget {
   });
 
   @override
-  State<StyleChatScreen> createState() => _StyleChatScreenState();
+  State<_CalendarChatPanel> createState() => _CalendarChatPanelState();
 }
 
-class _StyleChatScreenState extends State<StyleChatScreen> {
+class _CalendarChatPanelState extends State<_CalendarChatPanel> {
   final TextEditingController _textCtrl = TextEditingController();
   final List<ChatMessage> _msgs = [];
   bool _isListening = false;
