@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/services/ahvi_response_parser.dart';
 import 'package:myapp/services/backend_service.dart';
@@ -1466,7 +1467,8 @@ class _CalendarChatPanelState extends State<_CalendarChatPanel> {
     String reply = '';
     List<AhviChip> responseChips = const [];
     try {
-      final response = await BackendService().sendChatQuery(
+      final backend = Provider.of<BackendService>(context, listen: false);
+      final response = await backend.sendChatQuery(
         'Occasion: ${widget.occasion}\n\n$userText',
         '',
         _msgs
@@ -1494,7 +1496,9 @@ class _CalendarChatPanelState extends State<_CalendarChatPanel> {
                   ? _extractTime(userText)
                   : _lastDraftTime);
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Calendar chat send failed: $e\n$st');
+    }
 
     if (!mounted) return;
     setState(() {

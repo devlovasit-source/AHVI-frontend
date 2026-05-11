@@ -360,7 +360,7 @@ class _MainNavigationShellState extends State<MainNavigationShell>
       ),
       const WardrobeScreen(key: PageStorageKey('wardrobe')),
       const BoardsScreen(key: PageStorageKey('boards')),
-      const SizedBox.shrink(),
+      const _ExploreComingSoon(key: PageStorageKey('explore')),
     ];
     return NotificationListener<ShellBackNavigationNotification>(
       onNotification: (notification) => _handleShellBack(),
@@ -1189,5 +1189,51 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   Widget build(BuildContext context) {
     return SplashScreen(onFinished: _onSplashFinished);
+  }
+}
+
+class _ExploreComingSoon extends StatelessWidget {
+  const _ExploreComingSoon({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.explore_outlined,
+                  size: 64,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Explore',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Coming soon — Explore launches with beta.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.textTheme.bodyMedium?.color?.withValues(
+                      alpha: 0.7,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
