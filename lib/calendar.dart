@@ -1469,7 +1469,7 @@ class _CalendarChatPanelState extends State<_CalendarChatPanel> {
     try {
       final backend = Provider.of<BackendService>(context, listen: false);
       final response = await backend.sendChatQuery(
-        'Occasion: ${widget.occasion}\n\n$userText',
+        userText,
         '',
         _msgs
             .map(
@@ -1481,6 +1481,7 @@ class _CalendarChatPanelState extends State<_CalendarChatPanel> {
             .toList(),
         '',
         moduleContext: 'calendar',
+        userProfile: {'occasion': widget.occasion.toLowerCase()},
       );
       final parsed = AhviResponse.fromMap(response);
       reply = parsed.messageText.isNotEmpty
