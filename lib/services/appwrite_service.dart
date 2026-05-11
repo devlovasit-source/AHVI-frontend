@@ -361,12 +361,17 @@ class AppwriteService extends ChangeNotifier {
 
   Future<bool> isCurrentUserOnboardingComplete() async {
     final profile = await refreshCurrentUserProfile();
-    final done = isOnboardingCompleteFromProfile(profile);
+    final serverSaysDone = isOnboardingCompleteFromProfile(profile);
 
-    // Keep SharedPreferences as a local cache only.
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('onboardingComplete', done);
+    final cachedDone = prefs.getBool('onboardingComplete') == true;
 
+    // Legacy users whose Appwrite profile predates the onboarding1/2/3 flags
+    // may have completed onboarding on this device. Trust the local cache as
+    // a fallback so they are not sent through onboarding again.
+    final done = serverSaysDone || cachedDone;
+
+    await prefs.setBool('onboardingComplete', done);
     return done;
   }
 
