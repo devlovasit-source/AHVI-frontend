@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:provider/provider.dart';
 import 'package:myapp/app_routes.dart';
 import 'package:myapp/profile.dart';
+import 'package:myapp/services/appwrite_service.dart';
 
 void main() {
   runApp(const MaterialApp(
@@ -721,9 +722,20 @@ class _CtaSectionState extends State<_CtaSection>
       return;
     }
     _squeezeContinue();
-    Future.delayed(const Duration(milliseconds: 180), () {
+    Future.delayed(const Duration(milliseconds: 180), () async {
       if (mounted) {
         context.read<ProfileController>().updateStyles(widget.selected);
+        try {
+          await context.read<AppwriteService>().updateCurrentUserProfileFields({
+            'stylePreferences': widget.selected.toList(),
+            'onboarding2': true,
+          });
+        } catch (e) {
+          if (!mounted) return;
+          _showValidationError('Could not save style preferences. Please try again.');
+          return;
+        }
+        if (!mounted) return;
         Navigator.of(context).pushNamed(AppRoutes.onboarding3);
       }
     });

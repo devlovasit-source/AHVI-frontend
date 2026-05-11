@@ -306,7 +306,9 @@ class AppwriteService extends ChangeNotifier {
         documentId: user.$id,
       );
 
-      _cachedUserProfileData = Map<String, dynamic>.from(document.data);
+      _cachedUserProfileData = Map<String, dynamic>.from(document.data)
+        ..[r'$createdAt'] = document.$createdAt
+        ..[r'$updatedAt'] = document.$updatedAt;
       return document;
     } catch (e) {
       debugPrint('❌ Failed to load current user profile: $e');
@@ -317,14 +319,44 @@ class AppwriteService extends ChangeNotifier {
   Future<Map<String, dynamic>?> refreshCurrentUserProfile() async {
     final document = await getCurrentUserProfileDocument(createIfMissing: true);
     if (document == null) return null;
-    _cachedUserProfileData = Map<String, dynamic>.from(document.data);
+    _cachedUserProfileData = Map<String, dynamic>.from(document.data)
+      ..[r'$createdAt'] = document.$createdAt
+      ..[r'$updatedAt'] = document.$updatedAt;
     return _cachedUserProfileData;
   }
 
   bool isOnboardingCompleteFromProfile(Map<String, dynamic>? profile) {
-    return profile?['onboarding1'] == true &&
-        profile?['onboarding2'] == true &&
-        profile?['onboarding3'] == true;
+    if (profile == null) return false;
+    final flagsComplete = profile['onboarding1'] == true &&
+        profile['onboarding2'] == true &&
+        profile['onboarding3'] == true;
+    if (flagsComplete) return true;
+
+    // Legacy compatibility: older registered users may have a users row from
+    // before onboarding flags were persisted. Do not send them back through
+    // profile setup if they already have meaningful style/profile data.
+    final styles = profile['stylePreferences'];
+    final hasStyles = styles is List && styles.isNotEmpty;
+    final hasProfileSignals =
+        (profile['gender']?.toString().trim().isNotEmpty ?? false) ||
+        (profile['bodyShape']?.toString().trim().isNotEmpty ?? false) ||
+        profile['skinTone'] != null ||
+        hasStyles;
+    if (hasProfileSignals) return true;
+
+    // If this is an older existing account row with auth identity only, treat
+    // it as registered. Brand-new rows created during sign-up remain first-time
+    // for a short window so new users still see onboarding.
+    final createdRaw = profile[r'$createdAt']?.toString();
+    final createdAt = createdRaw == null ? null : DateTime.tryParse(createdRaw);
+    final hasIdentity =
+        (profile['email']?.toString().trim().isNotEmpty ?? false) &&
+        (profile['name']?.toString().trim().isNotEmpty ?? false);
+    if (hasIdentity && createdAt != null) {
+      final age = DateTime.now().toUtc().difference(createdAt.toUtc());
+      if (age > const Duration(minutes: 10)) return true;
+    }
+    return false;
   }
 
   Future<bool> isCurrentUserOnboardingComplete() async {
@@ -418,7 +450,9 @@ class AppwriteService extends ChangeNotifier {
         _cachedUserProfileData = Map<String, dynamic>.from({
           ...existing.data,
           ...updated.data,
-        });
+        })
+          ..[r'$createdAt'] = updated.$createdAt
+          ..[r'$updatedAt'] = updated.$updatedAt;
 
         debugPrint('✅ User profile synced: ${user.$id}');
       } on AppwriteException catch (e) {
@@ -435,7 +469,9 @@ class AppwriteService extends ChangeNotifier {
             ],
           );
 
-          _cachedUserProfileData = Map<String, dynamic>.from(created.data);
+          _cachedUserProfileData = Map<String, dynamic>.from(created.data)
+            ..[r'$createdAt'] = created.$createdAt
+            ..[r'$updatedAt'] = created.$updatedAt;
           debugPrint('✅ User profile created: ${user.$id}');
           return;
         }

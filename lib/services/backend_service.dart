@@ -281,7 +281,7 @@ class BackendService {
               'save_duplicates': saveDuplicates,
             }),
           )
-          .timeout(const Duration(seconds: 55));
+          .timeout(const Duration(seconds: 90));
 
       if (response.statusCode == 200) {
         return await compute(_parseJsonMap, response.body);
@@ -293,6 +293,43 @@ class BackendService {
       return null;
     } catch (e) {
       debugPrint('Garment analysis error: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> analyzeImagesBatch(
+    List<Uint8List> images, {
+    bool autoSave = false,
+    bool saveDuplicates = false,
+  }) async {
+    if (images.isEmpty) return null;
+    try {
+      final encoded = await Future.wait(
+        images.take(6).map((bytes) => compute(_encodeBytes, bytes)),
+      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/wardrobe/capture/analyze-batch'),
+            headers: await _authHeaders(),
+            body: jsonEncode({
+              'user_id': await _currentUserId(),
+              'image_base64s': encoded,
+              'auto_save': autoSave,
+              'save_duplicates': saveDuplicates,
+            }),
+          )
+          .timeout(const Duration(seconds: 150));
+
+      if (response.statusCode == 200) {
+        return await compute(_parseJsonMap, response.body);
+      }
+
+      debugPrint(
+        'Analyze batch API failed: ${response.statusCode} - ${response.body}',
+      );
+      return null;
+    } catch (e) {
+      debugPrint('Garment batch analysis error: $e');
       return null;
     }
   }

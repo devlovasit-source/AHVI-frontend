@@ -4,6 +4,7 @@ import 'package:flutter/services.dart'; // [ADDED B12] for input formatters
 import 'package:provider/provider.dart';
 import 'package:myapp/app_routes.dart';
 import 'package:myapp/profile.dart';
+import 'package:myapp/services/appwrite_service.dart';
 
 void main() {
   runApp(const MaterialApp(
@@ -320,7 +321,7 @@ class _Screen1State extends State<Screen1> with TickerProviderStateMixin {
     );
   }
 
-  void _onContinue() {
+  Future<void> _onContinue() async {
     if (!_isValid) {
       _showValidationError('Please complete your name and date of birth.');
       return;
@@ -328,6 +329,16 @@ class _Screen1State extends State<Screen1> with TickerProviderStateMixin {
     final genders = ['Male', 'Female', 'Others'];
     final gender = _selectedGender >= 0 ? genders[_selectedGender.clamp(0, genders.length - 1)] : '';
     final dob = '${_selectedDay!} ${_selectedMonth!} ${_selectedYear!}';
+    final monthIndex = const [
+      'January', 'February', 'March', 'April',
+      'May', 'June', 'July', 'August',
+      'September', 'October', 'November', 'December'
+    ].indexOf(_selectedMonth!) + 1;
+    final dobIso = DateTime(
+      int.parse(_selectedYear!),
+      monthIndex,
+      int.parse(_selectedDay!),
+    ).toUtc().toIso8601String();
     context.read<ProfileController>().updateBasics(
       name: _nameCtrl.text.trim(),
       phone: _phoneCtrl.text.trim().isNotEmpty
@@ -339,6 +350,24 @@ class _Screen1State extends State<Screen1> with TickerProviderStateMixin {
       bodyShape: _selectedBodyShape,
       shopPrefs: _shopPrefs,
     );
+    try {
+      await context.read<AppwriteService>().updateCurrentUserProfileFields({
+        'name': _nameCtrl.text.trim(),
+        'phone': _phoneCtrl.text.trim().isNotEmpty
+            ? '$_selectedCountryCode ${_phoneCtrl.text.trim()}'
+            : '',
+        'dob': dobIso,
+        'gender': gender,
+        'skinTone': _selectedSkinTone,
+        'bodyShape': _selectedBodyShape,
+        'onboarding1': true,
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showValidationError('Could not save profile details. Please try again.');
+      return;
+    }
+    if (!mounted) return;
     Navigator.of(context).pushNamed(AppRoutes.onboarding2);
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/app_routes.dart';
 import 'package:myapp/profile.dart';
+import 'package:myapp/services/appwrite_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -51,21 +52,31 @@ class _Screen3State extends State<Screen3> {
     );
   }
 
-  void _onSkip() {
+  Future<void> _onSkip() async {
     context.read<ProfileController>().updatePersonalization(
       enabled: false,
       faceUploaded: false,
       bodyUploaded: false,
     );
-    SharedPreferences.getInstance()
-        .then((prefs) => prefs.setBool('onboardingComplete', true));
+    try {
+      await context.read<AppwriteService>().updateCurrentUserProfileFields({
+        'onboarding3': true,
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showValidationError('Could not finish onboarding. Please try again.');
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboardingComplete', true);
+    if (!mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil(
       AppRoutes.main,
       (route) => false,
     );
   }
 
-  void _onSaveContinue() {
+  Future<void> _onSaveContinue() async {
     if (!_isValid) {
       _showValidationError('Please upload both face and body photos.');
       return;
@@ -76,8 +87,18 @@ class _Screen3State extends State<Screen3> {
       bodyUploaded: _bodyUploaded,
     );
     // Mark onboarding as fully complete — ONLY here, after all 3 screens done
-    SharedPreferences.getInstance()
-        .then((prefs) => prefs.setBool('onboardingComplete', true));
+    try {
+      await context.read<AppwriteService>().updateCurrentUserProfileFields({
+        'onboarding3': true,
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showValidationError('Could not finish onboarding. Please try again.');
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboardingComplete', true);
+    if (!mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil(
       AppRoutes.main,
       (route) => false,

@@ -5,7 +5,6 @@ import 'package:myapp/app_routes.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/notification_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:myapp/profile.dart';
 
 void main() => runApp(const AhviApp());
@@ -20,7 +19,6 @@ class AhviApp extends StatelessWidget {
     );
   }
 }
-
 class SignInScreen extends StatelessWidget {
   const SignInScreen({super.key});
 
@@ -59,10 +57,7 @@ class SignInScreen extends StatelessWidget {
       } catch (_) {}
 
       if (!context.mounted) return;
-      final prefs = await SharedPreferences.getInstance();
-      final isFirstTime = prefs.getBool('onboardingComplete') == true
-          ? false
-          : true;
+      final isFirstTime = !(await appwrite.isCurrentUserOnboardingComplete());
 
       if (isFirstTime) {
         if (context.mounted) {
@@ -107,10 +102,7 @@ class SignInScreen extends StatelessWidget {
       } catch (_) {}
 
       if (!context.mounted) return;
-      final prefs = await SharedPreferences.getInstance();
-      final isFirstTime = prefs.getBool('onboardingComplete') == true
-          ? false
-          : true;
+      final isFirstTime = !(await appwrite.isCurrentUserOnboardingComplete());
 
       if (isFirstTime) {
         if (context.mounted) {
@@ -252,10 +244,7 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
 
         if (!mounted) return;
         // Check if first-time user → show onboarding, else go to main
-        final prefs = await SharedPreferences.getInstance();
-        final isFirstTime = prefs.getBool('onboardingComplete') == true
-            ? false
-            : true;
+        final isFirstTime = !(await appwrite.isCurrentUserOnboardingComplete());
         if (!mounted) return;
         if (isFirstTime) {
           if (!mounted) return;
