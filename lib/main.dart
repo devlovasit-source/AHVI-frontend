@@ -313,7 +313,7 @@ class _MainNavigationShellState extends State<MainNavigationShell>
   }
 
   void _handleNavTap(int idx) {
-    if (idx == 4) {
+    if (idx == 3) {
       _showComingSoon();
       return;
     }
