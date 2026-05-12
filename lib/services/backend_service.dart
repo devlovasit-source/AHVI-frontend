@@ -9,6 +9,14 @@ Map<String, dynamic> _parseJsonMap(String payload) =>
 
 String _encodeBytes(Uint8List bytes) => base64Encode(bytes);
 
+class BackendRequestException implements Exception {
+  final String message;
+  const BackendRequestException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 String _demoChatFallback(String query, String moduleContext) {
   final q = query.toLowerCase();
   final isStyle = moduleContext == 'style' || moduleContext == 'wardrobe';
@@ -284,17 +292,47 @@ class BackendService {
           .timeout(const Duration(seconds: 90));
 
       if (response.statusCode == 200) {
-        return await compute(_parseJsonMap, response.body);
+        final data = await compute(_parseJsonMap, response.body);
+        debugPrint(
+          'Analyze API ok: items=${(data['items'] as List?)?.length ?? 0}',
+        );
+        return data;
       }
 
       debugPrint(
         'Analyze API failed: ${response.statusCode} - ${response.body}',
       );
-      return null;
+      throw BackendRequestException(
+        'Scan API ${response.statusCode}: ${response.body}',
+      );
     } catch (e) {
-      debugPrint('Garment analysis error: $e');
-      return null;
-    }
+  final msg = e.toString().toLowerCase();
+
+  final isTimeout =
+      msg.contains('timeoutexception') ||
+      msg.contains('future not completed') ||
+      msg.contains('timed out');
+
+  if (isTimeout) {
+    return {
+      'status': 'manual_review',
+      'needs_review': true,
+      'items': [
+        {
+          'id': 'manual_review',
+          'name': 'Uploaded item',
+          'category': 'Accessories',
+          'subcategory': 'Eyewear',
+          'editable': true,
+          'needs_review': true,
+        }
+      ],
+      'message': 'Review labels before saving.',
+    };
+  }
+
+  throw BackendRequestException('Scan request failed: $e');
+}
   }
 
   Future<Map<String, dynamic>?> analyzeImagesBatch(
@@ -321,16 +359,22 @@ class BackendService {
           .timeout(const Duration(seconds: 150));
 
       if (response.statusCode == 200) {
-        return await compute(_parseJsonMap, response.body);
+        final data = await compute(_parseJsonMap, response.body);
+        debugPrint(
+          'Analyze batch API ok: items=${(data['items'] as List?)?.length ?? 0}',
+        );
+        return data;
       }
 
       debugPrint(
         'Analyze batch API failed: ${response.statusCode} - ${response.body}',
       );
-      return null;
+      throw BackendRequestException(
+        'Batch scan API ${response.statusCode}: ${response.body}',
+      );
     } catch (e) {
       debugPrint('Garment batch analysis error: $e');
-      return null;
+      throw BackendRequestException('Batch scan request failed: $e');
     }
   }
 

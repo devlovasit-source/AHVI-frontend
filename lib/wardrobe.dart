@@ -2034,7 +2034,13 @@ class _AddItemModalState extends State<_AddItemModal>
   List<_DetectedItem> _detectedItemsFromAnalyzeResponse(
     Map<String, dynamic>? data,
   ) {
-    final raw = data?['items'];
+    if (data == null) {
+      throw Exception('Backend returned no scan response');
+    }
+    if (data['success'] == false) {
+      throw Exception(data['error']?.toString() ?? 'Backend scan failed');
+    }
+    final raw = data['items'];
     if (raw is! List) throw Exception('No detected items');
 
     return raw.whereType<Map>().map((r) {
@@ -2088,26 +2094,91 @@ class _AddItemModalState extends State<_AddItemModal>
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _detectError =
-              'Detection failed. Please retake with better lighting.';
-          _step = _ModalStep.results;
-          _detected = [];
-        });
-      }
-    }
+  debugPrint('Wardrobe single detection failed: $e');
+
+  if (!mounted) return;
+
+  final fallbackId = DateTime.now().millisecondsSinceEpoch.toString();
+
+  setState(() {
+    _detected = [
+      _DetectedItem(
+        id: fallbackId,
+        name: 'Review item',
+        category: 'Uncategorized',
+        subCategory: '',
+        occasions: const [],
+        labelSource: 'manual_review',
+        requiresManualEntry: true,
+        confidence: 0.0,
+        raw: {
+          'item_id': fallbackId,
+          'id': fallbackId,
+          'name': 'Review item',
+          'category': 'Uncategorized',
+          'sub_category': '',
+          'requires_manual_entry': true,
+          'confidence': 0.0,
+        },
+        selected: true,
+      ),
+    ];
+
+    _detectError =
+        'AI needs a quick review. Edit labels if needed, then save.';
+
+    _step = _ModalStep.results;
+  });
+}
   }
 
   // Multi-image flow ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â all images scanned in parallel, results merged
   Future<void> _runDetectionMulti(List<Uint8List> bytesList) async {
     try {
-      final data = await Provider.of<BackendService>(
-        context,
-        listen: false,
-      ).analyzeImagesBatch(bytesList);
+      List<_DetectedItem> allItems = [];
+      try {
+        final data = await Provider.of<BackendService>(
+          context,
+          listen: false,
+        ).analyzeImagesBatch(bytesList);
+        allItems = _detectedItemsFromAnalyzeResponse(data);
+      } catch (e) {
+        debugPrint('Batch detection fallback: $e');
+      }
 
-      final allItems = _detectedItemsFromAnalyzeResponse(data);
+      if (allItems.isEmpty) {
+        final results = await Future.wait(
+          bytesList.map(
+            (bytes) => _detectOneImage(bytes).catchError((error) {
+              debugPrint('Single image fallback failed: $error');
+              return <_DetectedItem>[];
+            }),
+          ),
+        );
+        var counter = 1;
+        allItems = [
+          for (final list in results)
+            for (final item in list)
+              _DetectedItem(
+                id: (counter++).toString(),
+                name: item.name,
+                category: item.category,
+                subCategory: item.subCategory,
+                color: item.color,
+                colorCode: item.colorCode,
+                pattern: item.pattern,
+                occasions: List<String>.from(item.occasions),
+                labelSource: item.labelSource,
+                requiresManualEntry: item.requiresManualEntry,
+                confidence: item.confidence,
+                rawUrl: item.rawUrl,
+                maskedUrl: item.maskedUrl,
+                maskedImageBase64: item.maskedImageBase64,
+                raw: item.raw,
+                selected: true,
+              ),
+        ];
+      }
 
       if (mounted) {
         setState(() {
@@ -2119,14 +2190,21 @@ class _AddItemModalState extends State<_AddItemModal>
         });
       }
     } catch (e) {
+      debugPrint('Wardrobe multi detection failed: $e');
       if (mounted) {
         setState(() {
-          _detectError = 'Detection failed. Please try again.';
+          _detectError = 'Detection failed: ${_shortScanError(e)}';
           _step = _ModalStep.results;
           _detected = [];
         });
       }
     }
+  }
+
+  String _shortScanError(Object error) {
+    final text = error.toString().replaceFirst('Exception: ', '').trim();
+    if (text.length <= 160) return text;
+    return '${text.substring(0, 160)}...';
   }
 
   void _retake() {
