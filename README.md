@@ -19,24 +19,28 @@ The frontend currently supports the primary AHVI user journeys, including:
 - workout + style experiences
 - planning and pack flows
 - saved boards and personalization flows
-- supporting lifestyle modules and integrations
+- supporting lifestyle workflows and integrations
 
 The current phase is focused on stabilization, UI consolidation, orchestration consistency, and beta-readiness refinement.
 
 ---
 
-# Frontend Architecture
+# Frontend Structure
 
-Main frontend areas include:
+The Flutter app is organized around the primary user-facing AHVI experiences:
 
-- AI chat and orchestration UI
-- wardrobe capture and management
-- editorial board rendering
-- personalization and profile flows
-- workout and planning interfaces
-- API integration layers
-- Appwrite authentication and persistence
-- backend orchestration integration
+- authentication and onboarding screens
+- home/navigation entry points
+- AI style chat interface
+- wardrobe upload, capture, and management screens
+- editorial outfit board rendering
+- saved board and profile-related flows
+- workout, planning, and supporting lifestyle screens
+- shared UI widgets and theme utilities
+- frontend service layer for backend/API communication
+- Appwrite-based authentication and data access integration
+
+The current frontend is functional for the closed-beta MVP flows and is undergoing active stabilization, UI consolidation, and component-level cleanup.
 
 ---
 
@@ -57,7 +61,7 @@ Ongoing refinement areas include:
 - API consistency
 - board rendering polish
 - UX consolidation
-- loading/error handling
+- loading and error handling
 - orchestration consistency across flows
 - APK/demo stability
 - beta QA and refinement
@@ -78,6 +82,6 @@ Sensitive backend credentials and infrastructure secrets are managed separately 
 
 Current phase:
 - Closed Beta
-- Investor-ready MVP stabilization
+- Closed-beta MVP stabilization
 - Core frontend flows implemented
 - Active refinement and consolidation ongoing
