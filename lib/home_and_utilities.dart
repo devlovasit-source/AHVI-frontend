@@ -241,7 +241,7 @@ class _HomeUtilitiesScreenState extends State<HomeUtilitiesScreen>
           tabs: [
             Tab(text: AppLocalizations.t(context, 'home_tab_medi')),
             Tab(text: AppLocalizations.t(context, 'home_tab_bills')),
-            Tab(text: AppLocalizations.t(context, 'home_tab_contacts')),
+            Tab(text: AppLocalizations.t(context, 'home_tab_utility_contacts')),
           ],
         ),
       ),
