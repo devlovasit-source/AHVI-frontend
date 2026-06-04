@@ -77,6 +77,8 @@
 	<key>NSCameraUsageDescription</key>
     <string>Used to scan bill photos</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>Used to upload bill images</string>    
+    <string>Used to upload bill images</string>
+    <key>NSContactsUsageDescription</key>
+    <string>We need access to import your contacts.</string>
 </dict>
 </plist>
