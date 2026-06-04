@@ -2775,9 +2775,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     if (ctx.hasSoonOccasion) {
       final e = ctx.nextOccasion!;
       return _CardContent(
-        title: 'Occasion Look',
-        subtitle: '${e.title} in ${e.hoursUntil}h — I\'ll pick the perfect outfit.',
-        cta: 'Style Me Now',
+        title: AppLocalizations.t(context, 'style_occasion_title'),
+        subtitle: '${e.title} in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'style_occasion_subtitle')}',
+        cta: AppLocalizations.t(context, 'style_occasion_cta'),
         icon: Icons.celebration_outlined,
         prompt: 'I have "${e.title}" in ${e.hoursUntil} hours. Create the perfect occasion outfit.',
       );
@@ -2785,9 +2785,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     if (ctx.hasSoonMeeting) {
       final e = ctx.nextMeeting!;
       return _CardContent(
-        title: 'Meeting Ready',
+        title: AppLocalizations.t(context, 'style_meeting_title'),
         subtitle: '"${e.title}" in ${e.hoursUntil}h — sharp & confident look.',
-        cta: 'Get the Look',
+        cta: AppLocalizations.t(context, 'style_meeting_cta'),
         icon: Icons.work_outline_rounded,
         prompt: 'I have a meeting "${e.title}" in ${e.hoursUntil} hours. Suggest a sharp professional outfit.',
       );
@@ -2796,27 +2796,27 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // 🌦️ Weather-driven
     if (w.isRainy) {
       return _CardContent(
-        title: 'Rainy Day Style',
-        subtitle: 'Stay dry & chic — I\'ll build your rain-ready outfit.',
-        cta: 'See Outfit',
+        title: AppLocalizations.t(context, 'style_rainy_title'),
+        subtitle: AppLocalizations.t(context, 'style_rainy_subtitle'),
+        cta: AppLocalizations.t(context, 'style_rainy_cta'),
         icon: Icons.umbrella_outlined,
         prompt: 'It\'s raining today. Suggest a stylish waterproof outfit.',
       );
     }
     if (w.isCold && w.tempLabel.isNotEmpty) {
       return _CardContent(
-        title: 'Layer Up',
+        title: AppLocalizations.t(context, 'style_cold_title'),
         subtitle: '${w.tempLabel} outside — cosy layers that still look great.',
-        cta: 'Build the Look',
+        cta: AppLocalizations.t(context, 'style_cold_cta'),
         icon: Icons.ac_unit_outlined,
         prompt: 'It\'s ${w.tempLabel} today. Suggest a warm layered outfit.',
       );
     }
     if (w.isHot && w.tempLabel.isNotEmpty) {
       return _CardContent(
-        title: 'Beat the Heat',
+        title: AppLocalizations.t(context, 'style_hot_title'),
         subtitle: '${w.tempLabel} today — breathable fits that look effortless.',
-        cta: 'Cool Outfits',
+        cta: AppLocalizations.t(context, 'style_hot_cta'),
         icon: Icons.wb_sunny_outlined,
         prompt: 'It\'s ${w.tempLabel} today. Suggest a cool breathable outfit.',
       );
@@ -2827,7 +2827,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       return _CardContent(
         title: '${fit.nextWorkoutLabel} Fit',
         subtitle: 'Look great at the gym — I\'ll pick the perfect workout gear.',
-        cta: 'Gym Outfit',
+        cta: AppLocalizations.t(context, 'style_gym_cta'),
         icon: Icons.fitness_center_outlined,
         prompt: 'Today is my ${fit.nextWorkoutLabel} day. Suggest a stylish gym outfit.',
       );
@@ -2836,7 +2836,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       return _CardContent(
         title: '${fit.workoutStreakDays}-Day Streak!',
         subtitle: 'Keep the momentum — here\'s your energy-forward look.',
-        cta: 'Style the Streak',
+        cta: AppLocalizations.t(context, 'style_streak_cta'),
         icon: Icons.local_fire_department_outlined,
         prompt: 'I\'m on a ${fit.workoutStreakDays}-day fitness streak. Suggest a motivating outfit for today.',
       );
@@ -2845,9 +2845,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // 👗 Wardrobe-driven
     if (ward.hasUnwornItems && ward.unwornItems >= 3) {
       return _CardContent(
-        title: 'Rediscover Pieces',
+        title: AppLocalizations.t(context, 'style_wardrobe_title'),
         subtitle: '${ward.unwornItems} unworn items waiting — let\'s create new looks.',
-        cta: 'Explore Wardrobe',
+        cta: AppLocalizations.t(context, 'style_wardrobe_cta'),
         icon: Icons.dry_cleaning_outlined,
         prompt: 'I have ${ward.unwornItems} clothing items I\'ve never worn. Build fresh outfits using them.',
       );
@@ -2856,7 +2856,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       return _CardContent(
         title: '${ward.favoriteStyle.capitalize()} Style',
         subtitle: 'New picks that match your taste are in — want to see?',
-        cta: 'View Picks',
+        cta: AppLocalizations.t(context, 'style_fav_cta'),
         icon: Icons.favorite_outline_rounded,
         prompt: 'Show me new ${ward.favoriteStyle} fashion picks that match my style preferences.',
       );
@@ -2865,47 +2865,47 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // 📅 Time-of-day fallbacks
     if (ctx.isMondayMorning) {
       return _CardContent(
-        title: 'Week Ahead',
-        subtitle: 'Plan 5 outfits for the week in one go.',
-        cta: 'Plan My Week',
+        title: AppLocalizations.t(context, 'style_week_title'),
+        subtitle: AppLocalizations.t(context, 'style_week_subtitle'),
+        cta: AppLocalizations.t(context, 'style_week_cta'),
         icon: Icons.date_range_outlined,
         prompt: 'Plan 5 complete outfits for my work week ahead.',
       );
     }
     if (ctx.isFridayEvening) {
       return _CardContent(
-        title: 'Friday Night',
-        subtitle: 'Evening plans? Let\'s find you the perfect look.',
-        cta: 'Night Look',
+        title: AppLocalizations.t(context, 'style_friday_title'),
+        subtitle: AppLocalizations.t(context, 'style_friday_subtitle'),
+        cta: AppLocalizations.t(context, 'style_friday_cta'),
         icon: Icons.nightlife_outlined,
         prompt: 'Help me pick a stylish evening outfit for Friday night.',
       );
     }
     if (ctx.isWeekend) {
       return _CardContent(
-        title: 'Weekend Vibes',
-        subtitle: 'Casual, fresh looks for a great weekend.',
-        cta: 'Style Weekend',
+        title: AppLocalizations.t(context, 'style_weekend_title'),
+        subtitle: AppLocalizations.t(context, 'style_weekend_subtitle'),
+        cta: AppLocalizations.t(context, 'style_weekend_cta'),
         icon: Icons.weekend_outlined,
         prompt: 'Suggest a relaxed yet stylish casual outfit for the weekend.',
       );
     }
     if (ctx.isEvening) {
       return _CardContent(
-        title: 'Evening Look',
-        subtitle: 'Wind down in style — skincare & evening outfit sorted.',
-        cta: 'Evening Routine',
+        title: AppLocalizations.t(context, 'style_evening_title'),
+        subtitle: AppLocalizations.t(context, 'style_evening_subtitle'),
+        cta: AppLocalizations.t(context, 'style_evening_cta'),
         icon: Icons.spa_outlined,
         prompt: 'Build me an evening outfit and skincare routine.',
       );
     }
     if (ctx.isMorning) {
       return _CardContent(
-        title: 'Today\'s Style',
+        title: AppLocalizations.t(context, 'style_card_title'),
         subtitle: _userName.isNotEmpty
             ? 'Morning, $_userName! Let me plan your look.'
             : 'Good morning — let\'s plan your outfit.',
-        cta: 'Plan My Look',
+        cta: AppLocalizations.t(context, 'style_morning_cta'),
         icon: Icons.auto_awesome_rounded,
         prompt: 'Plan a complete outfit for me today.',
       );
@@ -2913,9 +2913,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
     // Default
     return _CardContent(
-      title: 'AI Stylist',
-      subtitle: 'Your personal AI fashion assistant, ready to style you.',
-      cta: 'Let\'s Style',
+      title: AppLocalizations.t(context, 'style_default_title'),
+      subtitle: AppLocalizations.t(context, 'style_default_subtitle'),
+      cta: AppLocalizations.t(context, 'style_default_cta'),
       icon: Icons.auto_awesome_rounded,
       prompt: 'Surprise me with a complete outfit based on my style preferences.',
     );
@@ -2932,9 +2932,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     if (ctx.hasSoonOccasion) {
       final e = ctx.nextOccasion!;
       return _CardContent(
-        title: 'Event Prep',
+        title: AppLocalizations.t(context, 'prep_event_title'),
         subtitle: '"${e.title}" in ${e.hoursUntil}h — checklist ready?',
-        cta: 'Prep Checklist',
+        cta: AppLocalizations.t(context, 'prep_event_cta'),
         icon: Icons.checklist_rounded,
         prompt: 'Create a complete prep checklist for my upcoming event: "${e.title}".',
       );
@@ -2944,9 +2944,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     if (ctx.upcomingEvents.any((e) => e.type == _EventType.travel && e.isToday)) {
       final e = ctx.upcomingEvents.firstWhere((e) => e.type == _EventType.travel && e.isToday);
       return _CardContent(
-        title: 'Travel Ready',
-        subtitle: 'Packing list + outfit for your trip today.',
-        cta: 'Pack & Prep',
+        title: AppLocalizations.t(context, 'prep_travel_title'),
+        subtitle: AppLocalizations.t(context, 'prep_travel_subtitle'),
+        cta: AppLocalizations.t(context, 'prep_travel_cta'),
         icon: Icons.flight_outlined,
         prompt: 'Create a travel packing checklist and outfit plan for my trip today: "${e.title}".',
       );
@@ -2955,9 +2955,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // 📅 Sunday — weekly prep
     if (ctx.isSunday) {
       return _CardContent(
-        title: 'Sunday Prep',
-        subtitle: 'Plan meals, outfits & goals for the week ahead.',
-        cta: 'Plan My Week',
+        title: AppLocalizations.t(context, 'prep_sunday_title'),
+        subtitle: AppLocalizations.t(context, 'prep_sunday_subtitle'),
+        cta: AppLocalizations.t(context, 'prep_sunday_cta'),
         icon: Icons.event_available_outlined,
         prompt: 'Help me do a complete Sunday prep: weekly meal plan, outfit planning, and goal setting.',
       );
@@ -2966,9 +2966,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // 📅 Monday — weekly kickoff
     if (ctx.isMondayMorning) {
       return _CardContent(
-        title: 'Week Kickoff',
-        subtitle: 'Set intentions, meals & outfits for the week.',
-        cta: 'Start Planning',
+        title: AppLocalizations.t(context, 'prep_monday_title'),
+        subtitle: AppLocalizations.t(context, 'prep_monday_subtitle'),
+        cta: AppLocalizations.t(context, 'prep_monday_cta'),
         icon: Icons.rocket_launch_outlined,
         prompt: 'Help me plan my week: schedule, meals, and daily outfits.',
       );
@@ -2977,9 +2977,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // 🏃 Meal plan needed
     if (fit.mealPlanNeeded && (ctx.isAfternoon || ctx.isEvening)) {
       return _CardContent(
-        title: 'Meal Plan',
-        subtitle: 'Haven\'t hit your calorie goal — let me fix that.',
-        cta: 'Plan Meals',
+        title: AppLocalizations.t(context, 'prep_meal_title'),
+        subtitle: AppLocalizations.t(context, 'prep_meal_subtitle'),
+        cta: AppLocalizations.t(context, 'prep_meal_cta'),
         icon: Icons.restaurant_outlined,
         prompt: 'I haven\'t met my calorie goal today. Suggest healthy meals I can prepare now.',
       );
@@ -2989,8 +2989,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     if (fit.nextWorkoutLabel.isNotEmpty) {
       return _CardContent(
         title: fit.nextWorkoutLabel.isNotEmpty ? '${fit.nextWorkoutLabel} Plan' : 'Workout Plan',
-        subtitle: 'Your routine, nutrition & gear sorted in one go.',
-        cta: 'Plan Workout',
+        subtitle: AppLocalizations.t(context, 'prep_workout_subtitle'),
+        cta: AppLocalizations.t(context, 'prep_workout_cta'),
         icon: Icons.fitness_center_outlined,
         prompt: 'Plan my ${fit.nextWorkoutLabel} workout: exercises, sets, nutrition, and gear.',
       );
@@ -2999,18 +2999,18 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // Time-of-day fallbacks
     if (ctx.isEvening) {
       return _CardContent(
-        title: 'Tomorrow Prep',
-        subtitle: 'Lay out tomorrow\'s outfit & plan the day tonight.',
-        cta: 'Prep Tonight',
+        title: AppLocalizations.t(context, 'prep_tomorrow_title'),
+        subtitle: AppLocalizations.t(context, 'prep_tomorrow_subtitle'),
+        cta: AppLocalizations.t(context, 'prep_tomorrow_cta'),
         icon: Icons.nights_stay_outlined,
         prompt: 'Help me prepare for tomorrow: outfit, schedule, and to-dos.',
       );
     }
     if (ctx.isMorning) {
       return _CardContent(
-        title: 'Day Plan',
-        subtitle: 'Meals, outfit & schedule — I\'ll organise your day.',
-        cta: 'Plan My Day',
+        title: AppLocalizations.t(context, 'prep_day_title'),
+        subtitle: AppLocalizations.t(context, 'prep_day_subtitle'),
+        cta: AppLocalizations.t(context, 'prep_day_cta'),
         icon: Icons.today_outlined,
         prompt: 'Help me plan today: meals, outfit, and schedule.',
       );
@@ -3018,9 +3018,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
     // Default
     return _CardContent(
-      title: 'Prep & Plan',
-      subtitle: 'Organise wardrobe, meals & schedule with AI.',
-      cta: 'Start Planning',
+      title: AppLocalizations.t(context, 'prep_default_title'),
+      subtitle: AppLocalizations.t(context, 'prep_default_subtitle'),
+      cta: AppLocalizations.t(context, 'prep_default_cta'),
       icon: Icons.grid_view_rounded,
       prompt: 'Help me plan and organise my wardrobe, meals, and schedule.',
     );
