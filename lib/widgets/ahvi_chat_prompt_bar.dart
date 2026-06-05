@@ -62,6 +62,14 @@ class AhviChatPromptBar extends StatefulWidget {
   final VoidCallback? onPlusTap;
 
   // ── Voice / STT ──────────────────────────────────────────────────────────
+  /// Gradient colors for the mic button while recording.
+  /// Defaults to a red-to-pink pair if not provided.
+  final List<Color>? micActiveGradientColors;
+
+  /// Shadow color for the mic button while recording.
+  /// Defaults to [Colors.redAccent] if not provided.
+  final Color? micActiveShadowColor;
+
   /// Parent starts / stops recording; bar reflects [micState].
   final VoidCallback? onVoiceTap;
 
@@ -104,6 +112,8 @@ class AhviChatPromptBar extends StatefulWidget {
     this.onAddToWardrobe,
     this.onPlusTap,
     this.onVoiceTap,
+    this.micActiveGradientColors,
+    this.micActiveShadowColor,
     this.micState = MicState.idle,
     this.interimTranscript = '',
     this.finalTranscript = '',
@@ -360,6 +370,8 @@ class _AhviChatPromptBarState extends State<AhviChatPromptBar> {
                         amplitude: widget.micAmplitude,
                         accent: widget.accent,
                         accentSecondary: widget.accentSecondary,
+                        activeGradientColors: widget.micActiveGradientColors,
+                        activeShadowColor: widget.micActiveShadowColor,
                       ),
                     ),
 
@@ -379,7 +391,7 @@ class _AhviChatPromptBarState extends State<AhviChatPromptBar> {
                           final sending = widget.isSending || _sendLocked;
                           final iconColor =
                               widget.accent.computeLuminance() > 0.4
-                                  ? const Color(0xFF1A1A2E)
+                                  ? widget.onAccent
                                   : Colors.white;
                           return _SendButton(
                             hasText: hasText,
@@ -490,11 +502,21 @@ class _MicButton extends StatelessWidget {
   final Color accent;
   final Color accentSecondary;
 
+  /// Gradient colors shown while the mic is active (listening / transcribing).
+  /// Defaults to a red-to-pink pair if not provided.
+  final List<Color>? activeGradientColors;
+
+  /// Shadow color shown while the mic is active.
+  /// Defaults to [Colors.redAccent] if not provided.
+  final Color? activeShadowColor;
+
   const _MicButton({
     required this.micState,
     required this.amplitude,
     required this.accent,
     required this.accentSecondary,
+    this.activeGradientColors,
+    this.activeShadowColor,
   });
 
   bool get _active =>
@@ -509,8 +531,9 @@ class _MicButton extends StatelessWidget {
       height: 38,
       decoration: BoxDecoration(
         gradient: _active
-            ? const LinearGradient(
-                colors: [Color(0xFFFF4757), Color(0xFFFF6B81)],
+            ? LinearGradient(
+                colors: activeGradientColors ??
+                    const [Color(0xFFFF4757), Color(0xFFFF6B81)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               )
@@ -524,7 +547,8 @@ class _MicButton extends StatelessWidget {
         boxShadow: _active
             ? [
                 BoxShadow(
-                  color: Colors.redAccent.withValues(alpha: 0.45),
+                  color: (activeShadowColor ?? Colors.redAccent)
+                      .withValues(alpha: 0.45),
                   blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),
