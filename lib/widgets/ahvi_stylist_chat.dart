@@ -118,9 +118,9 @@ class AhviModuleConfig {
 final Map<String, AhviModuleConfig> _moduleConfigs = {
   'style': AhviModuleConfig(
     moduleContext: 'style',
-    subtitle: 'AI Stylist',
+    subtitle: 'AI Assistant',
     hintTextKey: 'daily_wear_chat_hint',
-    greetingKey: 'chat_greeting',
+    greetingKey: 'style_chat_greeting',
     quickPrompts: (ctx) => [
       AppLocalizations.t(ctx, 'wear_chip_today'),
       AppLocalizations.t(ctx, 'wear_chip_style_tips'),
@@ -133,7 +133,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
     moduleContext: 'skincare',
     subtitle: 'Skincare Assistant',
     hintTextKey: 'daily_wear_chat_hint',
-    greetingKey: 'chat_greeting',
+    greetingKey: 'skincare_chat_greeting',
     quickPrompts: (ctx) => [
       'Morning routine tips',
       'Best SPF for my skin',
@@ -146,7 +146,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
     moduleContext: 'medi',
     subtitle: 'Medicine Assistant',
     hintTextKey: 'daily_wear_chat_hint',
-    greetingKey: 'chat_greeting',
+    greetingKey: 'medi_chat_greeting',
     quickPrompts: (ctx) => [
       'My medicines today',
       'Missed dose — what to do?',
@@ -159,7 +159,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
     moduleContext: 'bills',
     subtitle: 'Bills Assistant',
     hintTextKey: 'daily_wear_chat_hint',
-    greetingKey: 'chat_greeting',
+    greetingKey: 'bills_chat_greeting',
     quickPrompts: (ctx) => [
       'Pending bills',
       'Total this month',
@@ -172,7 +172,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
     moduleContext: 'diet',
     subtitle: 'Diet & Nutrition Assistant',
     hintTextKey: 'diet_chat_hint',
-    greetingKey: 'diet_chat_welcome',
+    greetingKey: 'diet_chat_greeting',
     quickPrompts: (ctx) => [
       'Weekly keto plan',
       'High protein meals',
@@ -185,7 +185,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
     moduleContext: 'fitness',
     subtitle: 'Fitness Coach',
     hintTextKey: 'daily_wear_chat_hint',
-    greetingKey: 'chat_greeting',
+    greetingKey: 'fitness_chat_greeting',
     quickPrompts: (ctx) => [
       'Today\'s workout',
       'Beginner plan',
@@ -196,9 +196,9 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
   ),
   'wardrobe': AhviModuleConfig(
     moduleContext: 'wardrobe',
-    subtitle: 'Wardrobe Stylist',
+    subtitle: 'Wardrobe Assistant',
     hintTextKey: 'daily_wear_chat_hint',
-    greetingKey: 'chat_greeting',
+    greetingKey: 'wardrobe_chat_greeting',
     quickPrompts: (ctx) => [
       'Outfit for today',
       'Style capsule wardrobe',
@@ -213,7 +213,7 @@ AhviModuleConfig _configFor(String moduleContext) =>
     _moduleConfigs[moduleContext] ?? _moduleConfigs['style']!;
 
 // ════════════════════════════════════════════════════════════════════
-//  PUBLIC API — showAhviStylistChatSheet (same as before, + moduleContext)
+//  PUBLIC API — showAhviAssistantChatSheet (same as before, + moduleContext)
 // ════════════════════════════════════════════════════════════════════
 
 /// ఏ screen నుండైనా ఇలా call చేయండి:
