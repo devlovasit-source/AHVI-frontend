@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -36,6 +37,7 @@ class WorkoutOutfit {
   final List<String> images;
   final List<String> items;
   final String notes;
+  final int durationMinutes; // 0 = no timer set
   const WorkoutOutfit({
     required this.id,
     required this.name,
@@ -43,6 +45,7 @@ class WorkoutOutfit {
     this.images = const [],
     this.items = const [],
     this.notes = '',
+    this.durationMinutes = 0,
   });
   String? get mainImage => images.isNotEmpty ? images.first : null;
 }
@@ -119,6 +122,19 @@ class AhviWorkoutCard {
     required this.outfitPairing,
   });
 
+  AhviWorkoutCard copyWith({int? durationMinutes}) => AhviWorkoutCard(
+        id: id,
+        title: title,
+        subtitle: subtitle,
+        durationMinutes: durationMinutes ?? this.durationMinutes,
+        intensity: intensity,
+        whyThis: whyThis,
+        exercises: exercises,
+        prepNotes: prepNotes,
+        reminders: reminders,
+        outfitPairing: outfitPairing,
+      );
+
   factory AhviWorkoutCard.fromMap(Map<String, dynamic> raw) {
     final exercises = (raw['exercises'] is List ? raw['exercises'] as List : [])
         .whereType<Map>()
@@ -126,7 +142,7 @@ class AhviWorkoutCard {
         .toList(growable: false);
     return AhviWorkoutCard(
       id: (raw['id'] ?? raw['key'] ?? '').toString(),
-      title: (raw['title'] ?? 'Today’s Workout').toString(),
+      title: (raw['title'] ?? "Today's Workout").toString(),
       subtitle: (raw['subtitle'] ?? '').toString(),
       durationMinutes:
           int.tryParse(
@@ -263,7 +279,8 @@ final kAccentGrad = const LinearGradient(
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 class WorkoutStudioScreen extends StatefulWidget {
-  const WorkoutStudioScreen({super.key});
+  final bool showBackButton;
+  const WorkoutStudioScreen({super.key, this.showBackButton = false});
   @override
   State<WorkoutStudioScreen> createState() => _WorkoutStudioScreenState();
 }
@@ -276,6 +293,57 @@ class _WorkoutStudioScreenState extends State<WorkoutStudioScreen> {
   bool _todayWorkoutLoaded = false;
 
   late List<WorkoutCategory> _categories;
+
+  @override
+  void initState() {
+    super.initState();
+    _categories = [];
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_categories.isEmpty) {
+      _categories = [
+        WorkoutCategory(
+          id: 'running',
+          label: AppLocalizations.t(context, 'fitness_cat_running'),
+          emoji: '🏃',
+          color: const Color(0xD9F5C842),
+          accent: Colors.black,
+        ),
+        WorkoutCategory(
+          id: 'gym',
+          label: AppLocalizations.t(context, 'fitness_cat_gym'),
+          emoji: '🏋️',
+          color: const Color(0xE6A8D4F0),
+          accent: Colors.black,
+        ),
+        WorkoutCategory(
+          id: 'yoga',
+          label: AppLocalizations.t(context, 'fitness_cat_yoga'),
+          emoji: '🧘',
+          color: const Color(0xE6C8B0F5),
+          accent: Colors.black,
+        ),
+        WorkoutCategory(
+          id: 'hiit',
+          label: AppLocalizations.t(context, 'fitness_cat_hiit'),
+          emoji: '⚡',
+          color: const Color(0xE6F068B0),
+          accent: Colors.white,
+        ),
+        WorkoutCategory(
+          id: 'cycling',
+          label: AppLocalizations.t(context, 'fitness_cat_cycling'),
+          emoji: '🚴',
+          color: const Color(0xE6A8D4F0),
+          accent: Colors.black,
+        ),
+      ];
+    }
+    _loadTodayWorkout();
+  }
 
   Future<void> _loadTodayWorkout() async {
     if (_todayWorkoutLoading || _todayWorkoutLoaded) return;
@@ -306,9 +374,6 @@ class _WorkoutStudioScreenState extends State<WorkoutStudioScreen> {
       listen: false,
     ).completeWorkout(card.id, difficultyFeedback: 'good');
     if (!mounted) return;
-    if (ok) {
-      setState(() => _todayWorkout = null);
-    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(ok ? 'Workout completed.' : 'Could not save yet.'),
@@ -333,11 +398,8 @@ class _WorkoutStudioScreenState extends State<WorkoutStudioScreen> {
     final now = DateTime.now();
     final start = now.add(const Duration(hours: 1));
     final minutes = card.durationMinutes.clamp(10, 90).toInt();
-    final ok =
-        await Provider.of<BackendService>(
-          context,
-          listen: false,
-        ).createCalendarEvent(
+    final created = await Provider.of<BackendService>(context, listen: false)
+        .createCalendarEvent(
           title: card.title,
           description: card.whyThis,
           startTime: start,
@@ -349,13 +411,12 @@ class _WorkoutStudioScreenState extends State<WorkoutStudioScreen> {
             'duration_minutes': card.durationMinutes,
             'intensity': card.intensity,
           },
-        ) !=
-        null;
+        );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          ok
+          created != null
               ? 'Added to planner.'
               : 'Workout noted. Please verify it in Planner.',
         ),
@@ -363,123 +424,17 @@ class _WorkoutStudioScreenState extends State<WorkoutStudioScreen> {
     );
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _categories = [
-      WorkoutCategory(
-        id: 'running',
-        label: AppLocalizations.t(context, 'fitness_cat_running'),
-        emoji: '🏃',
-        color: const Color(0xD9F5C842),
-        accent: Colors.black,
-      ),
-      WorkoutCategory(
-        id: 'gym',
-        label: AppLocalizations.t(context, 'fitness_cat_gym'),
-        emoji: '🏋️',
-        color: const Color(0xE6A8D4F0),
-        accent: Colors.black,
-      ),
-      WorkoutCategory(
-        id: 'yoga',
-        label: AppLocalizations.t(context, 'fitness_cat_yoga'),
-        emoji: '🧘',
-        color: const Color(0xE6C8B0F5),
-        accent: Colors.black,
-      ),
-      WorkoutCategory(
-        id: 'hiit',
-        label: AppLocalizations.t(context, 'fitness_cat_hiit'),
-        emoji: '⚡',
-        color: const Color(0xE6F068B0),
-        accent: Colors.white,
-      ),
-    ];
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadTodayWorkout();
-      _loadSavedWorkoutOutfits();
-    });
-  }
-
   void _addCategory(WorkoutCategory c) {
     setState(() => _categories.add(c));
   }
 
   final List<WorkoutOutfit> _outfits = [];
-  bool _outfitsLoaded = false;
-
-  Future<void> _loadSavedWorkoutOutfits() async {
-    if (_outfitsLoaded) return;
-    _outfitsLoaded = true;
-    final docs = await Provider.of<AppwriteService>(
-      context,
-      listen: false,
-    ).getWorkoutOutfits();
-    if (!mounted) return;
-    final loaded = docs.map((doc) {
-      final data = doc.data;
-      return WorkoutOutfit(
-        id: doc.$id,
-        name: (data['name'] ?? 'Workout outfit').toString(),
-        catId: (data['cat'] ?? 'gym').toString(),
-        items: _stringList(data['items']),
-        notes: (data['notes'] ?? '').toString(),
-      );
-    }).toList(growable: false);
-    setState(() {
-      _outfits
-        ..clear()
-        ..addAll(loaded);
-    });
-  }
-
-  Future<void> _addOutfit(WorkoutOutfit o) async {
+  void _addOutfit(WorkoutOutfit o) {
     setState(() => _outfits.insert(0, o));
-    try {
-      final doc = await Provider.of<AppwriteService>(
-        context,
-        listen: false,
-      ).createWorkoutOutfit({
-        'name': o.name,
-        'emoji': '🏋️',
-        'cat': o.catId,
-        'tag': 'custom_workout_outfit',
-        'items': o.items,
-        'notes': o.notes,
-      });
-      if (!mounted) return;
-      setState(() {
-        final index = _outfits.indexWhere((item) => item.id == o.id);
-        if (index != -1) {
-          _outfits[index] = WorkoutOutfit(
-            id: doc.$id,
-            name: o.name,
-            catId: o.catId,
-            items: o.items,
-            notes: o.notes,
-            images: o.images,
-          );
-        }
-      });
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Routine saved locally. Sync failed.')),
-      );
-    }
   }
 
-  Future<void> _deleteOutfit(String id) async {
+  void _deleteOutfit(String id) {
     setState(() => _outfits.removeWhere((o) => o.id == id));
-    try {
-      await Provider.of<AppwriteService>(
-        context,
-        listen: false,
-      ).deleteWorkoutOutfit(id);
-    } catch (_) {
-      // Keep local delete; stale cloud docs will reload on next sync if delete failed.
-    }
   }
 
   @override
@@ -508,6 +463,7 @@ class _WorkoutStudioScreenState extends State<WorkoutStudioScreen> {
               onCompleteWorkout: _completeWorkout,
               onSkipWorkout: _skipWorkout,
               onAddWorkoutToPlanner: _addWorkoutToPlanner,
+              showBackButton: widget.showBackButton,
             ),
           ),
           // Chat view slides up from bottom
@@ -529,7 +485,7 @@ class _WorkoutStudioScreenState extends State<WorkoutStudioScreen> {
           // FAB (only on home) — pinned bottom-right
           if (_activePage == 'home')
             Positioned(
-              bottom: MediaQuery.paddingOf(context).bottom + 30,
+              bottom: 30,
               right: 20,
               child: _AskAhviFab(
                 onTap: () => setState(() => _activePage = 'chat'),
@@ -602,6 +558,7 @@ class _HomeView extends StatelessWidget {
   final Function(AhviWorkoutCard) onCompleteWorkout;
   final Function(AhviWorkoutCard) onSkipWorkout;
   final Function(AhviWorkoutCard) onAddWorkoutToPlanner;
+  final bool showBackButton;
   const _HomeView({
     required this.categories,
     required this.outfits,
@@ -616,6 +573,7 @@ class _HomeView extends StatelessWidget {
     required this.onCompleteWorkout,
     required this.onSkipWorkout,
     required this.onAddWorkoutToPlanner,
+    this.showBackButton = false,
   });
   @override
   Widget build(BuildContext context) {
@@ -624,14 +582,44 @@ class _HomeView extends StatelessWidget {
         : outfits.where((o) => o.catId == selectedTab).toList();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: SingleChildScrollView(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.paddingOf(context).bottom + 120,
-        ),
-        child: Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top Bar
+          // ─── PAGE HEADER ──────────────────────────────────────────────
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              if (showBackButton)
+                IconButton(
+                  icon: Icon(Icons.chevron_left, color: context.fText, size: 28),
+                  onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              if (showBackButton) const SizedBox(width: 6),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: kAccent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: kAccent.withValues(alpha: 0.25)),
+                ),
+                child: Icon(Icons.fitness_center_rounded, color: context.fText, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppLocalizations.t(context, 'fitness_page_title'),
+                    style: GoogleFonts.anton(fontSize: 22, color: context.fText, letterSpacing: 0.5),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          // ─────────────────────────────────────────────────────────────
           const SizedBox(height: 12),
           // Hero Card: Dress well, train better
           _HeroCard(),
@@ -693,15 +681,11 @@ class _HomeView extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           // Grid
-          filtered.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.only(top: 8, bottom: 48),
-                  child: _EmptyGrid(),
-                )
-              : GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    padding: const EdgeInsets.only(bottom: 24),
+          Expanded(
+            child: filtered.isEmpty
+                ? _EmptyGrid()
+                : GridView.builder(
+                    padding: const EdgeInsets.only(bottom: 100),
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
@@ -719,8 +703,8 @@ class _HomeView extends StatelessWidget {
                       onDelete: () => onDeleteOutfit(filtered[i].id),
                     ),
                   ),
+          ),
         ],
-      ),
       ),
     );
   }
@@ -923,7 +907,7 @@ class _WorkoutLoadingCard extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'AHVI is preparing today’s workout.',
+              "AHVI is preparing today's workout.",
               style: TextStyle(
                 color: context.fText,
                 fontSize: 13,
@@ -937,7 +921,7 @@ class _WorkoutLoadingCard extends StatelessWidget {
   }
 }
 
-class _WorkoutRecommendationCard extends StatelessWidget {
+class _WorkoutRecommendationCard extends StatefulWidget {
   final AhviWorkoutCard card;
   final bool compact;
   final VoidCallback? onStart;
@@ -955,11 +939,92 @@ class _WorkoutRecommendationCard extends StatelessWidget {
   });
 
   @override
+  State<_WorkoutRecommendationCard> createState() =>
+      _WorkoutRecommendationCardState();
+}
+
+class _WorkoutRecommendationCardState
+    extends State<_WorkoutRecommendationCard> {
+  Timer? _timer;
+  int _secondsRemaining = 0;
+  bool _timerRunning = false;
+  bool _timerStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final mins =
+        widget.card.durationMinutes > 0 ? widget.card.durationMinutes : 20;
+    _secondsRemaining = mins * 60;
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    if (_timerRunning) return;
+    setState(() {
+      _timerRunning = true;
+      _timerStarted = true;
+    });
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() {
+        if (_secondsRemaining > 0) {
+          _secondsRemaining--;
+        } else {
+          _timerRunning = false;
+          t.cancel();
+        }
+      });
+    });
+    widget.onStart?.call();
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    setState(() => _timerRunning = false);
+  }
+
+  void _resetTimer() {
+    _timer?.cancel();
+    final mins =
+        widget.card.durationMinutes > 0 ? widget.card.durationMinutes : 20;
+    setState(() {
+      _timerRunning = false;
+      _timerStarted = false;
+      _secondsRemaining = mins * 60;
+    });
+  }
+
+  String get _timerLabel {
+    final h = _secondsRemaining ~/ 3600;
+    final m = (_secondsRemaining % 3600) ~/ 60;
+    final s = _secondsRemaining % 60;
+    if (h > 0) {
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final outfit = _outfitSummary(card.outfitPairing);
+    final outfit = _outfitSummary(widget.card.outfitPairing);
+    final totalSecs =
+        (widget.card.durationMinutes > 0 ? widget.card.durationMinutes : 20) *
+            60;
+    final progress =
+        totalSecs > 0 ? (1.0 - (_secondsRemaining / totalSecs)) : 0.0;
+
     return Container(
       width: double.infinity,
-      margin: EdgeInsets.only(top: compact ? 0 : 10),
+      margin: EdgeInsets.only(top: widget.compact ? 0 : 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: context.fCard,
@@ -976,6 +1041,7 @@ class _WorkoutRecommendationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header Row ───────────────────────────────────────────────────
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1000,7 +1066,9 @@ class _WorkoutRecommendationCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      compact ? 'Today’s Workout' : card.title,
+                      widget.compact
+                          ? 'Today\'s Workout'
+                          : widget.card.title,
                       style: TextStyle(
                         color: context.fMuted,
                         fontSize: 10.5,
@@ -1010,10 +1078,12 @@ class _WorkoutRecommendationCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      compact ? card.title : card.subtitle,
+                      widget.compact
+                          ? widget.card.title
+                          : widget.card.subtitle,
                       style: TextStyle(
                         color: context.fText,
-                        fontSize: compact ? 17 : 15,
+                        fontSize: widget.compact ? 17 : 15,
                         fontWeight: FontWeight.w800,
                         height: 1.15,
                       ),
@@ -1024,20 +1094,25 @@ class _WorkoutRecommendationCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+
+          // ── Pills ────────────────────────────────────────────────────────
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _WorkoutPill('${card.durationMinutes} min'),
-              if (card.intensity.isNotEmpty) _WorkoutPill(card.intensity),
-              if (card.subtitle.isNotEmpty && compact)
-                _WorkoutPill(card.subtitle),
+              _WorkoutPill('${widget.card.durationMinutes} min'),
+              if (widget.card.intensity.isNotEmpty)
+                _WorkoutPill(widget.card.intensity),
+              if (widget.card.subtitle.isNotEmpty && widget.compact)
+                _WorkoutPill(widget.card.subtitle),
             ],
           ),
-          if (card.whyThis.isNotEmpty) ...[
+
+          // ── Why This ─────────────────────────────────────────────────────
+          if (widget.card.whyThis.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
-              card.whyThis,
+              widget.card.whyThis,
               style: TextStyle(
                 color: context.fTextSoft,
                 fontSize: 13,
@@ -1045,9 +1120,11 @@ class _WorkoutRecommendationCard extends StatelessWidget {
               ),
             ),
           ],
-          if (!compact && card.exercises.isNotEmpty) ...[
+
+          // ── Exercises ────────────────────────────────────────────────────
+          if (!widget.compact && widget.card.exercises.isNotEmpty) ...[
             const SizedBox(height: 12),
-            ...card.exercises.take(6).map((exercise) {
+            ...widget.card.exercises.take(6).map((exercise) {
               final name = (exercise['name'] ?? '').toString();
               final reps = exercise['reps'];
               final seconds = exercise['duration_seconds'];
@@ -1056,24 +1133,52 @@ class _WorkoutRecommendationCard extends StatelessWidget {
                   : seconds != null
                   ? '$seconds sec'
                   : '';
+              final assetPath = _exerciseAssetPath(name);
               return Padding(
-                padding: const EdgeInsets.only(top: 7),
+                padding: const EdgeInsets.only(top: 8),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.check_circle_outline,
-                      size: 16,
-                      color: context.fAccent,
+                    // Exercise image / fallback icon
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: assetPath != null
+                            ? Image.asset(
+                                assetPath,
+                                width: 44,
+                                height: 44,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    _ExerciseFallbackIcon(name: name),
+                              )
+                            : _ExerciseFallbackIcon(name: name),
+                      ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
-                        detail.isEmpty ? name : '$name · $detail',
-                        style: TextStyle(
-                          color: context.fText,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: TextStyle(
+                              color: context.fText,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (detail.isNotEmpty)
+                            Text(
+                              detail,
+                              style: TextStyle(
+                                color: context.fMuted,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ],
@@ -1081,18 +1186,27 @@ class _WorkoutRecommendationCard extends StatelessWidget {
               );
             }),
           ],
-          if (!compact && card.prepNotes.isNotEmpty) ...[
+
+          // ── Prep Notes ───────────────────────────────────────────────────
+          if (!widget.compact && widget.card.prepNotes.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _WorkoutNote(title: 'Prep', items: card.prepNotes.take(3).toList()),
+            _WorkoutNote(
+              title: 'Prep',
+              items: widget.card.prepNotes.take(3).toList(),
+            ),
           ],
+
+          // ── Outfit Panel ─────────────────────────────────────────────────
           if (outfit.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _WorkoutOutfitPanel(outfit: card.outfitPairing),
+            _WorkoutOutfitPanel(outfit: widget.card.outfitPairing),
           ],
-          if (card.reminders.isNotEmpty) ...[
+
+          // ── Reminder ─────────────────────────────────────────────────────
+          if (widget.card.reminders.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              card.reminders.first,
+              widget.card.reminders.first,
               style: TextStyle(
                 color: context.fMuted,
                 fontSize: 12,
@@ -1100,30 +1214,110 @@ class _WorkoutRecommendationCard extends StatelessWidget {
               ),
             ),
           ],
+
+          // ── TIMER ─────────────────────────────────────────────────────────
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: context.fPanel,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: _timerRunning
+                    ? context.fAccent.withValues(alpha: 0.55)
+                    : context.fBorder,
+                width: _timerRunning ? 1.5 : 1.0,
+              ),
+            ),
+            child: Column(
+              children: [
+                // Progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: progress.clamp(0.0, 1.0),
+                    minHeight: 5,
+                    backgroundColor:
+                        context.fAccent.withValues(alpha: 0.12),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      (_secondsRemaining == 0 && _timerStarted)
+                          ? Colors.greenAccent
+                          : context.fAccent,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  (_secondsRemaining == 0 && _timerStarted)
+                      ? '\u2713 Done!'
+                      : _timerLabel,
+                  style: TextStyle(
+                    color: (_secondsRemaining == 0 && _timerStarted)
+                        ? Colors.greenAccent
+                        : context.fText,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _timerRunning
+                      ? 'Workout in progress\u2026'
+                      : _timerStarted
+                          ? 'Paused'
+                          : 'Ready to start',
+                  style: TextStyle(
+                    color: context.fMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── ACTION BUTTONS ────────────────────────────────────────────────
           const SizedBox(height: 14),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _WorkoutAction(
-                label: 'Start',
-                icon: Icons.play_arrow,
-                onTap: onStart,
-              ),
+              if (!_timerRunning)
+                _WorkoutAction(
+                  label: _timerStarted ? 'Resume' : 'Start',
+                  icon: Icons.play_arrow_rounded,
+                  accent: true,
+                  onTap: _startTimer,
+                )
+              else
+                _WorkoutAction(
+                  label: 'Stop',
+                  icon: Icons.pause_rounded,
+                  accent: false,
+                  onTap: _stopTimer,
+                ),
               _WorkoutAction(
                 label: 'Complete',
                 icon: Icons.check,
-                onTap: onComplete,
+                onTap: () {
+                  _resetTimer();
+                  widget.onComplete?.call();
+                },
               ),
               _WorkoutAction(
                 label: 'Skip',
-                icon: Icons.skip_next,
-                onTap: onSkip,
+                icon: Icons.skip_next_rounded,
+                onTap: () {
+                  _resetTimer();
+                  widget.onSkip?.call();
+                },
               ),
               _WorkoutAction(
-                label: 'Add to planner',
-                icon: Icons.event_available,
-                onTap: onAddToPlanner,
+                label: 'Add to Planner',
+                icon: Icons.event_available_rounded,
+                onTap: widget.onAddToPlanner,
               ),
             ],
           ),
@@ -1140,6 +1334,7 @@ class _WorkoutRecommendationCard extends StatelessWidget {
     return parts.join(' + ');
   }
 }
+
 
 class _WorkoutOutfitPanel extends StatelessWidget {
   final Map<String, dynamic> outfit;
@@ -1315,32 +1510,125 @@ class _WorkoutNote extends StatelessWidget {
   }
 }
 
+// Exercise name → asset path mapping
+String? _exerciseAssetPath(String name) {
+  final key = name.toLowerCase().trim()
+      .replaceAll(RegExp(r'[^a-z0-9 ]'), '')
+      .replaceAll(' ', '_');
+
+  const assetMap = {
+    'jumping_jacks'      : 'assets/exercises/jumping_jacks.png',
+    'push_ups'           : 'assets/exercises/push_ups.png',
+    'pushups'            : 'assets/exercises/push_ups.png',
+    'push_up'            : 'assets/exercises/push_ups.png',
+    'squats'             : 'assets/exercises/squats.png',
+    'squat'              : 'assets/exercises/squats.png',
+    'plank'              : 'assets/exercises/plank.png',
+    'burpees'            : 'assets/exercises/burpees.png',
+    'burpee'             : 'assets/exercises/burpees.png',
+    'lunges'             : 'assets/exercises/lunges.png',
+    'lunge'              : 'assets/exercises/lunges.png',
+    'mountain_climbers'  : 'assets/exercises/mountain_climbers.png',
+    'mountain_climber'   : 'assets/exercises/mountain_climbers.png',
+    'high_knees'         : 'assets/exercises/high_knees.png',
+    'high_knee'          : 'assets/exercises/high_knees.png',
+    'sit_ups'            : 'assets/exercises/sit_ups.png',
+    'sit_up'             : 'assets/exercises/sit_ups.png',
+    'crunches'           : 'assets/exercises/crunches.png',
+    'crunch'             : 'assets/exercises/crunches.png',
+    'deadlift'           : 'assets/exercises/deadlift.png',
+    'deadlifts'          : 'assets/exercises/deadlift.png',
+  };
+
+  // exact match
+  if (assetMap.containsKey(key)) return assetMap[key];
+  // partial match
+  for (final entry in assetMap.entries) {
+    if (key.contains(entry.key) || entry.key.contains(key)) return entry.value;
+  }
+  return null;
+}
+
+// Fallback icon when no exercise image is available
+class _ExerciseFallbackIcon extends StatelessWidget {
+  final String name;
+  const _ExerciseFallbackIcon({required this.name});
+
+  IconData _icon() {
+    final n = name.toLowerCase();
+    if (n.contains('run') || n.contains('jog')) return Icons.directions_run;
+    if (n.contains('jump') || n.contains('jack')) return Icons.open_with_rounded;
+    if (n.contains('push') || n.contains('press')) return Icons.fitness_center;
+    if (n.contains('squat') || n.contains('lunge')) return Icons.airline_seat_legroom_extra;
+    if (n.contains('plank') || n.contains('core') || n.contains('crunch') || n.contains('sit')) return Icons.self_improvement;
+    if (n.contains('pull') || n.contains('row')) return Icons.fitness_center;
+    if (n.contains('yoga') || n.contains('stretch') || n.contains('warrior') || n.contains('child')) return Icons.self_improvement;
+    if (n.contains('cycl') || n.contains('bike')) return Icons.directions_bike;
+    if (n.contains('climb')) return Icons.trending_up;
+    return Icons.sports_gymnastics;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: context.fAccent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.fAccent.withValues(alpha: 0.20)),
+      ),
+      child: Icon(_icon(), size: 22, color: context.fAccent),
+    );
+  }
+}
+
 class _WorkoutAction extends StatelessWidget {
   final String label;
   final IconData icon;
   final VoidCallback? onTap;
-  const _WorkoutAction({required this.label, required this.icon, this.onTap});
+  final bool accent;
+  const _WorkoutAction({
+    required this.label,
+    required this.icon,
+    this.onTap,
+    this.accent = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final bg = accent ? context.fAccent : context.fPanel;
+    final fg = accent ? Colors.white : context.fText;
+    final border = accent
+        ? context.fAccent.withValues(alpha: 0.0)
+        : context.fBorder;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: context.fPanel,
+          color: bg,
           borderRadius: BorderRadius.circular(99),
-          border: Border.all(color: context.fBorder),
+          border: Border.all(color: border),
+          boxShadow: accent
+              ? [
+                  BoxShadow(
+                    color: context.fAccent.withValues(alpha: 0.30),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 14, color: context.fText),
+            Icon(icon, size: 14, color: fg),
             const SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(
-                color: context.fText,
+                color: fg,
                 fontSize: 11.5,
                 fontWeight: FontWeight.w800,
               ),
@@ -1778,11 +2066,17 @@ class _OutfitCard extends StatelessWidget {
               // Image section
               Expanded(
                 child: outfit.mainImage != null
-                    ? Image.network(
-                        outfit.mainImage!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                      )
+                    ? (outfit.mainImage!.startsWith('http')
+                        ? Image.network(
+                            outfit.mainImage!,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                          )
+                        : Image.file(
+                            File(outfit.mainImage!),
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                          ))
                     : Container(
                         decoration: BoxDecoration(
                           // No image — navy gradient placeholder (page bg తో match)
@@ -1871,6 +2165,24 @@ class _OutfitCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    if (outfit.durationMinutes > 0) ...[
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Icon(Icons.timer_outlined, size: 9, color: kNavySoft.withValues(alpha: 0.7)),
+                          const SizedBox(width: 3),
+                          Text(
+                            '${outfit.durationMinutes} min',
+                            style: TextStyle(
+                              fontSize: 8,
+                              color: kNavySoft.withValues(alpha: 0.85),
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 6),
                     // Color Palette Strip
                     Row(
@@ -1919,6 +2231,36 @@ class _OutfitCard extends StatelessWidget {
               ),
             ],
           ),
+          // Timer badge (top-left) — duration set అయినప్పుడు మాత్రమే show
+          if (outfit.durationMinutes > 0)
+            Positioned(
+              top: 6,
+              left: 6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: kNavyDeep.withValues(alpha: 0.88),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: kNavyBright.withValues(alpha: 0.4), width: 1),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.timer_outlined, size: 9, color: kNavySoft),
+                    const SizedBox(width: 3),
+                    Text(
+                      '${outfit.durationMinutes}m',
+                      style: const TextStyle(
+                        fontSize: 8,
+                        color: kNavySoft,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           // Delete button
           Positioned(
             top: 6,
@@ -1994,6 +2336,7 @@ class _AddOutfitSheetState extends State<_AddOutfitSheet> {
   String _selectedCatId = '';
   final List<String> _items = [];
   final List<String> _images = [];
+  int _durationMinutes = 20; // default 20 min
   @override
   void initState() {
     super.initState();
@@ -2191,6 +2534,75 @@ class _AddOutfitSheetState extends State<_AddOutfitSheet> {
               style: TextStyle(color: context.fText, fontSize: 14),
               decoration: _fieldDeco('e.g. Great for hot weather...'),
             ),
+            const SizedBox(height: 20),
+
+            // ── Duration Timer ───────────────────────────────────────────────
+            _Label('WORKOUT DURATION'),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: context.fCard,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: context.fBorder, width: 1),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.timer_outlined, color: context.fAccent, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '$_durationMinutes minutes',
+                      style: TextStyle(
+                        color: context.fText,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  // Decrease
+                  GestureDetector(
+                    onTap: () {
+                      if (_durationMinutes > 5) {
+                        setState(() => _durationMinutes -= 5);
+                      }
+                    },
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: context.fPanel,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: context.fBorder),
+                      ),
+                      child: Icon(Icons.remove,
+                          color: context.fMuted, size: 16),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Increase
+                  GestureDetector(
+                    onTap: () {
+                      if (_durationMinutes < 180) {
+                        setState(() => _durationMinutes += 5);
+                      }
+                    },
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: context.fAccent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: context.fAccent.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Icon(Icons.add,
+                          color: context.fAccent, size: 16),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 24),
 
             // ── Save Button ─────────────────────────────────────────────────
@@ -2207,6 +2619,7 @@ class _AddOutfitSheetState extends State<_AddOutfitSheet> {
                       items: _items,
                       notes: _notesController.text,
                       images: _images,
+                      durationMinutes: _durationMinutes,
                     ),
                   );
                 },
@@ -2805,11 +3218,44 @@ class _ChatViewState extends State<_ChatView> {
   }
 
   int _durationFromText(String text) {
-    final match = RegExp(
-      r'\b(\d{1,2})\s*(min|minute)',
+    final q = text.toLowerCase();
+    if (q.contains('half hour') || q.contains('half an hour')) return 30;
+    if (RegExp(r'\b(an|1)\s*hour\b').hasMatch(q)) return 60;
+    final hrMatch = RegExp(r'\b(\d)\s*hour').firstMatch(q);
+    if (hrMatch != null) {
+      final h = int.tryParse(hrMatch.group(1) ?? '');
+      if (h != null) return (h * 60).clamp(10, 120);
+    }
+    final minMatch = RegExp(
+      r'\b(\d{1,3})\s*[-]?\s*(min|minute)',
       caseSensitive: false,
     ).firstMatch(text);
-    return int.tryParse(match?.group(1) ?? '') ?? 20;
+    if (minMatch != null) {
+      final m = int.tryParse(minMatch.group(1) ?? '');
+      if (m != null && m > 0 && m <= 180) return m;
+    }
+    if (q.contains('quick') || q.contains('short')) return 15;
+    if (q.contains('long workout') || q.contains('long session')) return 45;
+    // time mention లేకపోతే 0 return చేయి — caller smart default వాడతాడు
+    return 0;
+  }
+
+  // Workout title/type బట్టి smart default duration
+  int _smartDefaultDuration(AhviWorkoutCard card) {
+    final t = (card.title + ' ' + card.intensity).toLowerCase();
+    if (t.contains('hiit') || t.contains('circuit') || t.contains('tabata')) return 20;
+    if (t.contains('yoga') || t.contains('pilates') || t.contains('stretch')) return 30;
+    if (t.contains('strength') || t.contains('weight') || t.contains('gym') || t.contains('lift')) return 45;
+    if (t.contains('run') || t.contains('jog') || t.contains('cardio')) return 30;
+    if (t.contains('core') || t.contains('abs')) return 15;
+    if (t.contains('full body') || t.contains('total body')) return 35;
+    if (t.contains('warm') || t.contains('cool') || t.contains('mobility')) return 10;
+    // intensity బట్టి fallback
+    final intensity = card.intensity.toLowerCase();
+    if (intensity.contains('high')) return 20;
+    if (intensity.contains('medium') || intensity.contains('moderate')) return 30;
+    if (intensity.contains('low')) return 20;
+    return 20;
   }
 
   String _goalFromText(String text) {
@@ -2838,37 +3284,9 @@ class _ChatViewState extends State<_ChatView> {
     return null;
   }
 
-  Future<void> _completeWorkout(AhviWorkoutCard card) async {
-    final ok = await Provider.of<BackendService>(
-      context,
-      listen: false,
-    ).completeWorkout(card.id, difficultyFeedback: 'good');
-    if (!mounted) return;
-    if (ok) {
-      setState(() {
-        _messages.removeWhere(
-          (message) => message.workoutCards.any((item) => item.id == card.id),
-        );
-      });
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok ? 'Workout completed.' : 'Could not save yet.'),
-      ),
-    );
-  }
-
-  Future<void> _skipWorkout(AhviWorkoutCard card) async {
-    final ok = await Provider.of<BackendService>(
-      context,
-      listen: false,
-    ).skipWorkout(card.id, reason: 'not_today');
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok ? 'Skipped for today.' : 'Could not save yet.'),
-      ),
-    );
+  void _startWorkout(AhviWorkoutCard card) {
+    // Navigate to chat and show workout card
+    _sendMessage('Start workout: ${card.title}');
   }
 
   Future<void> _addWorkoutToPlanner(AhviWorkoutCard card) async {
@@ -2901,10 +3319,30 @@ class _ChatViewState extends State<_ChatView> {
     );
   }
 
-  void _startWorkout(AhviWorkoutCard card) {
-    ScaffoldMessenger.of(
+  Future<void> _completeWorkout(AhviWorkoutCard card) async {
+    final ok = await Provider.of<BackendService>(
       context,
-    ).showSnackBar(SnackBar(content: Text('Start ${card.title}.')));
+      listen: false,
+    ).completeWorkout(card.id, difficultyFeedback: 'good');
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'Workout completed.' : 'Could not save yet.'),
+      ),
+    );
+  }
+
+  Future<void> _skipWorkout(AhviWorkoutCard card) async {
+    final ok = await Provider.of<BackendService>(
+      context,
+      listen: false,
+    ).skipWorkout(card.id, reason: 'not_today');
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'Skipped for today.' : 'Could not save yet.'),
+      ),
+    );
   }
 
   Future<void> _sendMessage([String? text]) async {
@@ -2948,6 +3386,17 @@ class _ChatViewState extends State<_ChatView> {
       checklistItems = _workoutChecklistFromResponse(response);
       workoutCards = _workoutCardsFromResponse(response)
           .map((card) => _personalizedWorkoutCard(card, gender))
+          .map((card) {
+            // User message లో duration mention అయితే దాన్ని use చేయి,
+            // లేకపోతే card duration use చేయి, అది కూడా 0 అయితే default 20
+            final userDur = _durationFromText(msg);
+            final finalDur = userDur > 0
+                ? userDur
+                : card.durationMinutes > 0
+                    ? card.durationMinutes
+                    : _smartDefaultDuration(card);
+            return card.copyWith(durationMinutes: finalDur);
+          })
           .toList(growable: false);
       if (reply.isEmpty && workoutCards.isNotEmpty) {
         reply = "I found a workout that fits your day.";
@@ -3200,11 +3649,9 @@ class _ChatViewState extends State<_ChatView> {
               Expanded(
                 child: ListView.builder(
                   controller: _scrollController,
-                  padding: EdgeInsets.fromLTRB(
-                    20,
-                    10,
-                    20,
-                    MediaQuery.paddingOf(context).bottom + 128,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
                   ),
                   itemCount: _messages.length + (_isTyping ? 1 : 0),
                   itemBuilder: (ctx, i) {
@@ -3265,7 +3712,6 @@ class _ChatBubble extends StatelessWidget {
   final ValueChanged<AhviWorkoutCard>? onCompleteWorkout;
   final ValueChanged<AhviWorkoutCard>? onSkipWorkout;
   final ValueChanged<AhviWorkoutCard>? onAddWorkoutToPlanner;
-
   const _ChatBubble({
     required this.message,
     this.onStartWorkout,
