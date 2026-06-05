@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as img;
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/widgets/ahvi_header.dart';
@@ -2127,12 +2128,27 @@ class _AddItemModalState extends State<_AddItemModal>
     await _camCtrl?.setFlashMode(_flash);
   }
 
+  /// Reads EXIF orientation tag and physically rotates pixels so the image
+  /// displays upright everywhere — fixes horizontal/rotated photos from camera,
+  /// mirror shots, and gallery picks on Android devices.
+  static Future<Uint8List> _fixOrientation(Uint8List bytes) async {
+    return await compute(_fixOrientationIsolate, bytes);
+  }
+
+  static Uint8List _fixOrientationIsolate(Uint8List bytes) {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return bytes;
+    final fixed = img.bakeOrientation(decoded);
+    return Uint8List.fromList(img.encodeJpg(fixed, quality: 88));
+  }
+
   Future<void> _captureAndDetect() async {
     if (!_camReady) return;
     HapticFeedback.mediumImpact();
     try {
       final xfile = await _camCtrl!.takePicture();
-      final bytes = await File(xfile.path).readAsBytes();
+      final rawBytes = await File(xfile.path).readAsBytes();
+      final bytes = await _fixOrientation(rawBytes);
 
       // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Camera no longer needed ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â dispose immediately to save battery
       await _camCtrl?.dispose();
@@ -2173,7 +2189,8 @@ class _AddItemModalState extends State<_AddItemModal>
         _toast('Only the first 6 images were selected');
       }
 
-      final bytesList = await Future.wait(capped.map((f) => f.readAsBytes()));
+      final rawList = await Future.wait(capped.map((f) => f.readAsBytes()));
+      final bytesList = await Future.wait(rawList.map(_fixOrientation));
       if (!mounted) return;
 
       if (bytesList.length == 1) {
@@ -5114,7 +5131,7 @@ class _ItemGrid extends StatelessWidget {
         maxCrossAxisExtent: 200,
         mainAxisSpacing: 14,
         crossAxisSpacing: 14,
-        childAspectRatio: 0.68,
+        childAspectRatio: 0.58,
       ),
       itemCount: items.length,
       itemBuilder: (_, i) => _FadeUpItem(
@@ -5339,12 +5356,12 @@ class _ItemCardState extends State<_ItemCard>
                         image: item.displayUrl != null
                             ? DecorationImage(
                                 image: NetworkImage(item.displayUrl!),
-                                fit: BoxFit.cover,
+                                fit: BoxFit.contain,
                               )
                             : (item.imageBytes != null
                                   ? DecorationImage(
                                       image: MemoryImage(item.imageBytes!),
-                                      fit: BoxFit.cover,
+                                      fit: BoxFit.contain,
                                     )
                                   : null),
                       ),
