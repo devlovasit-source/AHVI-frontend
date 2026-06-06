@@ -184,73 +184,260 @@ class ChatMessage {
   });
 }
 
-// ─── IMAGE PROVIDER (Wikipedia / TheMealDB API) ──────────────────────────────
+// ─── IMAGE PROVIDER (Diet & Nutrition Based Assets) ──────────────────────────
+//
+// Asset folder structure:
+//   assets/images/meals/
+//     mediterranean/  keto/  vegan/  high_protein/  healthy/
+//     south_indian/   north_indian/  nutrition/
+//
+// Resolution order:
+//   1. diet folder  (meal name matched to a diet-specific image)
+//   2. nutrition folder  (matched by nutrition keyword)
+//   3. flat type fallback  (breakfast / lunch / dinner / snack)
+// ─────────────────────────────────────────────────────────────────────────────
 class MealImageProvider {
-  static final Map<String, String> _cache = {};
-  static Future<String?> fetchImage(String mealName) async {
-    final query = mealName.toLowerCase().trim();
-    if (query.isEmpty) return null;
-    if (_cache.containsKey(query)) return _cache[query];
-    // Tier 1: TheMealDB
-    try {
-      final decodedQuery = query
-          .replaceFirst(RegExp(r'^\🌅|^\☀️|^\🌙|^\🍎'), '')
-          .trim();
-      final nameUri = Uri.encodeComponent(
-        decodedQuery.split(' ').take(2).join(' '),
-      );
-      final res = await http
-          .get(
-            Uri.parse(
-              'https://www.themealdb.com/api/json/v1/1/search.php?s=$nameUri',
-            ),
-          )
-          .timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        final meal = data['meals']?[0];
-        if (meal != null && meal['strMealThumb'] != null) {
-          _cache[query] = meal['strMealThumb'];
-          return meal['strMealThumb'];
-        }
-      }
-    } catch (_) {}
-    // Tier 2: Wikipedia Summary API
-    try {
-      final wikiUri = Uri.encodeComponent(query);
-      final res = await http
-          .get(
-            Uri.parse(
-              'https://en.wikipedia.org/api/rest_v1/page/summary/$wikiUri',
-            ),
-            headers: {'Accept': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        final imgUrl =
-            data['thumbnail']?['source'] ?? data['originalimage']?['source'];
-        if (imgUrl != null) {
-          final formatted = imgUrl.toString().replaceFirst(
-            RegExp(r'\/\d+px-'),
-            '/480px-',
-          );
-          _cache[query] = formatted;
-          return formatted;
-        }
-      }
-    } catch (_) {}
-    // Tier 3: Unsplash source (no API key needed)
-    try {
-      final unsplashQuery = Uri.encodeComponent(
-        query.split(' ').take(2).join(' '),
-      );
-      final url = 'https://source.unsplash.com/400x300/?$unsplashQuery,food';
-      _cache[query] = url;
-      return url;
-    } catch (_) {}
+  static const String _base = 'assets/meal';
+
+  // ── 1. Diet-specific keyword maps ─────────────────────────────────────────
+  // Each entry: (keywords, filename inside diet subfolder)
+  static const Map<String, List<(List<String>, String)>> _dietAssets = {
+    'mediterranean': [
+      (['greek salad', 'salad'],                       'greek_salad.png'),
+      (['hummus', 'pita', 'flatbread'],                'hummus_pita.png'),
+      (['falafel'],                                    'falafel.png'),
+      (['tabbouleh', 'couscous', 'quinoa'],            'tabbouleh.png'),
+      (['grilled fish', 'sea bass', 'branzino'],       'grilled_fish.png'),
+      (['shakshuka', 'egg'],                           'shakshuka.png'),
+      (['yogurt', 'labneh', 'tzatziki'],               'yogurt_bowl.png'),
+      (['olive', 'bruschetta'],                        'bruschetta.png'),
+      (['lentil', 'legume', 'bean'],                   'lentil_soup.png'),
+      (['lamb', 'kebab', 'kofta'],                     'lamb_kebab.png'),
+    ],
+    'keto': [
+      (['bacon', 'egg', 'omelette', 'scramble'],       'bacon_eggs.png'),
+      (['avocado'],                                    'avocado.png'),
+      (['steak', 'beef', 'ribeye', 'sirloin'],         'steak.png'),
+      (['salmon', 'tuna', 'fish'],                     'keto_fish.png'),
+      (['chicken', 'poultry'],                         'keto_chicken.png'),
+      (['cheese', 'brie', 'gouda', 'cheddar'],         'cheese_board.png'),
+      (['cauliflower', 'zucchini', 'broccoli'],        'keto_veggies.png'),
+      (['nut', 'almond', 'walnut', 'pecan'],           'keto_nuts.png'),
+      (['butter', 'cream'],                            'cheese_board.png'),
+      (['lettuce wrap', 'lettuce'],                    'lettuce_wrap.png'),
+    ],
+    'vegan': [
+      (['smoothie', 'shake', 'blend'],                 'smoothie_bowl.png'),
+      (['tofu', 'tempeh', 'edamame'],                  'tofu.png'),
+      (['lentil', 'dal', 'daal'],                      'dal.png'),
+      (['chickpea', 'hummus'],                         'chickpea.png'),
+      (['buddha bowl', 'grain bowl', 'bowl'],          'buddha_bowl.png'),
+      (['stir fry', 'stir-fry', 'fried rice'],         'vegan_stirfry.png'),
+      (['salad', 'greens', 'kale', 'spinach'],         'green_salad.png'),
+      (['pasta', 'spaghetti', 'noodle'],               'vegan_pasta.png'),
+      (['soup', 'stew', 'broth'],                      'vegan_soup.png'),
+      (['fruit', 'berry', 'acai'],                     'fruit_bowl.png'),
+    ],
+    'high_protein': [
+      (['egg', 'omelette', 'scramble', 'white'],       'egg_whites.png'),
+      (['greek yogurt', 'yogurt', 'curd'],             'greek_yogurt.png'),
+      (['chicken breast', 'chicken', 'poultry'],       'grilled_chicken.png'),
+      (['tuna', 'canned tuna'],                        'tuna.png'),
+      (['salmon', 'fish', 'seafood'],                  'salmon.png'),
+      (['steak', 'beef', 'lean beef'],                 'lean_beef.png'),
+      (['cottage cheese', 'paneer'],                   'cottage_cheese.png'),
+      (['protein shake', 'whey', 'casein', 'shake'],   'protein_shake.png'),
+      (['protein bar', 'bar'],                         'protein_bar.png'),
+      (['lentil', 'legume', 'bean', 'edamame'],        'legumes.png'),
+    ],
+    'healthy': [
+      (['oat', 'oatmeal', 'porridge'],                 'oatmeal.png'),
+      (['granola'],                                    'granola.png'),
+      (['avocado toast', 'toast'],                     'avocado_toast.png'),
+      (['salad', 'greens'],                            'salad.png'),
+      (['soup', 'vegetable soup'],                     'veggie_soup.png'),
+      (['stir fry', 'stir-fry'],                       'stir_fry.png'),
+      (['rice', 'brown rice', 'quinoa'],               'brown_rice.png'),
+      (['sandwich', 'wrap'],                           'wrap.png'),
+      (['fruit salad', 'fruit bowl', 'fruit'],         'fruit_salad.png'),
+      (['smoothie'],                                   'smoothie.png'),
+    ],
+    'south_indian': [
+      // Breakfast
+      (['idli', 'idly'],                                        'idli.png'),
+      (['dosa', 'masala dosa', 'rava dosa', 'set dosa'],        'dosa.png'),
+      (['upma', 'rava upma'],                                   'upma.png'),
+      (['pongal', 'ven pongal', 'khichdi'],                     'pongal.png'),
+      (['pesarattu', 'moong dosa'],                             'pesarattu.png'),
+      (['poha', 'aval upma', 'avalakki'],                       'poha.png'),
+      (['vada', 'medu vada', 'urad vada'],                      'vada.png'),
+      (['uttapam', 'oothappam'],                                'uttapam.png'),
+      // Lunch / Dinner
+      (['sambar'],                                              'sambar.png'),
+      (['rasam'],                                               'rasam.png'),
+      (['rice', 'white rice', 'steamed rice'],                  'rice.png'),
+      (['biryani', 'hyderabadi biryani', 'thalassery'],         'biryani.png'),
+      (['curd rice', 'thayir sadam', 'dahi rice'],              'curd_rice.png'),
+      (['tamarind rice', 'pulihora', 'puliyodarai'],            'tamarind_rice.png'),
+      (['lemon rice', 'chitranna'],                             'lemon_rice.png'),
+      (['kootu', 'aviyal', 'stew'],                             'aviyal.png'),
+      (['fish curry', 'meen curry', 'fish'],                    'fish_curry.png'),
+      (['chicken curry', 'chettinad chicken', 'chicken'],       'chicken_curry.png'),
+      (['egg curry', 'egg'],                                    'egg_curry.png'),
+      (['dal', 'pappu', 'lentil'],                              'pappu.png'),
+      (['kootu', 'poriyal', 'thoran', 'sabzi', 'ivvi', 'ivy gourd', 'tindora', 'tendli'], 'poriyal.png'),
+      (['bisi bele bath', 'bisibelebath'],                      'bisi_bele_bath.png'),
+      // Snacks
+      (['murukku', 'chakli'],                                   'murukku.png'),
+      (['banana chips', 'chips'],                               'banana_chips.png'),
+      (['sundal', 'boiled chickpea', 'chana sundal'],           'sundal.png'),
+      (['payasam', 'kheer', 'pudding'],                         'payasam.png'),
+    ],
+    'north_indian': [
+      // Breakfast
+      (['paratha', 'aloo paratha', 'stuffed paratha'],          'paratha.png'),
+      (['poha', 'flattened rice'],                              'poha.png'),
+      (['upma'],                                                'upma.png'),
+      (['puri', 'bhatura'],                                     'puri.png'),
+      (['chole bhature', 'chole'],                              'chole_bhature.png'),
+      (['halwa', 'sooji halwa', 'atte ka halwa'],               'halwa.png'),
+      // Lunch / Dinner
+      (['dal makhani', 'dal tadka', 'dal fry', 'dal'],          'dal_makhani.png'),
+      (['paneer butter masala', 'paneer tikka masala'],          'paneer_butter_masala.png'),
+      (['paneer', 'cottage cheese'],                            'paneer.png'),
+      (['butter chicken', 'murgh makhani'],                     'butter_chicken.png'),
+      (['biryani', 'dum biryani', 'lucknowi biryani'],          'biryani.png'),
+      (['roti', 'chapati', 'phulka'],                           'roti.png'),
+      (['naan', 'garlic naan'],                                 'naan.png'),
+      (['rajma', 'kidney bean'],                                'rajma.png'),
+      (['palak paneer', 'palak', 'spinach curry'],              'palak_paneer.png'),
+      (['aloo', 'potato curry', 'dum aloo'],                    'aloo_curry.png'),
+      (['kadai chicken', 'chicken masala', 'chicken'],          'kadai_chicken.png'),
+      (['mutton curry', 'mutton', 'lamb'],                      'mutton_curry.png'),
+      (['saag', 'makki di roti', 'sarson'],                     'saag.png'),
+      (['mixed veg', 'sabzi', 'bhaji'],                         'mixed_veg.png'),
+      (['rice', 'jeera rice', 'pulao'],                         'pulao.png'),
+      // Snacks / Sides
+      (['samosa'],                                              'samosa.png'),
+      (['pakora', 'bhajji', 'fritter'],                         'pakora.png'),
+      (['lassi', 'sweet lassi', 'mango lassi'],                 'lassi.png'),
+      (['raita', 'cucumber raita', 'boondi raita'],             'raita.png'),
+      (['chaat', 'pani puri', 'bhel puri', 'sev puri'],         'chaat.png'),
+      (['gulab jamun', 'jalebi', 'barfi', 'ladoo', 'halwa'],    'sweets.png'),
+    ],
+  };
+
+  // ── 2. Nutrition-category keyword map ────────────────────────────────────
+  // folder: assets/images/meals/nutrition/
+  static const List<(List<String>, String)> _nutritionAssets = [
+    // High Protein
+    (['egg white', 'egg'],                            'protein_eggs.png'),
+    (['chicken breast', 'chicken'],                   'protein_chicken.png'),
+    (['salmon', 'tuna', 'fish', 'seafood'],           'protein_fish.png'),
+    (['protein shake', 'whey', 'casein'],             'protein_shake.png'),
+    (['cottage cheese', 'greek yogurt', 'yogurt'],    'protein_dairy.png'),
+    // Low Carb
+    (['lettuce', 'spinach', 'kale', 'greens'],        'lowcarb_greens.png'),
+    (['cauliflower', 'zucchini', 'broccoli', 'ivvi', 'ivy gourd', 'tindora', 'tendli'], 'lowcarb_veggies.png'),
+    (['avocado'],                                     'lowcarb_avocado.png'),
+    // Healthy Fats
+    (['nut', 'almond', 'walnut', 'cashew', 'pecan'],  'fat_nuts.png'),
+    (['olive oil', 'olive'],                          'fat_olive.png'),
+    (['avocado'],                                     'fat_avocado.png'),
+    // Fiber / Carbs
+    (['oat', 'oatmeal', 'granola'],                   'fiber_oats.png'),
+    (['rice', 'brown rice', 'quinoa', 'couscous'],    'fiber_grains.png'),
+    (['lentil', 'legume', 'bean', 'chickpea'],        'fiber_legumes.png'),
+    (['fruit', 'apple', 'banana', 'berry', 'mango'],  'fiber_fruit.png'),
+    // Vitamins / Antioxidants
+    (['smoothie', 'smoothie bowl', 'acai'],           'vitamin_smoothie.png'),
+    (['salad', 'greens', 'mixed greens'],              'vitamin_salad.png'),
+    (['soup', 'stew', 'broth'],                       'vitamin_soup.png'),
+  ];
+
+  // ── 3. Flat fallback by meal type ─────────────────────────────────────────
+  static const Map<String, String> _typeAssets = {
+    'breakfast': 'breakfast.png',
+    'lunch':     'lunch.png',
+    'dinner':    'dinner.png',
+    'snack':     'snack.png',
+  };
+
+  // ── Diet keyword detector ─────────────────────────────────────────────────
+  static String? _detectDiet(String mealName) {
+    final n = mealName.toLowerCase();
+    // South Indian — check before north Indian (more specific keywords)
+    if (n.contains('idli') || n.contains('dosa') || n.contains('sambar') ||
+        n.contains('rasam') || n.contains('upma') || n.contains('pongal') ||
+        n.contains('vada') || n.contains('uttapam') || n.contains('pesarattu') ||
+        n.contains('pulihora') || n.contains('aviyal') || n.contains('kootu') ||
+        n.contains('poriyal') || n.contains('thoran') || n.contains('pappu') ||
+        n.contains('meen') || n.contains('chettinad') || n.contains('payasam') ||
+        n.contains('murukku') || n.contains('sundal') || n.contains('bisi bele') ||
+        n.contains('tamarind rice') || n.contains('lemon rice') ||
+        n.contains('curd rice') || n.contains('south indian')) return 'south_indian';
+    // North Indian
+    if (n.contains('paratha') || n.contains('naan') || n.contains('roti') ||
+        n.contains('chapati') || n.contains('dal makhani') || n.contains('rajma') ||
+        n.contains('paneer') || n.contains('butter chicken') || n.contains('chole') ||
+        n.contains('bhature') || n.contains('puri') || n.contains('palak') ||
+        n.contains('saag') || n.contains('makki') || n.contains('sarson') ||
+        n.contains('lassi') || n.contains('samosa') || n.contains('pakora') ||
+        n.contains('chaat') || n.contains('halwa') || n.contains('gulab jamun') ||
+        n.contains('jalebi') || n.contains('ladoo') || n.contains('mutton') ||
+        n.contains('dum aloo') || n.contains('pulao') || n.contains('north indian')) return 'north_indian';
+    // Other diets
+    if (n.contains('mediterr') || n.contains('greek') ||
+        n.contains('falafel') || n.contains('hummus') ||
+        n.contains('tabbouleh') || n.contains('shakshuka')) return 'mediterranean';
+    if (n.contains('keto') || n.contains('low carb') ||
+        n.contains('bacon')) return 'keto';
+    if (n.contains('vegan') || n.contains('plant') ||
+        n.contains('tofu') || n.contains('tempeh') ||
+        n.contains('buddha bowl')) return 'vegan';
+    if (n.contains('high protein') || n.contains('protein') ||
+        n.contains('whey') || n.contains('casein')) return 'high_protein';
     return null;
   }
+
+  /// Main resolver: name + type → asset path.
+  static String? assetFor(String name, String type) {
+    final lower = name.toLowerCase();
+
+    // 1. Try diet-specific folder
+    final diet = _detectDiet(lower);
+    if (diet != null && _dietAssets.containsKey(diet)) {
+      for (final (keywords, file) in _dietAssets[diet]!) {
+        if (keywords.any((k) => lower.contains(k))) {
+          return '$_base/$diet/$file';
+        }
+      }
+      // Diet matched but no keyword hit → use diet folder's type fallback
+      final tf = _typeAssets[type.toLowerCase().trim()];
+      if (tf != null) return '$_base/$diet/$tf';
+    }
+
+    // 2. Nutrition folder
+    for (final (keywords, file) in _nutritionAssets) {
+      if (keywords.any((k) => lower.contains(k))) {
+        return '$_base/nutrition/$file';
+      }
+    }
+
+    // 3. Flat type fallback
+    final tf = _typeAssets[type.toLowerCase().trim()];
+    return tf != null ? '$_base/$tf' : null;
+  }
+
+  /// Type-only lookup (used where name isn't available).
+  static String? assetForType(String mealType) {
+    final f = _typeAssets[mealType.toLowerCase().trim()];
+    return f != null ? '$_base/$f' : null;
+  }
+
+  /// Kept for call-site compatibility (_MealEntry._autoFetch).
+  static Future<String?> fetchImage(String mealName, {String type = ''}) async =>
+      assetFor(mealName, type);
 }
 
 // ─── MAIN SCREEN ─────────────────────────────────────────────────────────────
@@ -679,7 +866,8 @@ class _FilterTabs extends StatelessWidget {
 
 class _MealRow extends StatelessWidget {
   final Meal m;
-  const _MealRow({required this.m});
+  final bool compact;
+  const _MealRow({required this.m, this.compact = false});
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -688,9 +876,14 @@ class _MealRow extends StatelessWidget {
         border: Border(bottom: BorderSide(color: context.dBorder)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _MealImage(imagePath: m.imagePath, emoji: m.icon),
-          const SizedBox(width: 12),
+          _MealImage(
+            imagePath: m.imagePath ?? MealImageProvider.assetFor(m.name, m.type),
+            emoji: m.icon,
+            height: compact ? 44 : 56,
+          ),
+          SizedBox(width: compact ? 8 : 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -710,6 +903,30 @@ class _MealRow extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
+                if (m.protein > 0 || m.carbs > 0 || m.fat > 0) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      _MacroChip(
+                        label: 'P ${m.protein}g',
+                        bg: const Color(0xFFE8F5E9),
+                        fg: const Color(0xFF2E7D32),
+                      ),
+                      const SizedBox(width: 4),
+                      _MacroChip(
+                        label: 'C ${m.carbs}g',
+                        bg: const Color(0xFFFFF8E1),
+                        fg: const Color(0xFFF57F17),
+                      ),
+                      const SizedBox(width: 4),
+                      _MacroChip(
+                        label: 'F ${m.fat}g',
+                        bg: const Color(0xFFFBE9E7),
+                        fg: const Color(0xFFBF360C),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -722,6 +939,27 @@ class _MealRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MacroChip extends StatelessWidget {
+  final String label;
+  final Color bg;
+  final Color fg;
+  const _MacroChip({required this.label, required this.bg, required this.fg});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: fg),
       ),
     );
   }
@@ -940,7 +1178,7 @@ class PlanCard extends StatelessWidget {
             ),
           ),
           if (plan.planType == 'daily')
-            ...plan.meals.map((m) => _MealRow(m: m))
+            ...plan.meals.map((m) => _MealRow(m: m, compact: isSuggestion))
           else
             ...plan.days.map(
               (day) => Column(
@@ -963,7 +1201,7 @@ class PlanCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  ...day.meals.map((m) => _MealRow(m: m)),
+                  ...day.meals.map((m) => _MealRow(m: m, compact: isSuggestion)),
                 ],
               ),
             ),
@@ -1549,7 +1787,7 @@ class _MealEntryState extends State<_MealEntry> {
                         child: _MealImage(
                           imagePath: widget.imagePath,
                           emoji: widget.emoji,
-                          size: 90,
+                          height: 90,
                         ),
                       ),
                       Positioned(
@@ -1739,1681 +1977,6 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  // Detect plan type from user message
-  String _detectPlanType(String msg) {
-    final m = msg.toLowerCase();
-    if (m.contains('monthly') || m.contains('month')) return 'monthly';
-    if (m.contains('weekly') || m.contains('week')) return 'weekly';
-    return 'daily';
-  }
-
-  // All meals pool per diet (varied for each day)
-  List<List<Meal>> _mealPool(String diet) {
-    switch (diet) {
-      case 'mediterranean':
-        return [
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Greek Yogurt with Honey',
-              desc: '',
-              cal: 320,
-              protein: 18,
-              carbs: 38,
-              fat: 8,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Greek Chicken Salad',
-              desc: '',
-              cal: 520,
-              protein: 42,
-              carbs: 28,
-              fat: 22,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Baked Sea Bass',
-              desc: '',
-              cal: 480,
-              protein: 38,
-              carbs: 20,
-              fat: 18,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Hummus with Pita',
-              desc: '',
-              cal: 210,
-              protein: 8,
-              carbs: 26,
-              fat: 9,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Shakshuka Eggs',
-              desc: '',
-              cal: 310,
-              protein: 20,
-              carbs: 22,
-              fat: 14,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Falafel Wrap',
-              desc: '',
-              cal: 490,
-              protein: 18,
-              carbs: 58,
-              fat: 16,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Lamb Kofta with Rice',
-              desc: '',
-              cal: 560,
-              protein: 40,
-              carbs: 42,
-              fat: 20,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Olives & Feta Cheese',
-              desc: '',
-              cal: 180,
-              protein: 6,
-              carbs: 4,
-              fat: 16,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Avocado Toast with Egg',
-              desc: '',
-              cal: 350,
-              protein: 16,
-              carbs: 32,
-              fat: 18,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Tabbouleh Salad',
-              desc: '',
-              cal: 380,
-              protein: 12,
-              carbs: 48,
-              fat: 14,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Grilled Swordfish',
-              desc: '',
-              cal: 500,
-              protein: 44,
-              carbs: 16,
-              fat: 20,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Tzatziki with Veggies',
-              desc: '',
-              cal: 140,
-              protein: 8,
-              carbs: 10,
-              fat: 7,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Oat Porridge with Dates',
-              desc: '',
-              cal: 340,
-              protein: 10,
-              carbs: 55,
-              fat: 7,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Stuffed Bell Peppers',
-              desc: '',
-              cal: 430,
-              protein: 22,
-              carbs: 46,
-              fat: 14,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Chicken Souvlaki',
-              desc: '',
-              cal: 510,
-              protein: 42,
-              carbs: 30,
-              fat: 16,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Mixed Nuts',
-              desc: '',
-              cal: 200,
-              protein: 6,
-              carbs: 8,
-              fat: 17,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Labneh with Herbs',
-              desc: '',
-              cal: 280,
-              protein: 14,
-              carbs: 18,
-              fat: 16,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Lemon Herb Couscous',
-              desc: '',
-              cal: 460,
-              protein: 16,
-              carbs: 62,
-              fat: 12,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Prawn Pasta',
-              desc: '',
-              cal: 540,
-              protein: 36,
-              carbs: 52,
-              fat: 16,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Fresh Fruit Plate',
-              desc: '',
-              cal: 120,
-              protein: 2,
-              carbs: 28,
-              fat: 1,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Spinach Feta Omelette',
-              desc: '',
-              cal: 330,
-              protein: 22,
-              carbs: 8,
-              fat: 22,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Hummus Pita Bowl',
-              desc: '',
-              cal: 420,
-              protein: 16,
-              carbs: 54,
-              fat: 14,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Moussaka',
-              desc: '',
-              cal: 580,
-              protein: 30,
-              carbs: 44,
-              fat: 28,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Grape & Walnut Mix',
-              desc: '',
-              cal: 190,
-              protein: 4,
-              carbs: 24,
-              fat: 10,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Banana Almond Smoothie',
-              desc: '',
-              cal: 300,
-              protein: 12,
-              carbs: 42,
-              fat: 10,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Nicoise Salad',
-              desc: '',
-              cal: 440,
-              protein: 30,
-              carbs: 28,
-              fat: 22,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Herb Roasted Chicken',
-              desc: '',
-              cal: 520,
-              protein: 48,
-              carbs: 14,
-              fat: 24,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Cucumber Yogurt Dip',
-              desc: '',
-              cal: 130,
-              protein: 7,
-              carbs: 12,
-              fat: 5,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-        ];
-      case 'vegan':
-        return [
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Smoothie Bowl',
-              desc: '',
-              cal: 350,
-              protein: 12,
-              carbs: 52,
-              fat: 10,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Lentil Buddha Bowl',
-              desc: '',
-              cal: 490,
-              protein: 22,
-              carbs: 68,
-              fat: 12,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Black Bean Tacos',
-              desc: '',
-              cal: 450,
-              protein: 20,
-              carbs: 62,
-              fat: 14,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Mixed Nuts & Berries',
-              desc: '',
-              cal: 180,
-              protein: 5,
-              carbs: 18,
-              fat: 11,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Chia Seed Pudding',
-              desc: '',
-              cal: 320,
-              protein: 10,
-              carbs: 38,
-              fat: 14,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Chickpea Curry',
-              desc: '',
-              cal: 480,
-              protein: 20,
-              carbs: 66,
-              fat: 12,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Tofu Stir Fry',
-              desc: '',
-              cal: 420,
-              protein: 22,
-              carbs: 44,
-              fat: 16,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Apple with Almond Butter',
-              desc: '',
-              cal: 190,
-              protein: 4,
-              carbs: 24,
-              fat: 10,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Oat & Banana Pancakes',
-              desc: '',
-              cal: 360,
-              protein: 10,
-              carbs: 58,
-              fat: 8,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Quinoa Veggie Bowl',
-              desc: '',
-              cal: 470,
-              protein: 18,
-              carbs: 62,
-              fat: 14,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Mushroom Pasta',
-              desc: '',
-              cal: 460,
-              protein: 16,
-              carbs: 70,
-              fat: 12,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Edamame',
-              desc: '',
-              cal: 150,
-              protein: 12,
-              carbs: 12,
-              fat: 5,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Avocado Toast',
-              desc: '',
-              cal: 330,
-              protein: 8,
-              carbs: 36,
-              fat: 18,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Sweet Potato Soup',
-              desc: '',
-              cal: 380,
-              protein: 8,
-              carbs: 60,
-              fat: 10,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Vegetable Biryani',
-              desc: '',
-              cal: 490,
-              protein: 14,
-              carbs: 78,
-              fat: 12,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Roasted Chickpeas',
-              desc: '',
-              cal: 160,
-              protein: 8,
-              carbs: 22,
-              fat: 4,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Acai Bowl',
-              desc: '',
-              cal: 380,
-              protein: 8,
-              carbs: 60,
-              fat: 12,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Falafel Wrap',
-              desc: '',
-              cal: 460,
-              protein: 16,
-              carbs: 58,
-              fat: 16,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Cauliflower Tikka Masala',
-              desc: '',
-              cal: 430,
-              protein: 14,
-              carbs: 54,
-              fat: 16,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Dates & Walnuts',
-              desc: '',
-              cal: 200,
-              protein: 3,
-              carbs: 28,
-              fat: 10,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Green Detox Smoothie',
-              desc: '',
-              cal: 280,
-              protein: 8,
-              carbs: 42,
-              fat: 8,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Tempeh Grain Bowl',
-              desc: '',
-              cal: 500,
-              protein: 24,
-              carbs: 60,
-              fat: 16,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Lentil Soup with Bread',
-              desc: '',
-              cal: 420,
-              protein: 18,
-              carbs: 64,
-              fat: 8,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Fruit & Seed Mix',
-              desc: '',
-              cal: 170,
-              protein: 4,
-              carbs: 26,
-              fat: 7,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Coconut Yogurt Parfait',
-              desc: '',
-              cal: 310,
-              protein: 6,
-              carbs: 48,
-              fat: 10,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Mango Tofu Salad',
-              desc: '',
-              cal: 440,
-              protein: 18,
-              carbs: 52,
-              fat: 16,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Veggie Burger',
-              desc: '',
-              cal: 460,
-              protein: 20,
-              carbs: 56,
-              fat: 16,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Kale Chips',
-              desc: '',
-              cal: 120,
-              protein: 3,
-              carbs: 14,
-              fat: 6,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-        ];
-      case 'highprotein':
-        return [
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Egg White Omelette',
-              desc: '',
-              cal: 310,
-              protein: 32,
-              carbs: 12,
-              fat: 10,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Grilled Chicken Rice Bowl',
-              desc: '',
-              cal: 580,
-              protein: 52,
-              carbs: 45,
-              fat: 14,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Salmon with Quinoa',
-              desc: '',
-              cal: 520,
-              protein: 48,
-              carbs: 32,
-              fat: 18,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Cottage Cheese with Almonds',
-              desc: '',
-              cal: 220,
-              protein: 20,
-              carbs: 8,
-              fat: 12,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Protein Pancakes',
-              desc: '',
-              cal: 360,
-              protein: 30,
-              carbs: 28,
-              fat: 10,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Turkey Quinoa Bowl',
-              desc: '',
-              cal: 560,
-              protein: 50,
-              carbs: 40,
-              fat: 12,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Tuna Steak & Veggies',
-              desc: '',
-              cal: 490,
-              protein: 52,
-              carbs: 16,
-              fat: 18,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Greek Yogurt & Nuts',
-              desc: '',
-              cal: 230,
-              protein: 18,
-              carbs: 14,
-              fat: 10,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Scrambled Eggs & Turkey',
-              desc: '',
-              cal: 380,
-              protein: 36,
-              carbs: 10,
-              fat: 18,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Beef & Broccoli',
-              desc: '',
-              cal: 540,
-              protein: 48,
-              carbs: 28,
-              fat: 20,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Chicken Tikka Masala',
-              desc: '',
-              cal: 510,
-              protein: 46,
-              carbs: 30,
-              fat: 16,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Hard Boiled Eggs',
-              desc: '',
-              cal: 160,
-              protein: 14,
-              carbs: 2,
-              fat: 10,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Whey Protein Smoothie',
-              desc: '',
-              cal: 300,
-              protein: 34,
-              carbs: 24,
-              fat: 6,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Shrimp Stir Fry',
-              desc: '',
-              cal: 490,
-              protein: 44,
-              carbs: 36,
-              fat: 14,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Lean Beef Meatballs',
-              desc: '',
-              cal: 530,
-              protein: 50,
-              carbs: 24,
-              fat: 22,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Tuna on Rice Cakes',
-              desc: '',
-              cal: 190,
-              protein: 22,
-              carbs: 16,
-              fat: 4,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Smoked Salmon Bagel',
-              desc: '',
-              cal: 400,
-              protein: 28,
-              carbs: 36,
-              fat: 14,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Chicken Caesar Salad',
-              desc: '',
-              cal: 520,
-              protein: 46,
-              carbs: 22,
-              fat: 22,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Pork Tenderloin',
-              desc: '',
-              cal: 500,
-              protein: 50,
-              carbs: 18,
-              fat: 18,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Jerky & String Cheese',
-              desc: '',
-              cal: 200,
-              protein: 20,
-              carbs: 6,
-              fat: 10,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Cottage Cheese Bowl',
-              desc: '',
-              cal: 310,
-              protein: 28,
-              carbs: 20,
-              fat: 8,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Grilled Swordfish Salad',
-              desc: '',
-              cal: 480,
-              protein: 48,
-              carbs: 18,
-              fat: 20,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Turkey Meatloaf',
-              desc: '',
-              cal: 520,
-              protein: 52,
-              carbs: 20,
-              fat: 20,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Whey Protein Bar',
-              desc: '',
-              cal: 210,
-              protein: 24,
-              carbs: 18,
-              fat: 6,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Egg Muffins',
-              desc: '',
-              cal: 320,
-              protein: 28,
-              carbs: 8,
-              fat: 18,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Duck Rice Bowl',
-              desc: '',
-              cal: 580,
-              protein: 44,
-              carbs: 50,
-              fat: 18,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Herb Baked Cod',
-              desc: '',
-              cal: 460,
-              protein: 50,
-              carbs: 14,
-              fat: 16,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Edamame & Almonds',
-              desc: '',
-              cal: 230,
-              protein: 16,
-              carbs: 14,
-              fat: 12,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-        ];
-      case 'keto':
-        return [
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Avocado Bacon Eggs',
-              desc: '',
-              cal: 420,
-              protein: 22,
-              carbs: 4,
-              fat: 36,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Zucchini Noodles with Pesto',
-              desc: '',
-              cal: 460,
-              protein: 18,
-              carbs: 8,
-              fat: 40,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Butter Garlic Steak',
-              desc: '',
-              cal: 540,
-              protein: 44,
-              carbs: 2,
-              fat: 38,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Cheese & Cucumber Slices',
-              desc: '',
-              cal: 150,
-              protein: 10,
-              carbs: 3,
-              fat: 11,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Bacon & Cheese Frittata',
-              desc: '',
-              cal: 450,
-              protein: 28,
-              carbs: 3,
-              fat: 38,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Tuna Stuffed Avocado',
-              desc: '',
-              cal: 420,
-              protein: 24,
-              carbs: 6,
-              fat: 34,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Creamy Chicken Thighs',
-              desc: '',
-              cal: 520,
-              protein: 40,
-              carbs: 4,
-              fat: 38,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Pork Rinds',
-              desc: '',
-              cal: 130,
-              protein: 14,
-              carbs: 0,
-              fat: 8,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Butter Coffee & Eggs',
-              desc: '',
-              cal: 440,
-              protein: 18,
-              carbs: 2,
-              fat: 40,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Keto Caesar Salad',
-              desc: '',
-              cal: 430,
-              protein: 26,
-              carbs: 6,
-              fat: 36,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Lamb Chops',
-              desc: '',
-              cal: 560,
-              protein: 46,
-              carbs: 0,
-              fat: 42,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Macadamia Nuts',
-              desc: '',
-              cal: 200,
-              protein: 2,
-              carbs: 4,
-              fat: 20,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Smoked Salmon & Cream Cheese',
-              desc: '',
-              cal: 390,
-              protein: 22,
-              carbs: 4,
-              fat: 32,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Bacon Wrapped Asparagus',
-              desc: '',
-              cal: 400,
-              protein: 24,
-              carbs: 6,
-              fat: 32,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Pork Belly with Greens',
-              desc: '',
-              cal: 580,
-              protein: 38,
-              carbs: 4,
-              fat: 46,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Olives & Cheese',
-              desc: '',
-              cal: 160,
-              protein: 6,
-              carbs: 2,
-              fat: 14,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Keto Pancakes',
-              desc: '',
-              cal: 380,
-              protein: 20,
-              carbs: 6,
-              fat: 32,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Ground Beef Lettuce Wraps',
-              desc: '',
-              cal: 450,
-              protein: 32,
-              carbs: 4,
-              fat: 34,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Salmon with Herb Butter',
-              desc: '',
-              cal: 520,
-              protein: 42,
-              carbs: 2,
-              fat: 38,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Beef Jerky',
-              desc: '',
-              cal: 140,
-              protein: 16,
-              carbs: 4,
-              fat: 6,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Egg & Chorizo Scramble',
-              desc: '',
-              cal: 460,
-              protein: 30,
-              carbs: 2,
-              fat: 38,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Shrimp with Garlic Butter',
-              desc: '',
-              cal: 380,
-              protein: 30,
-              carbs: 4,
-              fat: 26,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Duck Breast',
-              desc: '',
-              cal: 550,
-              protein: 44,
-              carbs: 0,
-              fat: 40,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Walnut Cluster',
-              desc: '',
-              cal: 180,
-              protein: 4,
-              carbs: 4,
-              fat: 18,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Coconut Chia Bowl',
-              desc: '',
-              cal: 350,
-              protein: 10,
-              carbs: 8,
-              fat: 30,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Chicken & Brie Salad',
-              desc: '',
-              cal: 470,
-              protein: 36,
-              carbs: 6,
-              fat: 34,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Ribeye Steak',
-              desc: '',
-              cal: 600,
-              protein: 50,
-              carbs: 0,
-              fat: 44,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Dark Chocolate (90%)',
-              desc: '',
-              cal: 170,
-              protein: 3,
-              carbs: 6,
-              fat: 14,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-        ];
-      case 'healthy':
-      default:
-        return [
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Oatmeal with Banana',
-              desc: '',
-              cal: 340,
-              protein: 10,
-              carbs: 58,
-              fat: 7,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Veggie Wrap with Hummus',
-              desc: '',
-              cal: 430,
-              protein: 16,
-              carbs: 54,
-              fat: 16,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Grilled Chicken & Veggies',
-              desc: '',
-              cal: 480,
-              protein: 42,
-              carbs: 28,
-              fat: 18,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Apple with Peanut Butter',
-              desc: '',
-              cal: 200,
-              protein: 6,
-              carbs: 24,
-              fat: 10,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Berry Yogurt Parfait',
-              desc: '',
-              cal: 320,
-              protein: 14,
-              carbs: 46,
-              fat: 8,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Brown Rice Buddha Bowl',
-              desc: '',
-              cal: 460,
-              protein: 18,
-              carbs: 62,
-              fat: 14,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Baked Cod with Salad',
-              desc: '',
-              cal: 440,
-              protein: 38,
-              carbs: 22,
-              fat: 16,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Carrot & Celery Sticks',
-              desc: '',
-              cal: 100,
-              protein: 3,
-              carbs: 18,
-              fat: 2,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Whole Grain Toast & Eggs',
-              desc: '',
-              cal: 360,
-              protein: 20,
-              carbs: 36,
-              fat: 14,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Chicken Soup',
-              desc: '',
-              cal: 380,
-              protein: 28,
-              carbs: 34,
-              fat: 12,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Stir Fried Tofu & Rice',
-              desc: '',
-              cal: 450,
-              protein: 22,
-              carbs: 58,
-              fat: 12,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Orange & Almonds',
-              desc: '',
-              cal: 180,
-              protein: 5,
-              carbs: 22,
-              fat: 10,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Mango Overnight Oats',
-              desc: '',
-              cal: 350,
-              protein: 12,
-              carbs: 54,
-              fat: 8,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Tuna Salad Sandwich',
-              desc: '',
-              cal: 420,
-              protein: 30,
-              carbs: 38,
-              fat: 14,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Turkey Stuffed Peppers',
-              desc: '',
-              cal: 470,
-              protein: 38,
-              carbs: 36,
-              fat: 16,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Banana & Walnuts',
-              desc: '',
-              cal: 190,
-              protein: 4,
-              carbs: 28,
-              fat: 9,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Spinach Scrambled Eggs',
-              desc: '',
-              cal: 310,
-              protein: 22,
-              carbs: 10,
-              fat: 18,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Lentil & Veg Soup',
-              desc: '',
-              cal: 400,
-              protein: 20,
-              carbs: 52,
-              fat: 8,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Baked Salmon Fillet',
-              desc: '',
-              cal: 490,
-              protein: 44,
-              carbs: 16,
-              fat: 24,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Blueberry Greek Yogurt',
-              desc: '',
-              cal: 160,
-              protein: 10,
-              carbs: 22,
-              fat: 3,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Coconut Granola Bowl',
-              desc: '',
-              cal: 380,
-              protein: 10,
-              carbs: 56,
-              fat: 14,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Grilled Veggie Panini',
-              desc: '',
-              cal: 440,
-              protein: 16,
-              carbs: 58,
-              fat: 16,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Chicken Fried Rice',
-              desc: '',
-              cal: 500,
-              protein: 34,
-              carbs: 52,
-              fat: 16,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Peach & Cottage Cheese',
-              desc: '',
-              cal: 170,
-              protein: 10,
-              carbs: 20,
-              fat: 4,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-          [
-            Meal(
-              type: 'Breakfast',
-              name: 'Peanut Butter Smoothie',
-              desc: '',
-              cal: 340,
-              protein: 16,
-              carbs: 38,
-              fat: 14,
-              cls: 'breakfast',
-              icon: '🌅',
-            ),
-            Meal(
-              type: 'Lunch',
-              name: 'Greek Salad with Grilled Chicken',
-              desc: '',
-              cal: 460,
-              protein: 38,
-              carbs: 20,
-              fat: 20,
-              cls: 'lunch',
-              icon: '☀️',
-            ),
-            Meal(
-              type: 'Dinner',
-              name: 'Vegetable Curry & Rice',
-              desc: '',
-              cal: 480,
-              protein: 16,
-              carbs: 68,
-              fat: 14,
-              cls: 'dinner',
-              icon: '🌙',
-            ),
-            Meal(
-              type: 'Snack',
-              name: 'Mixed Seeds & Raisins',
-              desc: '',
-              cal: 190,
-              protein: 6,
-              carbs: 24,
-              fat: 9,
-              cls: 'snack',
-              icon: '🍎',
-            ),
-          ],
-        ];
-    }
-  }
-
-  List<Meal> _dailyMeals(String diet) => _mealPool(diet)[0];
-
-  List<DayPlan> _weeklyDays(String diet) {
-    final pool = _mealPool(diet);
-    final days = [
-      AppLocalizations.t(context, 'diet_monday'),
-      AppLocalizations.t(context, 'diet_tuesday'),
-      AppLocalizations.t(context, 'diet_wednesday'),
-      AppLocalizations.t(context, 'diet_thursday'),
-      AppLocalizations.t(context, 'diet_friday'),
-      AppLocalizations.t(context, 'diet_saturday'),
-      AppLocalizations.t(context, 'diet_sunday'),
-    ];
-    return List.generate(
-      7,
-      (i) => DayPlan(label: days[i], meals: pool[i % pool.length]),
-    );
-  }
-
-  List<DayPlan> _monthlyWeeks(String diet) {
-    final pool = _mealPool(diet);
-    return List.generate(4, (i) {
-      final base = (i * 2) % pool.length;
-      final meals = [
-        pool[base % pool.length][0].copyWith(),
-        pool[(base + 1) % pool.length][1].copyWith(),
-        pool[(base + 2) % pool.length][2].copyWith(),
-        pool[(base + 3) % pool.length][3].copyWith(),
-      ];
-      return DayPlan(
-        label: '${AppLocalizations.t(context, "diet_week")} ${i + 1}',
-        meals: meals,
-      );
-    });
-  }
 
   String _responseText(Map<String, dynamic> response) {
     final rawMessage = response['message'];
@@ -3438,28 +2001,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _chatHistory.add({'role': 'user', 'content': displayText});
       _isTyping = true;
     });
-
-    final lower = t.toLowerCase();
-    final planType = _detectPlanType(lower);
-    final planTypeLabel = planType[0].toUpperCase() + planType.substring(1);
-
-    // Resolve localized strings before the await so BuildContext is not
-    // used across an async gap.
-    final herePlanText = AppLocalizations.t(
-      context,
-      'diet_chat_here_plan',
-    ).replaceAll('{type}', planTypeLabel);
-    final planNameHealthy = AppLocalizations.t(context, 'diet_plan_healthy');
-    final planNameMediterranean = AppLocalizations.t(
-      context,
-      'diet_plan_mediterranean',
-    );
-    final planNameVegan = AppLocalizations.t(context, 'diet_plan_vegan');
-    final planNameHighProtein = AppLocalizations.t(
-      context,
-      'diet_plan_highprotein',
-    );
-    final planNameKeto = AppLocalizations.t(context, 'diet_plan_keto');
 
     // Single backend call. Backend returns a structured visual_board for
     // diet/meal prompts, or plain text otherwise.
@@ -3518,95 +2059,15 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    String reply = _responseText(response);
-    if (reply.isEmpty) reply = herePlanText;
-    MealPlan? plan;
-    String diet = 'healthy';
-    String planName = planNameHealthy;
-
-    if (lower.contains('mediterr')) {
-      diet = 'mediterranean';
-      planName = planNameMediterranean;
-    } else if (lower.contains('vegan')) {
-      diet = 'vegan';
-      planName = planNameVegan;
-    } else if (lower.contains('high protein') ||
-        lower.contains('highprotein') ||
-        lower.contains('protein')) {
-      diet = 'highprotein';
-      planName = planNameHighProtein;
-    } else if (lower.contains('keto')) {
-      diet = 'keto';
-      planName = planNameKeto;
-    } else if (lower.contains('healthy') ||
-        lower.contains('balanced') ||
-        lower.contains('plan')) {
-      diet = 'healthy';
-      planName = 'Healthy Balanced Plan';
-    } else {
-      if (reply.isEmpty) {
-        reply = 'AHVI returned an empty diet response. Please try again.';
-      }
-      if (mounted) {
-        setState(() {
-          _isTyping = false;
-          _messages.add(ChatMessage(text: reply, isBot: true));
-          _chatHistory.add({'role': 'assistant', 'content': reply});
-        });
-      }
-      return;
-    }
-
-    if (planType == 'weekly') {
-      final days = _weeklyDays(diet);
-      plan = MealPlan(
-        id: 0,
-        name: planName,
-        desc: '',
-        planType: 'weekly',
-        meals: [],
-        days: days,
-      );
-      for (final day in plan.days) {
-        for (final meal in day.meals) {
-          meal.imagePath = await MealImageProvider.fetchImage(meal.name);
-        }
-      }
-    } else if (planType == 'monthly') {
-      final weeks = _monthlyWeeks(diet);
-      plan = MealPlan(
-        id: 0,
-        name: planName,
-        desc: '',
-        planType: 'monthly',
-        meals: [],
-        days: weeks,
-      );
-      for (final week in plan.days) {
-        for (final meal in week.meals) {
-          meal.imagePath = await MealImageProvider.fetchImage(meal.name);
-        }
-      }
-    } else {
-      final meals = _dailyMeals(diet);
-      plan = MealPlan(
-        id: 0,
-        name: planName,
-        desc: '',
-        planType: 'daily',
-        meals: meals,
-        days: [],
-      );
-      for (final meal in plan.meals) {
-        meal.imagePath = await MealImageProvider.fetchImage(meal.name);
-      }
-    }
-
+    final String reply = _responseText(response);
+    final String fallback = reply.isEmpty
+        ? 'AHVI returned an empty response. Please try again.'
+        : reply;
     if (mounted) {
       setState(() {
         _isTyping = false;
-        _messages.add(ChatMessage(text: reply, isBot: true));
-        _chatHistory.add({'role': 'assistant', 'content': reply});
+        _messages.add(ChatMessage(text: fallback, isBot: true));
+        _chatHistory.add({'role': 'assistant', 'content': fallback});
       });
     }
   }
@@ -3746,7 +2207,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         if (m.plan != null)
                           Container(
                             margin: const EdgeInsets.only(bottom: 12),
-                            constraints: const BoxConstraints(maxWidth: 280),
+                            constraints: const BoxConstraints(maxWidth: 320),
                             child: PlanCard(
                               plan: m.plan!,
                               onDelete: () {},
@@ -4267,32 +2728,48 @@ class _EditMealModalState extends State<EditMealModal> {
 class _MealImage extends StatelessWidget {
   final String? imagePath;
   final String emoji;
-  final double size;
-  const _MealImage({this.imagePath, required this.emoji, this.size = 28});
+  // height is the single control; width = height * (4/3) for 4:3 landscape
+  final double height;
+  const _MealImage({this.imagePath, required this.emoji, this.height = 56});
+
+  double get _width => height; // 1:1 square
+
+  Widget _fallback(BuildContext context) => Container(
+        width: _width,
+        height: height,
+        decoration: BoxDecoration(
+          color: context.dSurface2,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Center(
+          child: Text(emoji, style: TextStyle(fontSize: height * 0.45)),
+        ),
+      );
+
+  Widget _clip(Widget child) => ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(width: _width, height: height, child: child),
+      );
+
   @override
   Widget build(BuildContext context) {
-    if (imagePath == null)
-      return SizedBox(
-        width: size,
-        height: size,
-        child: Center(
-          child: Text(emoji, style: TextStyle(fontSize: size * 0.55)),
+    if (imagePath == null) return _fallback(context);
+
+    // Local asset — assets/images/meals/…
+    if (imagePath!.startsWith('assets/')) {
+      return _clip(
+        Image.asset(
+          imagePath!,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _fallback(context),
         ),
       );
-    if (!imagePath!.startsWith('http'))
-      return SizedBox(
-        width: size,
-        height: size,
-        child: Center(
-          child: Text(emoji, style: TextStyle(fontSize: size * 0.55)),
-        ),
-      );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Image.network(
+    }
+
+    // Network URL (backend override)
+    if (imagePath!.startsWith('http')) {
+      return _clip(
+        Image.network(
           imagePath!,
           fit: BoxFit.cover,
           loadingBuilder: (ctx, child, progress) {
@@ -4301,8 +2778,8 @@ class _MealImage extends StatelessWidget {
               color: context.dSurface2,
               child: Center(
                 child: SizedBox(
-                  width: size * 0.35,
-                  height: size * 0.35,
+                  width: height * 0.3,
+                  height: height * 0.3,
                   child: CircularProgressIndicator(
                     strokeWidth: 1.5,
                     color: context.dAccent,
@@ -4315,15 +2792,12 @@ class _MealImage extends StatelessWidget {
               ),
             );
           },
-          errorBuilder: (_, _, _) => Container(
-            color: context.dSurface2,
-            child: Center(
-              child: Text(emoji, style: TextStyle(fontSize: size * 0.5)),
-            ),
-          ),
+          errorBuilder: (_, _, _) => _fallback(context),
         ),
-      ),
-    );
+      );
+    }
+
+    return _fallback(context);
   }
 }
 
