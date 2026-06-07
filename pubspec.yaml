@@ -65,3 +65,13 @@ flutter:
     - assets/exercise/
     - assets/checklist/
     - assets/shape/
+    - assets/meal/
+    - assets/meal/south_indian/
+    - assets/meal/north_indian/
+    - assets/meal/mediterranean/
+    - assets/meal/keto/
+    - assets/meal//vegan/
+    - assets/meal/high_protein/
+    - assets/meal/healthy/
+    - assets/meal/nutrition/
+    
