@@ -16,6 +16,14 @@ import 'package:myapp/services/backend_service.dart';
 import 'package:myapp/widgets/ahvi_chat_prompt_bar.dart';
 import 'package:myapp/widgets/ahvi_home_text.dart';
 import 'package:myapp/theme/theme_tokens.dart';
+import 'package:myapp/feature/chat/widgets/blocks/ahvi_block_renderer.dart'
+    show
+        VisualInspirationCard,
+        MissingPieceIntelligenceCard,
+        TransitionPlanCard,
+        StylistReasoningCard,
+        StyleAdviceCard;
+import 'package:myapp/feature/chat/widgets/blocks/visual_directions/visual_direction_carousel.dart';
 import 'package:provider/provider.dart';
 
 // ════════════════════════════════════════════════════════════════════
@@ -131,7 +139,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
   ),
   'skincare': AhviModuleConfig(
     moduleContext: 'skincare',
-    subtitle: 'Skincare Assistant',
+    subtitle: 'AI Assistant',
     hintTextKey: 'daily_wear_chat_hint',
     greetingKey: 'skincare_chat_greeting',
     quickPrompts: (ctx) => [
@@ -144,7 +152,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
   ),
   'medi': AhviModuleConfig(
     moduleContext: 'medi',
-    subtitle: 'Medicine Assistant',
+    subtitle: 'AI Assistant',
     hintTextKey: 'daily_wear_chat_hint',
     greetingKey: 'medi_chat_greeting',
     quickPrompts: (ctx) => [
@@ -157,7 +165,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
   ),
   'bills': AhviModuleConfig(
     moduleContext: 'bills',
-    subtitle: 'Bills Assistant',
+    subtitle: 'AI Assistant',
     hintTextKey: 'daily_wear_chat_hint',
     greetingKey: 'bills_chat_greeting',
     quickPrompts: (ctx) => [
@@ -170,9 +178,9 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
   ),
   'diet': AhviModuleConfig(
     moduleContext: 'diet',
-    subtitle: 'Diet & Nutrition Assistant',
+    subtitle: 'AI Assistant',
     hintTextKey: 'diet_chat_hint',
-    greetingKey: 'diet_chat_greeting',
+    greetingKey: 'diet_chat_welcome',
     quickPrompts: (ctx) => [
       'Weekly keto plan',
       'High protein meals',
@@ -183,7 +191,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
   ),
   'fitness': AhviModuleConfig(
     moduleContext: 'fitness',
-    subtitle: 'Fitness Coach',
+    subtitle: 'AI Assistant',
     hintTextKey: 'daily_wear_chat_hint',
     greetingKey: 'fitness_chat_greeting',
     quickPrompts: (ctx) => [
@@ -196,7 +204,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
   ),
   'wardrobe': AhviModuleConfig(
     moduleContext: 'wardrobe',
-    subtitle: 'Wardrobe Assistant',
+    subtitle: 'AI Assistant',
     hintTextKey: 'daily_wear_chat_hint',
     greetingKey: 'wardrobe_chat_greeting',
     quickPrompts: (ctx) => [
@@ -213,7 +221,7 @@ AhviModuleConfig _configFor(String moduleContext) =>
     _moduleConfigs[moduleContext] ?? _moduleConfigs['style']!;
 
 // ════════════════════════════════════════════════════════════════════
-//  PUBLIC API — showAhviAssistantChatSheet (same as before, + moduleContext)
+//  PUBLIC API — showAhviStylistChatSheet (same as before, + moduleContext)
 // ════════════════════════════════════════════════════════════════════
 
 /// ఏ screen నుండైనా ఇలా call చేయండి:
@@ -376,6 +384,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
   final List<_SheetMessage> _messages = [];
   final List<Map<String, String>> _chatHistory = [];
   String _runningMemory = '';
+  Map<String, dynamic>? _lastStyleContext;
   bool _typing = false;
   bool _chipsVisible = true;
   bool _chatHasText = false;
@@ -793,6 +802,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
                         'interpreted_occasion': interpretedOccasion,
                     }
                   : null,
+              lastStyleContext: _lastStyleContext,
               showClosestOption: isClosestStyleAction,
               allowClosestOption: isClosestStyleAction,
               closest: isClosestStyleAction,
@@ -829,9 +839,28 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
 
       final updatedMemory = response['updated_memory'];
       if (updatedMemory != null) _runningMemory = updatedMemory.toString();
+      final _lsc = _styleBlockFromResponse(response, 'last_style_context');
+      if (_lsc != null) _lastStyleContext = _lsc;
       final moduleCards = _moduleCardsFromSheetResponse(response);
       final boardPayload = _StyleBoardPayload.fromResponse(response);
       final gapPayload = _WardrobeGapPayload.fromResponse(response);
+      final visualPayload = _VisualDirectionPayload.fromResponse(response);
+      final visualInspiration = _styleBlockFromResponse(
+        response,
+        'visual_inspiration_board',
+      );
+      final missingPiece = _styleBlockFromResponse(
+        response,
+        'missing_piece_intelligence',
+      );
+      final transitionPlan = _styleBlockFromResponse(response, 'transition_plan');
+      final rawStylistReasoning = _styleBlockFromResponse(response, 'stylist_reasoning');
+      final stylistReasoning = visualPayload.hasDirections || boardPayload.hasBoards
+          ? null
+          : rawStylistReasoning;
+      final adviceBlock = _styleBlockFromResponse(response, 'body_proportion_advice') ??
+          _styleBlockFromResponse(response, 'color_advice') ??
+          _styleBlockFromResponse(response, 'occasion_advice');
       final displayText = isClosestStyleAction && !boardPayload.hasBoards
           ? "I couldn't build even a closest option from the available wardrobe slots."
           : gapPayload.active && gapPayload.message.trim().isNotEmpty
@@ -845,6 +874,14 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
             text: displayText,
             isUser: false,
             moduleCards: moduleCards,
+            visualDirectionPayload: visualPayload.hasDirections
+                ? visualPayload
+                : null,
+            visualInspiration: visualInspiration,
+            missingPiece: missingPiece,
+            transitionPlan: transitionPlan,
+            stylistReasoning: stylistReasoning,
+            adviceBlock: adviceBlock,
             boardPayload:
                 moduleCards.isEmpty &&
                     boardPayload.hasBoards &&
@@ -1333,6 +1370,12 @@ class _SheetMessage {
   final bool isUser;
   final _StyleBoardPayload? boardPayload;
   final _WardrobeGapPayload? wardrobeGapPayload;
+  final _VisualDirectionPayload? visualDirectionPayload;
+  final Map<String, dynamic>? visualInspiration;
+  final Map<String, dynamic>? missingPiece;
+  final Map<String, dynamic>? transitionPlan;
+  final Map<String, dynamic>? stylistReasoning;
+  final Map<String, dynamic>? adviceBlock;
   final List<Map<String, dynamic>> moduleCards;
 
   _SheetMessage({
@@ -1341,6 +1384,12 @@ class _SheetMessage {
     required this.isUser,
     this.boardPayload,
     this.wardrobeGapPayload,
+    this.visualDirectionPayload,
+    this.visualInspiration,
+    this.missingPiece,
+    this.transitionPlan,
+    this.stylistReasoning,
+    this.adviceBlock,
     this.moduleCards = const [],
   }) : assert(text != null || textKey != null);
 
@@ -1383,6 +1432,37 @@ class _StyleBoardPayload {
       renderedBoards: _mapList(data['rendered_boards']),
       outfits: _mapList(data['outfits']),
       boardId: response['board_ids']?.toString(),
+    );
+  }
+}
+
+class _VisualDirectionPayload {
+  final List<Map<String, dynamic>> directions;
+
+  const _VisualDirectionPayload({required this.directions});
+
+  bool get hasDirections => directions.isNotEmpty;
+
+  static _VisualDirectionPayload fromResponse(Map<String, dynamic> response) {
+    final data = response['data'] is Map
+        ? Map<String, dynamic>.from(response['data'] as Map)
+        : <String, dynamic>{};
+
+    final raw =
+        response['visual_directions'] ??
+        data['visual_directions'] ??
+        response['visualDirections'] ??
+        data['visualDirections'];
+
+    if (raw is! List) {
+      return const _VisualDirectionPayload(directions: []);
+    }
+
+    return _VisualDirectionPayload(
+      directions: raw
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(),
     );
   }
 }
@@ -1526,6 +1606,33 @@ List<Map<String, dynamic>> _mapList(dynamic value) {
       .toList();
 }
 
+/// Style V2: pull a typed block from response top-level, data, or blocks[].
+Map<String, dynamic>? _styleBlockFromResponse(
+  Map<String, dynamic> response,
+  String key,
+) {
+  final direct = response[key];
+  if (direct is Map && direct.isNotEmpty) {
+    return Map<String, dynamic>.from(direct);
+  }
+  final data = response['data'];
+  if (data is Map) {
+    final fromData = data[key];
+    if (fromData is Map && fromData.isNotEmpty) {
+      return Map<String, dynamic>.from(fromData);
+    }
+  }
+  final blocks = response['blocks'];
+  if (blocks is List) {
+    for (final b in blocks) {
+      if (b is Map && (b['type'] ?? '').toString() == key) {
+        return Map<String, dynamic>.from(b);
+      }
+    }
+  }
+  return null;
+}
+
 class _Bubble extends StatelessWidget {
   final _SheetMessage msg;
   final ValueChanged<String> onPrompt;
@@ -1583,8 +1690,28 @@ class _Bubble extends StatelessWidget {
           ),
         if (msg.moduleCards.isNotEmpty)
           _SheetModuleCards(cards: msg.moduleCards, onPrompt: onPrompt),
+        if (msg.adviceBlock != null) StyleAdviceCard(data: msg.adviceBlock!),
+        if (msg.transitionPlan != null)
+          TransitionPlanCard(data: msg.transitionPlan!),
+        if (msg.visualInspiration != null)
+          VisualInspirationCard(
+            data: msg.visualInspiration!,
+            onSendMessage: onPrompt,
+          ),
+        if (msg.stylistReasoning != null)
+          StylistReasoningCard(data: msg.stylistReasoning!),
+        if (msg.visualDirectionPayload != null)
+          _VisualDirectionCards(
+            payload: msg.visualDirectionPayload!,
+            onPrompt: onPrompt,
+          ),
         if (msg.boardPayload != null)
           _StyleBoardCarousel(payload: msg.boardPayload!),
+        if (msg.missingPiece != null)
+          MissingPieceIntelligenceCard(
+            data: msg.missingPiece!,
+            onSendMessage: onPrompt,
+          ),
       ],
     );
 
@@ -1781,6 +1908,24 @@ class _SheetModuleCards extends StatelessWidget {
   }
 }
 
+class _VisualDirectionCards extends StatelessWidget {
+  final _VisualDirectionPayload payload;
+  final ValueChanged<String> onPrompt;
+
+  const _VisualDirectionCards({required this.payload, required this.onPrompt});
+
+  @override
+  Widget build(BuildContext context) {
+    final width = math.min(MediaQuery.sizeOf(context).width - 72, 318.0);
+    return SizedBox(
+      width: width,
+      child: VisualDirectionCarousel(
+        directions: payload.directions,
+        cardWidth: width,
+      ),
+    );
+  }
+}
 class _WardrobeGapCard extends StatelessWidget {
   final _WardrobeGapPayload payload;
   final ValueChanged<String> onPrompt;
@@ -1971,6 +2116,8 @@ class _StyleBoardCarousel extends StatelessWidget {
 
 class _StyleBoardViewModel {
   final String title;
+  final String? styleArchetype;
+  final String? boardRole;
   final String? badge;
   final String? imageBase64;
   final String? imageUrl;
@@ -1981,6 +2128,8 @@ class _StyleBoardViewModel {
 
   const _StyleBoardViewModel({
     required this.title,
+    this.styleArchetype,
+    this.boardRole,
     this.badge,
     this.imageBase64,
     this.imageUrl,
@@ -2076,6 +2225,18 @@ class _StyleBoardViewModel {
             board['label'] ?? board['title'] ?? board['name'],
             'AHVI Style Board',
           ),
+          styleArchetype: _nullableText(
+            board['style_archetype'] ??
+                (board['style_metadata'] is Map
+                    ? (board['style_metadata'] as Map)['style_archetype']
+                    : null),
+          ),
+          boardRole: _nullableText(
+            board['board_role'] ??
+                (board['style_metadata'] is Map
+                    ? (board['style_metadata'] as Map)['board_role']
+                    : null),
+          ),
           badge: _nullableText(
             board['badge'] ?? board['occasion_label'] ?? board['occasion'],
           ),
@@ -2106,6 +2267,18 @@ class _StyleBoardViewModel {
               card['title'] ?? card['name'] ?? card['label'],
               'Styled Look',
             ),
+            styleArchetype: _nullableText(
+              card['style_archetype'] ??
+                  (card['style_metadata'] is Map
+                      ? (card['style_metadata'] as Map)['style_archetype']
+                      : null),
+            ),
+            boardRole: _nullableText(
+              card['board_role'] ??
+                  (card['style_metadata'] is Map
+                      ? (card['style_metadata'] as Map)['board_role']
+                      : null),
+            ),
             badge: _nullableText(
               card['badge'] ?? card['occasion_label'] ?? card['occasion'],
             ),
@@ -2125,6 +2298,18 @@ class _StyleBoardViewModel {
             title: _text(
               outfit['title'] ?? outfit['name'] ?? outfit['label'],
               'Styled Look',
+            ),
+            styleArchetype: _nullableText(
+              outfit['style_archetype'] ??
+                  (outfit['style_metadata'] is Map
+                      ? (outfit['style_metadata'] as Map)['style_archetype']
+                      : null),
+            ),
+            boardRole: _nullableText(
+              outfit['board_role'] ??
+                  (outfit['style_metadata'] is Map
+                      ? (outfit['style_metadata'] as Map)['board_role']
+                      : null),
             ),
             badge: _nullableText(
               outfit['badge'] ?? outfit['occasion_label'] ?? outfit['occasion'],
@@ -2830,6 +3015,15 @@ class _PinterestStyleBoardCard extends StatelessWidget {
     final itemLine = _itemLine(board.items);
     final chips = _chipsFor(board);
     final imageHeight = width * 1.34;
+    final primaryTitle = (board.styleArchetype?.trim().isNotEmpty == true)
+        ? board.styleArchetype!.trim()
+        : board.title;
+    final secondaryTitle = [
+      if (board.boardRole?.trim().isNotEmpty == true) board.boardRole!.trim(),
+      if (board.title.trim().isNotEmpty &&
+          board.title.trim().toLowerCase() != primaryTitle.toLowerCase())
+        board.title.trim(),
+    ].join(' · ');
 
     return Container(
       width: width,
@@ -2864,7 +3058,7 @@ class _PinterestStyleBoardCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        board.title,
+                        primaryTitle,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -2901,6 +3095,20 @@ class _PinterestStyleBoardCard extends StatelessWidget {
                       ),
                   ],
                 ),
+                if (secondaryTitle.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    secondaryTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: t.mutedText,
+                      fontSize: 11.4,
+                      height: 1.2,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Text(
                   itemLine,
