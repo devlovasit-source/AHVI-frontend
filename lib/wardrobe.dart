@@ -581,11 +581,13 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
             ),
 
             // -------------------------------------------
-            // Ask AHVI FAB - hides while scrolling (P0 #7)
+            // Ask AHVI FAB — hides while scrolling (P0 #7)
+            // Positioned above bottom nav bar (bottom: 80)
+            // so it never overlaps wardrobe items.
             // -------------------------------------------
             Positioned(
               right: 16,
-              bottom: 16,
+              bottom: 80, // sits above bottom nav (~60) + safe margin
               child: AnimatedOpacity(
                 opacity: _fabVisible ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 200),
@@ -650,13 +652,13 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
   Widget _buildGrid(AppThemeTokens t) {
     return GridView.builder(
       controller: _gridScrollCtrl,
-      // P0 #7: bottom padding so FAB never sits over content
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
+      // P0 #7: bottom padding clears FAB (56) + bottom nav (60) + margin (16)
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 132),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 0.68, // taller cards -> more image, less metadata
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 0.62, // taller cards → more image, less metadata
       ),
       itemCount: _items.length,
       itemBuilder: (context, index) {
@@ -777,7 +779,7 @@ class _WardrobeGridCard extends StatelessWidget {
             // METADATA (P0 #6: trimmed - name + cat + worn badge)
             // -------------------------------------------
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -786,12 +788,12 @@ class _WardrobeGridCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.inter(
-                      fontSize: 13,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFF1A1A1A),
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 3),
                   Row(
                     children: [
                       Expanded(
