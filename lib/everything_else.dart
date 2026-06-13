@@ -3,8 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/app_localizations.dart';
-import 'package:myapp/style_board/saved_board_card.dart';
-import 'package:myapp/style_board/saved_board_images.dart';
 
 // ── Data model ───────────────────────────────────────────────────────────────
 class LookItem {
@@ -14,7 +12,7 @@ class LookItem {
   final String emoji;
   final String category;
   final String? imageUrl;
-  final List<String> outfitImages;
+  final List<String> outfitImages; // Full outfit images list
   final String filter;
   final LookBadgeStyle badge;
   final LookBgStyle bg;
@@ -31,37 +29,6 @@ class LookItem {
     required this.badge,
     required this.bg,
   });
-}
-
-class _SavedLookImageGrid extends StatelessWidget {
-  final List<String> images;
-
-  const _SavedLookImageGrid({required this.images});
-
-  @override
-  Widget build(BuildContext context) {
-    final visible = images.take(5).toList();
-    return Container(
-      color: const Color(0xFFFFFCF5),
-      padding: const EdgeInsets.all(8),
-      child: GridView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        padding: EdgeInsets.zero,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 6,
-          mainAxisSpacing: 6,
-        ),
-        itemCount: visible.length,
-        itemBuilder: (context, index) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.network(visible[index], fit: BoxFit.contain),
-          );
-        },
-      ),
-    );
-  }
 }
 
 enum LookBadgeStyle {
@@ -93,12 +60,6 @@ class FilterPillData {
   const FilterPillData(this.label, this.filter);
 }
 
-class _SavedBoardEntry {
-  final dynamic source;
-  final String filter;
-  const _SavedBoardEntry({required this.source, required this.filter});
-}
-
 // ── Main Screen ──────────────────────────────────────────────────────────────
 class EverythingElseScreen extends StatefulWidget {
   const EverythingElseScreen({super.key});
@@ -118,9 +79,7 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
   String _activeFilter = 'all';
   String? _toastMessage;
 
-  List<_SavedBoardEntry> _boards = [];
   List<LookItem> _looks = [];
-  Map<String, Map<String, dynamic>> _wardrobeById = const {};
   List<FilterPillData> _filters = [];
 
   final List<String> _excludedMainCategories = [
@@ -144,7 +103,6 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
         'Everything Else',
       );
       final allDocs = await appwrite.getAllSavedBoards();
-      final wardrobe = await appwrite.getWardrobeItems();
       final docs = [
         ...primaryDocs,
         ...allDocs.where((doc) {
@@ -162,13 +120,9 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
       ];
 
       final Set<String> uniqueCategories = {};
-      final List<_SavedBoardEntry> loadedBoards = [];
       final List<LookItem> loadedLooks = [];
 
       for (var doc in docs) {
-        final outfitImages = extractSavedBoardImages(
-          Map<String, dynamic>.from(doc.data),
-        );
         final occasion =
             doc.data['boardCategoryLabel']?.toString() ??
             doc.data['occasion']?.toString() ??
@@ -176,14 +130,27 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
         if (_excludedMainCategories.contains(occasion.toLowerCase())) continue;
 
         uniqueCategories.add(occasion);
-        loadedBoards.add(
-          _SavedBoardEntry(source: doc, filter: occasion.toLowerCase()),
-        );
 
         final styleIndex =
             occasion.hashCode % (LookBadgeStyle.values.length - 1);
         final dynamicBadge = LookBadgeStyle.values[styleIndex];
         final dynamicBg = LookBgStyle.values[styleIndex];
+
+        // Parse full outfit images (list of items or single imageUrl)
+        final rawItems = doc.data['outfitItems'];
+        final List<String> outfitImages = [];
+        if (rawItems is List) {
+          for (final item in rawItems) {
+            final url = item is Map
+                ? (item['imageUrl'] ?? item['url'] ?? '').toString()
+                : item.toString();
+            if (url.isNotEmpty) outfitImages.add(url);
+          }
+        }
+        final singleUrl = doc.data['imageUrl']?.toString() ?? '';
+        if (outfitImages.isEmpty && singleUrl.isNotEmpty) {
+          outfitImages.add(singleUrl);
+        }
 
         loadedLooks.add(
           LookItem(
@@ -191,7 +158,7 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
             title: (doc.data['title'] ?? occasion).toString(),
             description:
                 (doc.data['outfitDescription'] ??
-                        'Style board generated for $occasion')
+                        'Style board generated for \$occasion')
                     .toString(),
             emoji: '✨',
             category: occasion,
@@ -214,9 +181,7 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
 
       if (mounted) {
         setState(() {
-          _boards = loadedBoards;
           _looks = loadedLooks;
-          _wardrobeById = _buildIdMap(wardrobe);
           _filters = dynamicFilters;
           _isLoading = false;
         });
@@ -227,16 +192,14 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
     }
   }
 
-  List<_SavedBoardEntry> get _filtered => _activeFilter == 'all'
-      ? _boards
-      : _boards.where((board) => board.filter == _activeFilter).toList();
+  List<LookItem> get _filtered => _activeFilter == 'all'
+      ? _looks
+      : _looks.where((l) => l.filter == _activeFilter).toList();
 
   void _setFilter(String f) => setState(() => _activeFilter = f);
 
   Future<void> _deleteLook(String id) async {
-    setState(
-      () => _boards.removeWhere((board) => _boardId(board.source) == id),
-    );
+    setState(() => _looks.removeWhere((l) => l.id == id));
     try {
       final appwrite = Provider.of<AppwriteService>(context, listen: false);
       await appwrite.deleteSavedBoard(id);
@@ -253,41 +216,10 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
     });
   }
 
-  Map<String, Map<String, dynamic>> _buildIdMap(
-    List<Map<String, dynamic>> items,
-  ) {
-    final byId = <String, Map<String, dynamic>>{};
-    for (final item in items) {
-      for (final rawId in [
-        item[r'$id'],
-        item['id'],
-        item['item_id'],
-        item['itemId'],
-        item['image_id'],
-        item['imageId'],
-      ]) {
-        final id = (rawId ?? '').toString().trim();
-        if (id.isNotEmpty) byId[id] = item;
-      }
-    }
-    return byId;
-  }
-
-  String _boardId(dynamic board) {
-    try {
-      final value = board.$id;
-      if (value != null) return value.toString();
-    } catch (_) {}
-    if (board is Map) {
-      return (board[r'$id'] ?? board['id'] ?? '').toString();
-    }
-    return '';
-  }
-
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
-    final countText = _boards.isEmpty
+    final countText = _looks.isEmpty
         ? context.tr('wardrobe_empty_title')
         : '${filtered.length} ${context.tr('fitness_saved')}';
 
@@ -325,13 +257,15 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
                             color: _t.accent.primary,
                           ),
                         )
-                      : _boards.isEmpty
+                      : _looks.isEmpty
                       ? _EmptyState()
                       : filtered.isEmpty
                       ? _NoResultsState()
                       : _LooksGrid(
-                          boards: filtered,
-                          wardrobeById: _wardrobeById,
+                          looks: filtered,
+                          onDelete: _deleteLook,
+                          onShare: (look) =>
+                              _showToast(context.tr('wardrobe_share')),
                         ),
                 ),
               ),
@@ -507,10 +441,15 @@ class _FilterRow extends StatelessWidget {
 
 // ── Looks Grid ───────────────────────────────────────────────────────────────
 class _LooksGrid extends StatelessWidget {
-  final List<_SavedBoardEntry> boards;
-  final Map<String, Map<String, dynamic>> wardrobeById;
+  final List<LookItem> looks;
+  final void Function(String id) onDelete;
+  final void Function(LookItem look) onShare;
 
-  const _LooksGrid({required this.boards, required this.wardrobeById});
+  const _LooksGrid({
+    required this.looks,
+    required this.onDelete,
+    required this.onShare,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -520,12 +459,14 @@ class _LooksGrid extends StatelessWidget {
         crossAxisCount: 2,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        childAspectRatio: 0.54,
+        childAspectRatio: 0.56,
       ),
-      itemCount: boards.length,
-      itemBuilder: (context, index) => SavedBoardCard(
-        source: boards[index].source,
-        wardrobeById: wardrobeById,
+      itemCount: looks.length,
+      itemBuilder: (context, index) => _LookCard(
+        look: looks[index],
+        featured: index == 0,
+        onDelete: onDelete,
+        onShare: onShare,
       ),
     );
   }
@@ -592,7 +533,7 @@ class _LookCardState extends State<_LookCard> {
   @override
   Widget build(BuildContext context) {
     final look = widget.look;
-    final aspectRatio = widget.featured ? 2.0 : 1.0;
+    const aspectRatio = 1.2; // Uniform aspect ratio for all cards
     final onAccent = Theme.of(context).colorScheme.onPrimary;
 
     return MouseRegion(
@@ -625,19 +566,30 @@ class _LookCardState extends State<_LookCard> {
             children: [
               Stack(
                 children: [
-                  look.outfitImages.length >= 2
+                  // Show full outfit: multiple items in a row, or fallback emoji
+                  look.outfitImages.isNotEmpty
                       ? AspectRatio(
                           aspectRatio: aspectRatio,
-                          child: _SavedLookImageGrid(images: look.outfitImages),
-                        )
-                      : look.imageUrl != null && look.imageUrl!.isNotEmpty
-                      ? AspectRatio(
-                          aspectRatio: aspectRatio,
-                          child: Image.network(
-                            look.imageUrl!,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                          ),
+                          child: look.outfitImages.length == 1
+                              ? Image.network(
+                                  look.outfitImages.first,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                )
+                              : Row(
+                                  children: look.outfitImages
+                                      .take(3)
+                                      .map(
+                                        (url) => Expanded(
+                                          child: Image.network(
+                                            url,
+                                            fit: BoxFit.cover,
+                                            height: double.infinity,
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
                         )
                       : AspectRatio(
                           aspectRatio: aspectRatio,
@@ -653,31 +605,52 @@ class _LookCardState extends State<_LookCard> {
                             ),
                           ),
                         ),
+                  // Share & Delete buttons (always visible)
                   Positioned(
                     top: 10,
                     right: 10,
-                    child: AnimatedOpacity(
-                      opacity: _hovered ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: GestureDetector(
-                        onTap: () => widget.onDelete(look.id),
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: _t.phoneShellInner.withValues(alpha: 0.85),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: _t.cardBorder, width: 1),
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.close,
-                              size: 14,
-                              color: _t.textPrimary,
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => widget.onShare(look),
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: _t.phoneShellInner.withValues(alpha: 0.85),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: _t.cardBorder, width: 1),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                Icons.ios_share_rounded,
+                                size: 14,
+                                color: _t.textPrimary,
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () => widget.onDelete(look.id),
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: _t.phoneShellInner.withValues(alpha: 0.85),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: _t.cardBorder, width: 1),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                Icons.close,
+                                size: 14,
+                                color: _t.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -740,7 +713,7 @@ class _LookCardState extends State<_LookCard> {
               // Try On button
               Container(
                 width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(10, 2, 10, 6),
+                margin: const EdgeInsets.fromLTRB(10, 4, 10, 10),
                 child: GestureDetector(
                   onTap: () {},
                   child: Container(
