@@ -1,20 +1,17 @@
 // ============================================================
-// WARDROBE.DART - UPDATED WITH 3-STEP AHVI UPLOAD FLOW
+// WARDROBE.DART - V2 (Premium AI Stylist UX)
 // ============================================================
-// KEY CHANGES:
-// 1. Added imports for new 3-step modal and DetectedItem model
-// 2. Replaced detection modal with Ahvi3StepUploadModal
-// 3. Updated _runDetection to return DetectedItem list
-// 4. Kept camera/gallery picking logic unchanged
+// Includes:
+//  - 3-step AHVI upload flow (camera + gallery)
+//  - New item detail modal (Works Well With / Best For / Style This)
+//  - Grid with BoxFit.contain images, tighter metadata
+//  - Ask AHVI FAB no longer overlaps grid content
 // ============================================================
 
-import 'dart:convert';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:myapp/services/backend_service.dart';
 import 'package:myapp/services/appwrite_service.dart';
-import 'package:myapp/services/connectivity_watcher.dart';
-import 'package:myapp/services/offline_cache.dart';
 import 'package:provider/provider.dart';
 
 import 'package:flutter/foundation.dart';
@@ -23,46 +20,35 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
-import 'package:myapp/app_localizations.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/widgets/ahvi_header.dart';
 import 'package:myapp/widgets/ahvi_stylist_chat.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+// 3-step upload flow + models
+import 'package:myapp/widgets/ahvi_3step_upload_flow.dart';
+import 'package:myapp/models/detected_item.dart';
+
+// V2 item detail modal + pairing engine
+import 'package:myapp/widgets/ahvi_item_detail_modal.dart';
+import 'package:myapp/widgets/pairing_engine.dart';
 
 // ============================================================
-// NEW IMPORTS FOR 3-STEP FLOW
+// MODAL STEP ENUM (camera capture flow)
 // ============================================================
-import 'package:myapp/widgets/ahvi_3step_upload_flow.dart'; // NEW
-import 'package:myapp/models/detected_item.dart'; // NEW
+enum _ModalStep { camera, detecting, results }
 
 // ============================================================
-// APPWRITE & ENVIRONMENT
+// PUBLIC WIDGET
 // ============================================================
-import 'package:appwrite/appwrite.dart';
-import 'package:myapp/config/env.dart';
+class Wardrobe extends StatefulWidget {
+  const Wardrobe({super.key});
 
-// ... rest of existing imports and color helper functions ...
-
-// ============================================================
-// PUBLIC HELPER - UPDATED FOR NEW 3-STEP MODAL
-// ============================================================
-void showAddToWardrobeModal(
-  BuildContext context, {
-  void Function(Map<String, dynamic> item)? onSaved,
-}) {
-  // OLD: showDialog with _AddItemModal
-  // NEW: No longer needed - camera picker launches 3-step modal directly
-  // This function is kept for backward compatibility
-  showDialog(
-    context: context,
-    useRootNavigator: true,
-    barrierColor: Colors.black54,
-    builder: (_) => _AddItemModal(onSave: (item) => onSaved?.call(item)),
-  );
+  @override
+  State<Wardrobe> createState() => _WardrobeState();
 }
 
 // ============================================================
-// NEW HELPER - LAUNCH 3-STEP UPLOAD FLOW
+// HELPER - LAUNCH 3-STEP UPLOAD FLOW
 // ============================================================
 void launch3StepUploadFlow(
   BuildContext context, {
@@ -82,28 +68,151 @@ void launch3StepUploadFlow(
   );
 }
 
-// ... existing WardrobeItem, helper functions, etc. ...
-
 // ============================================================
-// WARDROBE SCREEN STATE CLASS - KEY CHANGES
+// WARDROBE SCREEN STATE
 // ============================================================
 class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
-  // ... existing variables ...
-  
-  // Add this for tracking image URLs for 3-step modal
+  // ----------------------------------------------------------
+  // Core state
+  // ----------------------------------------------------------
+  final List<WardrobeItem> _items = [];
+  bool _loading = true;
+
+  // Camera state
+  CameraController? _camCtrl;
+  bool _camReady = false;
+
+  // Capture/detect modal state
+  _ModalStep _step = _ModalStep.camera;
+  Uint8List? _capturedBytes;
+  String? _detectError;
   String? _lastCaptureImageUrl;
-  
+
+  // FAB visibility (hide while scrolling so it doesn't block items)
+  final ScrollController _gridScrollCtrl = ScrollController();
+  bool _fabVisible = true;
+
   @override
   void initState() {
     super.initState();
-    // ... existing init code ...
+    _loadWardrobeItems();
+    _initCamera();
+
+    _gridScrollCtrl.addListener(() {
+      final dir = _gridScrollCtrl.position.userScrollDirection;
+      if (dir == ScrollDirection.reverse && _fabVisible) {
+        setState(() => _fabVisible = false);
+      } else if (dir == ScrollDirection.forward && !_fabVisible) {
+        setState(() => _fabVisible = true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _camCtrl?.dispose();
+    _gridScrollCtrl.dispose();
+    super.dispose();
   }
 
   // ============================================================
-  // CAMERA CAPTURE - UPDATED TO USE 3-STEP FLOW
+  // LOAD WARDROBE ITEMS
+  // ============================================================
+  Future<void> _loadWardrobeItems() async {
+    try {
+      final appwriteService = Provider.of<AppwriteService>(
+        context,
+        listen: false,
+      );
+      final items = await appwriteService.getWardrobeItems();
+      if (!mounted) return;
+      setState(() {
+        _items
+          ..clear()
+          ..addAll(items);
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showError('Failed to load wardrobe: ${e.toString()}');
+    }
+  }
+
+  // ============================================================
+  // CAMERA LIFECYCLE
+  // ============================================================
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return;
+      final camera = cameras.first;
+      _camCtrl = CameraController(
+        camera,
+        ResolutionPreset.high,
+        enableAudio: false,
+      );
+      await _camCtrl!.initialize();
+      if (!mounted) return;
+      setState(() => _camReady = true);
+    } catch (e) {
+      debugPrint('Camera init failed: $e');
+    }
+  }
+
+  Future<void> _flipCamera() async {
+    if (_camCtrl == null) return;
+    try {
+      final cameras = await availableCameras();
+      if (cameras.length < 2) return;
+
+      final current = _camCtrl!.description;
+      final next = cameras.firstWhere(
+        (c) => c.lensDirection != current.lensDirection,
+        orElse: () => current,
+      );
+
+      await _camCtrl?.dispose();
+      _camCtrl = CameraController(next, ResolutionPreset.high, enableAudio: false);
+      await _camCtrl!.initialize();
+      if (!mounted) return;
+      setState(() {});
+    } catch (e) {
+      debugPrint('Flip camera failed: $e');
+    }
+  }
+
+  Future<void> _toggleFlash() async {
+    if (_camCtrl == null) return;
+    try {
+      final current = _camCtrl!.value.flashMode;
+      final next = current == FlashMode.off ? FlashMode.torch : FlashMode.off;
+      await _camCtrl!.setFlashMode(next);
+      if (!mounted) return;
+      setState(() {});
+    } catch (e) {
+      debugPrint('Toggle flash failed: $e');
+    }
+  }
+
+  /// Fixes EXIF orientation issues from camera/gallery images.
+  Future<Uint8List> _fixOrientation(Uint8List bytes) async {
+    try {
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return bytes;
+      final fixed = img.bakeOrientation(decoded);
+      return Uint8List.fromList(img.encodeJpg(fixed, quality: 90));
+    } catch (e) {
+      debugPrint('Orientation fix failed: $e');
+      return bytes;
+    }
+  }
+
+  // ============================================================
+  // CAMERA CAPTURE - 3-STEP FLOW
   // ============================================================
   Future<void> _captureAndDetect() async {
-    if (!_camReady) return;
+    if (!_camReady || _camCtrl == null) return;
     HapticFeedback.mediumImpact();
     try {
       final xfile = await _camCtrl!.takePicture();
@@ -120,10 +229,8 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
         _step = _ModalStep.detecting;
         _detectError = null;
       });
-      
-      // NEW: Run detection and launch 3-step modal
+
       await _runDetectionFor3Step(bytes);
-      
     } catch (e) {
       setState(() => _step = _ModalStep.camera);
       _showError('Failed to capture image');
@@ -131,7 +238,7 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
   }
 
   // ============================================================
-  // GALLERY PICK - UPDATED TO USE 3-STEP FLOW
+  // GALLERY PICK - 3-STEP FLOW
   // ============================================================
   Future<void> _pickGallery() async {
     try {
@@ -145,7 +252,6 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
       if (files.isEmpty) return;
       if (!mounted) return;
 
-      // Dispose camera
       await _camCtrl?.dispose();
       _camCtrl = null;
       if (mounted) setState(() => _camReady = false);
@@ -160,22 +266,18 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
       if (!mounted) return;
 
       if (bytesList.length == 1) {
-        // Single image
         setState(() {
           _capturedBytes = bytesList.first;
           _step = _ModalStep.detecting;
           _detectError = null;
         });
-        // NEW: Use 3-step flow
         await _runDetectionFor3Step(bytesList.first);
       } else {
-        // Multiple images - process each one
         setState(() {
           _capturedBytes = bytesList.first;
           _step = _ModalStep.detecting;
           _detectError = null;
         });
-        // NEW: Process each image through 3-step flow
         await _runMultipleDetections(bytesList);
       }
     } catch (e) {
@@ -189,11 +291,10 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
   }
 
   // ============================================================
-  // NEW: DETECTION WITH 3-STEP MODAL INTEGRATION
+  // DETECTION WITH 3-STEP MODAL INTEGRATION
   // ============================================================
   Future<void> _runDetectionFor3Step(Uint8List imageBytes) async {
     try {
-      // Show loading dialog
       if (mounted) {
         showDialog(
           context: context,
@@ -201,33 +302,27 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
           builder: (_) => Center(
             child: CircularProgressIndicator(
               valueColor: AlwaysStoppedAnimation(
-                context.themeTokens.accent.primary,
+                Theme.of(context).extension<AppThemeTokens>()!.accent.primary,
               ),
             ),
           ),
         );
       }
 
-      // Step 1: Upload image to R2 (if needed)
       final imageUrl = await _uploadImageToR2(imageBytes);
       _lastCaptureImageUrl = imageUrl;
 
-      // Step 2: Call backend detection API
       final detectedItems = await _detectClothingItems(imageBytes);
 
       if (!mounted) return;
-      
-      // Close loading dialog
-      Navigator.pop(context);
+      Navigator.pop(context); // close loading
 
-      // Step 3: Validate detection results
       if (detectedItems.isEmpty) {
         _showError('Could not detect any clothing items. Please try again.');
         setState(() => _step = _ModalStep.camera);
         return;
       }
 
-      // Step 4: Launch 3-step modal with detected items
       if (mounted) {
         launch3StepUploadFlow(
           context,
@@ -239,22 +334,18 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
         );
       }
     } catch (e) {
-      if (!mounted) {
-        Navigator.pop(context); // Close loading dialog
-        return;
-      }
-      Navigator.pop(context); // Close loading dialog
+      if (!mounted) return;
+      Navigator.pop(context); // close loading
       _showError('Detection failed: ${e.toString()}');
       setState(() => _step = _ModalStep.camera);
     }
   }
 
   // ============================================================
-  // NEW: HANDLE MULTIPLE IMAGES
+  // HANDLE MULTIPLE IMAGES
   // ============================================================
   Future<void> _runMultipleDetections(List<Uint8List> imageBytesList) async {
     try {
-      // Show loading
       if (mounted) {
         showDialog(
           context: context,
@@ -262,7 +353,7 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
           builder: (_) => Center(
             child: CircularProgressIndicator(
               valueColor: AlwaysStoppedAnimation(
-                context.themeTokens.accent.primary,
+                Theme.of(context).extension<AppThemeTokens>()!.accent.primary,
               ),
             ),
           ),
@@ -271,20 +362,19 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
 
       List<DetectedItem> allDetectedItems = [];
 
-      // Process each image
       for (int i = 0; i < imageBytesList.length; i++) {
         try {
-          final imageUrl = await _uploadImageToR2(imageBytesList[i]);
+          await _uploadImageToR2(imageBytesList[i]);
           final items = await _detectClothingItems(imageBytesList[i]);
           allDetectedItems.addAll(items);
         } catch (e) {
-          print('Error detecting image ${i + 1}: $e');
-          continue; // Skip this image and continue
+          debugPrint('Error detecting image ${i + 1}: $e');
+          continue;
         }
       }
 
       if (!mounted) return;
-      Navigator.pop(context); // Close loading
+      Navigator.pop(context); // close loading
 
       if (allDetectedItems.isEmpty) {
         _showError('Could not detect any items in the selected images.');
@@ -292,22 +382,18 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
         return;
       }
 
-      // Launch 3-step modal with all detected items
       if (mounted) {
         launch3StepUploadFlow(
           context,
           detectedItems: allDetectedItems,
-          originalImageUrl: null, // Multiple images
+          originalImageUrl: null,
           onConfirm: (selectedItems) {
             _saveSelectedItemsToWardrobe(selectedItems);
           },
         );
       }
     } catch (e) {
-      if (!mounted) {
-        Navigator.pop(context);
-        return;
-      }
+      if (!mounted) return;
       Navigator.pop(context);
       _showError('Batch detection failed: ${e.toString()}');
       setState(() => _step = _ModalStep.camera);
@@ -315,111 +401,147 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
   }
 
   // ============================================================
-  // NEW: DETECT CLOTHING ITEMS (calls backend API)
+  // DETECT CLOTHING ITEMS (backend API)
   // ============================================================
   Future<List<DetectedItem>> _detectClothingItems(Uint8List imageBytes) async {
     try {
-      // Call your backend detection API
-      final backendService = Provider.of<BackendService>(
-        context,
-        listen: false,
-      );
-
-      // Assuming your backend has a detection endpoint
+      final backendService = Provider.of<BackendService>(context, listen: false);
       final response = await backendService.analyzeImage(imageBytes);
 
       if (response == null || response['success'] == false) {
         throw Exception(response?['error'] ?? 'Detection failed');
       }
 
-      // Convert backend response to DetectedItem list
       final itemsList = (response['items'] as List?)
-          ?.map((item) => DetectedItem.fromJson(
-                Map<String, dynamic>.from(item),
-              ))
-          .toList() ?? [];
+              ?.map((item) => DetectedItem.fromJson(Map<String, dynamic>.from(item)))
+              .toList() ??
+          [];
 
       return itemsList;
     } catch (e) {
-      print('Detection error: $e');
+      debugPrint('Detection error: $e');
       rethrow;
     }
   }
 
   // ============================================================
-  // NEW: SAVE SELECTED ITEMS TO WARDROBE
+  // SAVE SELECTED ITEMS TO WARDROBE
   // ============================================================
-  Future<void> _saveSelectedItemsToWardrobe(
-    List<DetectedItem> selectedItems,
-  ) async {
+  Future<void> _saveSelectedItemsToWardrobe(List<DetectedItem> selectedItems) async {
     try {
-      // Show saving indicator
       _showMessage('Adding ${selectedItems.length} item(s) to wardrobe...');
 
-      final appwriteService = Provider.of<AppwriteService>(
-        context,
-        listen: false,
-      );
+      final appwriteService = Provider.of<AppwriteService>(context, listen: false);
 
-      // Convert DetectedItem to WardrobeItem and save
       for (final detectedItem in selectedItems) {
         final wardrobeItem = detectedItem.toWardrobeItem();
-
-        // Save to Appwrite
         await appwriteService.createItem(wardrobeItem);
 
-        // Update local list
         if (mounted) {
-          setState(() {
-            _items.add(wardrobeItem);
-          });
+          setState(() => _items.add(wardrobeItem));
         }
       }
 
-      // Show success message
       if (mounted) {
         _showMessage('✓ ${selectedItems.length} item(s) added to wardrobe!');
       }
 
-      // Clear state
       setState(() {
         _capturedBytes = null;
         _step = _ModalStep.camera;
       });
+
+      // Re-init camera for next capture
+      if (!_camReady) {
+        await _initCamera();
+      }
     } catch (e) {
       _showError('Failed to save items: ${e.toString()}');
     }
   }
 
   // ============================================================
-  // EXISTING HELPER: UPLOAD IMAGE TO R2
+  // UPLOAD IMAGE TO R2
   // ============================================================
   Future<String> _uploadImageToR2(Uint8List bytes) async {
     try {
-      // Your existing R2 upload logic
-      // This should return the URL of the uploaded image
-      final backendService = Provider.of<BackendService>(
-        context,
-        listen: false,
-      );
-      
-      // Implement your R2 upload logic here
-      // For now, returning a placeholder
-      return 'https://your-r2-url.com/image.jpg';
+      final backendService = Provider.of<BackendService>(context, listen: false);
+      final url = await backendService.uploadImage(bytes);
+      return url;
     } catch (e) {
       throw Exception('Failed to upload image: $e');
     }
   }
 
   // ============================================================
-  // EXISTING HELPERS: MESSAGES
+  // ITEM ACTIONS (wired into V2 detail modal)
+  // ============================================================
+  Future<void> _markWorn(WardrobeItem item) async {
+    setState(() => item.worn += 1);
+    try {
+      final appwriteService = Provider.of<AppwriteService>(context, listen: false);
+      await appwriteService.updateItem(item);
+      _showMessage('Marked as worn today');
+    } catch (e) {
+      _showError('Failed to update: ${e.toString()}');
+    }
+  }
+
+  Future<void> _toggleLike(WardrobeItem item) async {
+    setState(() => item.liked = !item.liked);
+    try {
+      final appwriteService = Provider.of<AppwriteService>(context, listen: false);
+      await appwriteService.updateItem(item);
+    } catch (e) {
+      _showError('Failed to update: ${e.toString()}');
+    }
+  }
+
+  void _shareItem(WardrobeItem item) {
+    // Hook up to your existing share implementation (e.g. share_plus)
+    _showMessage('Sharing ${item.name}...');
+  }
+
+  Future<void> _removeItem(WardrobeItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove item'),
+        content: Text('Remove "${item.name}" from your wardrobe?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final appwriteService = Provider.of<AppwriteService>(context, listen: false);
+      await appwriteService.deleteItem(item.id);
+      if (mounted) {
+        setState(() => _items.removeWhere((i) => i.id == item.id));
+      }
+      _showMessage('Removed ${item.name}');
+    } catch (e) {
+      _showError('Failed to remove: ${e.toString()}');
+    }
+  }
+
+  void _openEditFlow(WardrobeItem item) {
+    // Hook up to your existing edit screen/modal
+    _showMessage('Edit ${item.name}');
+  }
+
+  // ============================================================
+  // MESSAGES
   // ============================================================
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 
@@ -434,44 +556,331 @@ class _WardrobeState extends State<Wardrobe> with TickerProviderStateMixin {
   }
 
   // ============================================================
-  // KEEP EXISTING METHODS UNCHANGED
+  // BUILD
   // ============================================================
-  // _initCamera()
-  // _flipCamera()
-  // _toggleFlash()
-  // _fixOrientation()
-  // All other existing methods remain the same
-
   @override
   Widget build(BuildContext context) {
-    // Return your existing wardrobe UI
+    final t = Theme.of(context).extension<AppThemeTokens>()!;
+
     return Scaffold(
-      // ... your existing wardrobe screen UI ...
+      backgroundColor: const Color(0xFFFAFAFC),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                const AhviHeader(title: 'Wardrobe'),
+                Expanded(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _items.isEmpty
+                          ? _buildEmptyState(t)
+                          : _buildGrid(t),
+                ),
+              ],
+            ),
+
+            // -------------------------------------------
+            // Ask AHVI FAB - hides while scrolling (P0 #7)
+            // -------------------------------------------
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: AnimatedOpacity(
+                opacity: _fabVisible ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: AnimatedScale(
+                  scale: _fabVisible ? 1.0 : 0.85,
+                  duration: const Duration(milliseconds: 200),
+                  child: IgnorePointer(
+                    ignoring: !_fabVisible,
+                    child: _AskAhviFab(
+                      onTap: () {
+                        Navigator.of(context, rootNavigator: true).push(
+                          MaterialPageRoute(builder: (_) => const AhviStylistChat()),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddOptions,
+        backgroundColor: t.accent.primary,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+
+  // ============================================================
+  // EMPTY STATE
+  // ============================================================
+  Widget _buildEmptyState(AppThemeTokens t) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.checkroom, size: 64, color: t.accent.primary.withOpacity(0.4)),
+            const SizedBox(height: 16),
+            Text(
+              'Your wardrobe is empty',
+              style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tap + to add your first item with AHVI',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF8A8A8E)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // GRID (P0 #6: increased image area, trimmed metadata)
+  // ============================================================
+  Widget _buildGrid(AppThemeTokens t) {
+    return GridView.builder(
+      controller: _gridScrollCtrl,
+      // P0 #7: bottom padding so FAB never sits over content
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 0.68, // taller cards -> more image, less metadata
+      ),
+      itemCount: _items.length,
+      itemBuilder: (context, index) {
+        final item = _items[index];
+        return _WardrobeGridCard(
+          item: item,
+          accentColor: t.accent.primary,
+          onTap: () => showItemDetailModal(
+            context,
+            item: item,
+            allItems: _items,
+            onWore: () => _markWorn(item),
+            onEdit: () => _openEditFlow(item),
+            onLike: () => _toggleLike(item),
+            onShare: () => _shareItem(item),
+            onRemove: () => _removeItem(item),
+          ),
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // ADD OPTIONS (camera / gallery)
+  // ============================================================
+  void _showAddOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Take a photo'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _captureAndDetect();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from gallery'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickGallery();
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
 // ============================================================
-// OLD _AddItemModal CLASS - KEPT FOR BACKWARD COMPATIBILITY
+// GRID CARD (P0 #1 + #6)
 // ============================================================
-// You can optionally remove this if you fully migrate to the 3-step flow
-// Or keep it if you still need manual item entry without detection
+class _WardrobeGridCard extends StatelessWidget {
+  final WardrobeItem item;
+  final Color accentColor;
+  final VoidCallback onTap;
 
-class _AddItemModal extends StatefulWidget {
-  final void Function(Map<String, dynamic> item) onSave;
-  const _AddItemModal({required this.onSave});
+  const _WardrobeGridCard({
+    required this.item,
+    required this.accentColor,
+    required this.onTap,
+  });
 
-  @override
-  State<_AddItemModal> createState() => _AddItemModalState();
-}
-
-class _AddItemModalState extends State<_AddItemModal>
-    with TickerProviderStateMixin {
-  // ... existing implementation ...
-  // This can be removed if you don't need it anymore
-  
   @override
   Widget build(BuildContext context) {
-    return Container();
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // -------------------------------------------
+            // IMAGE (P0 #1: BoxFit.contain, not cover)
+            // -------------------------------------------
+            Expanded(
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                child: Container(
+                  width: double.infinity,
+                  color: const Color(0xFFEFEFF7),
+                  child: (item.displayUrl != null && item.displayUrl!.isNotEmpty)
+                      ? Image.network(
+                          item.displayUrl!,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.checkroom,
+                            size: 40,
+                            color: Color(0xFFBFBFD6),
+                          ),
+                        )
+                      : const Icon(Icons.checkroom, size: 40, color: Color(0xFFBFBFD6)),
+                ),
+              ),
+            ),
+
+            // -------------------------------------------
+            // METADATA (P0 #6: trimmed - name + cat + worn badge)
+            // -------------------------------------------
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A1A1A),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.cat,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: accentColor,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: item.worn == 0
+                              ? const Color(0xFFF2F2F7)
+                              : accentColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(100),
+                        ),
+                        child: Text(
+                          item.worn == 0 ? 'New' : '${item.worn}x',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: item.worn == 0 ? const Color(0xFF8A8A8E) : accentColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// ASK AHVI FAB
+// ============================================================
+class _AskAhviFab extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AskAhviFab({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<AppThemeTokens>()!;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(28),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          gradient: LinearGradient(
+            colors: [t.accent.primary, t.accent.secondary],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: t.accent.primary.withOpacity(0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.auto_awesome, size: 18, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(
+              'Ask AHVI',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
