@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/app_localizations.dart';
-import 'package:myapp/style_board/saved_board_card.dart';
 
 // ── Data model ───────────────────────────────────────────────────────────────
 class LookItem {
@@ -14,6 +13,7 @@ class LookItem {
   final String category;
   final String? imageUrl;
   final List<String> outfitImages;
+  final String filter;
   final LookBadgeStyle badge;
   final LookBgStyle bg;
 
@@ -25,6 +25,7 @@ class LookItem {
     required this.category,
     this.imageUrl,
     this.outfitImages = const [],
+    required this.filter,
     required this.badge,
     required this.bg,
   });
@@ -84,8 +85,7 @@ class _OccasionBoardState extends State<OccasionBoard> {
 
   bool _isLoading = true;
   String? _toastMessage;
-  List<dynamic> _boards = [];
-  Map<String, Map<String, dynamic>> _wardrobeById = const {};
+  List<LookItem> _looks = [];
 
   @override
   void initState() {
@@ -96,17 +96,59 @@ class _OccasionBoardState extends State<OccasionBoard> {
   Future<void> _fetchLooks() async {
     try {
       final appwrite = Provider.of<AppwriteService>(context, listen: false);
-      final results = await Future.wait([
-        appwrite.getSavedBoardsByOccasion(widget.occasion),
-        appwrite.getWardrobeItems(),
-      ]);
-      final docs = results[0] as List;
-      final wardrobe = results[1] as List<Map<String, dynamic>>;
+      final docs = await appwrite.getSavedBoardsByOccasion(widget.occasion);
+
+      final List<LookItem> loadedLooks = [];
+      for (var doc in docs) {
+        final badgeIndex = doc.$id.length % LookBadgeStyle.values.length;
+        final dynamicBadge = LookBadgeStyle.values[badgeIndex];
+        final dynamicBg = LookBgStyle.values[badgeIndex];
+
+        // Parse full outfit images (list of items or single imageUrl)
+        final rawItems = doc.data['outfitItems'];
+        final List<String> outfitImages = [];
+        if (rawItems is List) {
+          for (final item in rawItems) {
+            final url = item is Map
+                ? (item['imageUrl'] ?? item['url'] ?? '').toString()
+                : item.toString();
+            if (url.isNotEmpty) outfitImages.add(url);
+          }
+        }
+        final singleUrl = doc.data['thumbnailUrl']?.toString() ??
+            doc.data['imageUrl']?.toString() ??
+            '';
+        if (outfitImages.isEmpty && singleUrl.isNotEmpty) {
+          outfitImages.add(singleUrl);
+        }
+
+        final occasion =
+            (doc.data['boardCategoryLabel'] ?? widget.occasion).toString();
+
+        loadedLooks.add(
+          LookItem(
+            id: doc.$id,
+            title:
+                (doc.data['title'] ?? doc.data['occasion'] ?? widget.occasion)
+                    .toString(),
+            description:
+                (doc.data['outfitDescription'] ??
+                        'Custom ${widget.occasion} inspiration')
+                    .toString(),
+            emoji: (doc.data['emoji'] ?? widget.emptyEmoji).toString(),
+            category: occasion,
+            filter: occasion.toLowerCase(),
+            imageUrl: outfitImages.isNotEmpty ? outfitImages.first : null,
+            outfitImages: outfitImages,
+            badge: dynamicBadge,
+            bg: dynamicBg,
+          ),
+        );
+      }
 
       if (mounted) {
         setState(() {
-          _boards = docs;
-          _wardrobeById = _buildIdMap(wardrobe);
+          _looks = loadedLooks;
           _isLoading = false;
         });
       }
@@ -117,7 +159,7 @@ class _OccasionBoardState extends State<OccasionBoard> {
   }
 
   Future<void> _deleteLook(String id) async {
-    setState(() => _boards.removeWhere((board) => _boardId(board) == id));
+    setState(() => _looks.removeWhere((l) => l.id == id));
     try {
       final appwrite = Provider.of<AppwriteService>(context, listen: false);
       await appwrite.deleteSavedBoard(id);
@@ -134,42 +176,11 @@ class _OccasionBoardState extends State<OccasionBoard> {
     });
   }
 
-  Map<String, Map<String, dynamic>> _buildIdMap(
-    List<Map<String, dynamic>> items,
-  ) {
-    final byId = <String, Map<String, dynamic>>{};
-    for (final item in items) {
-      for (final rawId in [
-        item[r'$id'],
-        item['id'],
-        item['item_id'],
-        item['itemId'],
-        item['image_id'],
-        item['imageId'],
-      ]) {
-        final id = (rawId ?? '').toString().trim();
-        if (id.isNotEmpty) byId[id] = item;
-      }
-    }
-    return byId;
-  }
-
-  String _boardId(dynamic board) {
-    try {
-      final value = board.$id;
-      if (value != null) return value.toString();
-    } catch (_) {}
-    if (board is Map) {
-      return (board[r'$id'] ?? board['id'] ?? '').toString();
-    }
-    return '';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final countText = _boards.isEmpty
+    final countText = _looks.isEmpty
         ? context.tr('wardrobe_empty_title')
-        : '${_boards.length} ${context.tr('fitness_saved')}';
+        : '${_looks.length} ${context.tr('fitness_saved')}';
 
     return Scaffold(
       backgroundColor: _bg,
@@ -206,16 +217,16 @@ class _OccasionBoardState extends State<OccasionBoard> {
                             color: _t.accent.primary,
                           ),
                         )
-                      : _boards.isEmpty
+                      : _looks.isEmpty
                       ? _EmptyState(
                           titleKey: widget.titleKey,
-                          titleLabel: widget.titleLabel,
-                          occasion: widget.occasion,
                           emoji: widget.emptyEmoji,
                         )
                       : _LooksGrid(
-                          boards: _boards,
-                          wardrobeById: _wardrobeById,
+                          looks: _looks,
+                          onDelete: _deleteLook,
+                          onShare: (look) =>
+                              _showToast(context.tr('wardrobe_share')),
                         ),
                 ),
               ),
@@ -349,10 +360,15 @@ class _Header extends StatelessWidget {
 
 // ── Looks Grid ───────────────────────────────────────────────────────────────
 class _LooksGrid extends StatelessWidget {
-  final List<dynamic> boards;
-  final Map<String, Map<String, dynamic>> wardrobeById;
+  final List<LookItem> looks;
+  final void Function(String id) onDelete;
+  final void Function(LookItem look) onShare;
 
-  const _LooksGrid({required this.boards, required this.wardrobeById});
+  const _LooksGrid({
+    required this.looks,
+    required this.onDelete,
+    required this.onShare,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -364,9 +380,13 @@ class _LooksGrid extends StatelessWidget {
         mainAxisSpacing: 10,
         childAspectRatio: 0.56,
       ),
-      itemCount: boards.length,
-      itemBuilder: (context, index) =>
-          SavedBoardCard(source: boards[index], wardrobeById: wardrobeById),
+      itemCount: looks.length,
+      itemBuilder: (context, index) => _LookCard(
+        look: looks[index],
+        featured: index == 0,
+        onDelete: onDelete,
+        onShare: onShare,
+      ),
     );
   }
 }
@@ -448,7 +468,7 @@ class _LookCardState extends State<_LookCard> {
   @override
   Widget build(BuildContext context) {
     final look = widget.look;
-    final aspectRatio = widget.featured ? 2.0 : 1.0;
+    const aspectRatio = 1.2; // Uniform aspect ratio for all cards
     final onAccent = Theme.of(context).colorScheme.onPrimary;
 
     return MouseRegion(
@@ -482,19 +502,30 @@ class _LookCardState extends State<_LookCard> {
               // Image / placeholder
               Stack(
                 children: [
-                  look.outfitImages.length >= 2
+                  // Show full outfit: multiple items in a row, or fallback emoji
+                  look.outfitImages.isNotEmpty
                       ? AspectRatio(
                           aspectRatio: aspectRatio,
-                          child: _SavedLookImageGrid(images: look.outfitImages),
-                        )
-                      : look.imageUrl != null && look.imageUrl!.isNotEmpty
-                      ? AspectRatio(
-                          aspectRatio: aspectRatio,
-                          child: Image.network(
-                            look.imageUrl!,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                          ),
+                          child: look.outfitImages.length == 1
+                              ? Image.network(
+                                  look.outfitImages.first,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                )
+                              : Row(
+                                  children: look.outfitImages
+                                      .take(3)
+                                      .map(
+                                        (url) => Expanded(
+                                          child: Image.network(
+                                            url,
+                                            fit: BoxFit.cover,
+                                            height: double.infinity,
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
                         )
                       : AspectRatio(
                           aspectRatio: aspectRatio,
@@ -510,32 +541,52 @@ class _LookCardState extends State<_LookCard> {
                             ),
                           ),
                         ),
-                  // Delete button
+                  // Share & Delete buttons (always visible)
                   Positioned(
                     top: 10,
                     right: 10,
-                    child: AnimatedOpacity(
-                      opacity: _hovered ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: GestureDetector(
-                        onTap: () => widget.onDelete(look.id),
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: _t.phoneShellInner.withValues(alpha: 0.85),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: _t.cardBorder, width: 1),
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.close,
-                              size: 14,
-                              color: _t.textPrimary,
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => widget.onShare(look),
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: _t.phoneShellInner.withValues(alpha: 0.85),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: _t.cardBorder, width: 1),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                Icons.ios_share_rounded,
+                                size: 14,
+                                color: _t.textPrimary,
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () => widget.onDelete(look.id),
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: _t.phoneShellInner.withValues(alpha: 0.85),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: _t.cardBorder, width: 1),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                Icons.close,
+                                size: 14,
+                                color: _t.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -653,49 +704,11 @@ class _LookCardState extends State<_LookCard> {
   }
 }
 
-class _SavedLookImageGrid extends StatelessWidget {
-  final List<String> images;
-
-  const _SavedLookImageGrid({required this.images});
-
-  @override
-  Widget build(BuildContext context) {
-    final visible = images.take(5).toList();
-    return Container(
-      color: const Color(0xFFFFFCF5),
-      padding: const EdgeInsets.all(8),
-      child: GridView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        padding: EdgeInsets.zero,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 6,
-          mainAxisSpacing: 6,
-        ),
-        itemCount: visible.length,
-        itemBuilder: (context, index) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.network(visible[index], fit: BoxFit.contain),
-          );
-        },
-      ),
-    );
-  }
-}
-
 // ── Empty state ──────────────────────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   final String titleKey;
-  final String? titleLabel;
-  final String occasion;
   final String emoji;
-  const _EmptyState({
-    required this.titleKey,
-    required this.emoji,
-    this.titleLabel,
-    this.occasion = '',
-  });
+  const _EmptyState({required this.titleKey, required this.emoji});
 
   @override
   Widget build(BuildContext context) {
@@ -709,9 +722,7 @@ class _EmptyState extends StatelessWidget {
             Text(emoji, style: const TextStyle(fontSize: 52)),
             const SizedBox(height: 16),
             Text(
-              titleLabel?.trim().isNotEmpty == true
-                  ? titleLabel!.trim()
-                  : context.tr(titleKey),
+              context.tr(titleKey),
               style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 18,
@@ -721,9 +732,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              occasion.toLowerCase().startsWith('custom:')
-                  ? 'This board is empty. Save looks from AHVI chat or wardrobe to add them here.'
-                  : 'No looks saved here yet. Build one in AHVI chat and tap Save.',
+              context.tr('wardrobe_insight_empty'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: 'Inter',
