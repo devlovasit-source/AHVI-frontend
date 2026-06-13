@@ -421,19 +421,19 @@ class _Ahvi3StepUploadModalState extends State<Ahvi3StepUploadModal>
             ),
           const SizedBox(height: 16),
           
-          // Product image
+          // Product image — BoxFit.contain shows full garment, no crop
           Container(
             width: 280,
             height: 280,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              color: Colors.grey[200],
+              color: const Color(0xFFEFEFF7),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.network(
                 item.imageUrl,
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => Container(
                   color: Colors.grey[300],
                   child: Icon(
@@ -828,7 +828,7 @@ class _Ahvi3StepUploadModalState extends State<Ahvi3StepUploadModal>
                       child: Text(
                         isSingleItem
                             ? 'Add to Wardrobe'
-                            : 'Add ${selectedCount > 0 ? selectedCount : 0} items',
+                            : 'Add $selectedCount/${widget.detectedItems.length} items to Wardrobe',
                         style: GoogleFonts.inter(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
