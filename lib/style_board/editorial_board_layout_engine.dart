@@ -2,6 +2,25 @@ import 'dart:math' as math;
 
 import 'board_models.dart';
 
+/// Position information for a board item in the layout
+class BoardItemPosition {
+  final double top;
+  final double left;
+  final double width;
+  final double height;
+  final double rotation; // In radians
+  final int zIndex;
+  
+  BoardItemPosition({
+    required this.top,
+    required this.left,
+    required this.width,
+    required this.height,
+    this.rotation = 0.0,
+    required this.zIndex,
+  });
+}
+
 class EditorialBoardLayoutEngine {
   static EditorialLayoutResult resolve(
     StyleBoardData board, {
@@ -62,6 +81,28 @@ class EditorialBoardLayoutEngine {
     }
 
     return _generic(items: board.items, width: width, height: height);
+  }
+
+  /// Convenience method that converts BoardItemPlacement to BoardItemPosition format
+  /// Useful for UI frameworks that expect top/left coordinates instead of x/y
+  static List<BoardItemPosition> calculateLayout(
+    List<StyleBoardItem> items, {
+    required double width,
+    required double height,
+  }) {
+    final board = StyleBoardData(items: items);
+    final result = resolve(board, width: width, height: height);
+    
+    return result.placements
+        .map((placement) => BoardItemPosition(
+          top: placement.y,
+          left: placement.x,
+          width: placement.width,
+          height: placement.height,
+          rotation: placement.rotation,
+          zIndex: placement.zIndex,
+        ))
+        .toList();
   }
 
   static StyleBoardItem? _firstOf(
