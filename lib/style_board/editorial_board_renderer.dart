@@ -30,17 +30,24 @@ class EditorialBoardCanvas extends StatelessWidget {
             height: h,
           );
 
+          // Sort by zIndex so higher-zIndex items render on top.
+          final sortedPlacements = [...layout.placements]
+            ..sort((a, b) => (a.zIndex ?? 0).compareTo(b.zIndex ?? 0));
+
           return Stack(
             clipBehavior: Clip.none,
             children: [
               const _EditorialBackgroundDecor(),
-              ...layout.placements.map((p) {
+              ...sortedPlacements.map((p) {
                 return Positioned(
                   left: p.x,
                   top: p.y,
                   width: p.width,
                   height: p.height,
-                  child: EditorialBoardItem(item: p.item, rotation: p.rotation),
+                  child: _ShadowedBoardItem(
+                    item: p.item,
+                    rotation: p.rotation,
+                  ),
                 );
               }),
               Positioned(
@@ -243,6 +250,78 @@ class _BoardStoryExpandableState extends State<BoardStoryExpandable> {
         ],
       ),
     );
+  }
+}
+
+/// Wraps [EditorialBoardItem] (or a bare [Image.network] fallback) with the
+/// drop-shadow and rounded-corner treatment from [EditorialBoardRenderer].
+///
+/// Rotation is applied *outside* the shadow container so the shadow rotates
+/// with the item, matching the collage aesthetic.
+class _ShadowedBoardItem extends StatelessWidget {
+  final dynamic item; // BoardItem / FashionItem – whatever your model exposes
+  final double rotation;
+
+  const _ShadowedBoardItem({required this.item, required this.rotation});
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.rotate(
+      angle: rotation,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          // Prefer the rich EditorialBoardItem widget; fall back to a plain
+          // Image.network when the item only carries a URL string.
+          child: _buildItemChild(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildItemChild() {
+    // If the item is a plain URL string, render it directly.
+    if (item is String) {
+      return Image.network(
+        item as String,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFFF0EBF4)),
+      );
+    }
+
+    // If the model exposes an imageUrl field and no richer widget is available,
+    // fall back to Image.network.
+    final url = _tryImageUrl(item);
+    if (url != null && url.isNotEmpty) {
+      // Still delegate to EditorialBoardItem so it can overlay badges / labels.
+      // EditorialBoardItem is expected to render the image internally.
+      return EditorialBoardItem(item: item, rotation: 0);
+    }
+
+    return EditorialBoardItem(item: item, rotation: 0);
+  }
+
+  static String? _tryImageUrl(dynamic item) {
+    try {
+      // Covers both `imageUrl` and `url` field names.
+      return (item as dynamic).imageUrl as String?;
+    } catch (_) {
+      try {
+        return (item as dynamic).url as String?;
+      } catch (_) {
+        return null;
+      }
+    }
   }
 }
 
