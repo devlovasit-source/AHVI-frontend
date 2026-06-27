@@ -236,14 +236,14 @@ class _SkincareScreenState extends State<SkincareScreen>
       return AppLocalizations.t(context, 'skin_select_type_hint');
     }
     if (_concerns.isEmpty) {
-      return '$_skinType skin Â· ${_isNight ? 'night' : 'day'} routine Â· Pick your concerns';
+      return '$_skinType skin \u00B7 ${_isNight ? 'night' : 'day'} routine \u00B7 Pick your concerns';
     }
     if (_completed == 0) {
-      return '$_skinType Â· ${_concerns.join(', ')} Â· Tap a step to start!';
+      return '$_skinType \u00B7 ${_concerns.join(', ')} \u00B7 Tap a step to start!';
     }
     if (_completed < _total) {
       final rem = _total - _completed;
-      return '${(_progressPct * 100).round()}% done Â· $rem step${rem > 1 ? 's' : ''} remaining';
+      return '${(_progressPct * 100).round()}% done \u00B7 $rem step${rem > 1 ? 's' : ''} remaining';
     }
     return AppLocalizations.t(
       context,
@@ -287,6 +287,19 @@ class _SkincareScreenState extends State<SkincareScreen>
         .toList();
   }
 
+  bool _isSameLocalDay(String? iso) {
+    if (iso == null || iso.trim().isEmpty) return false;
+    try {
+      final saved = DateTime.parse(iso).toLocal();
+      final now = DateTime.now();
+      return saved.year == now.year &&
+          saved.month == now.month &&
+          saved.day == now.day;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _loadSkincareProfile() async {
     if (_profileLoading) return;
     _profileLoading = true;
@@ -302,8 +315,13 @@ class _SkincareScreenState extends State<SkincareScreen>
             .map((e) => e.toString())
             .where((e) => e.trim().isNotEmpty)
             .toList();
-        _dayCompletedSteps = _intList(data['daySteps']).toSet();
-        _nightCompletedSteps = _intList(data['nightSteps']).toSet();
+        final keepTodayProgress = _isSameLocalDay(data['lastUpdated']?.toString());
+        _dayCompletedSteps = keepTodayProgress
+            ? _intList(data['daySteps']).toSet()
+            : <int>{};
+        _nightCompletedSteps = keepTodayProgress
+            ? _intList(data['nightSteps']).toSet()
+            : <int>{};
       });
     } catch (_) {
       // Keep the screen usable offline; the next selection will retry save.
@@ -1092,7 +1110,7 @@ class _SkincareScreenState extends State<SkincareScreen>
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Center(
-              child: Text('ðŸ’¡', style: TextStyle(fontSize: 16)),
+              child: Text('\u{1F4A1}', style: TextStyle(fontSize: 16)),
             ),
           ),
           const SizedBox(width: 10),
@@ -1650,7 +1668,7 @@ class _ChatOverlayState extends State<_ChatOverlay>
             // FIX: removed `const` â€” Text style uses runtime color getter _accent
             child: Center(
               child: Text(
-                'âœ¦',
+                '\u2726',
                 style: TextStyle(fontSize: 18, color: _accent),
               ),
             ),
@@ -1708,7 +1726,7 @@ class _ChatOverlayState extends State<_ChatOverlay>
               // FIX: removed `const` â€” Text style uses runtime color getter _muted
               child: Center(
                 child: Text(
-                  'âœ•',
+                  '\u2715',
                   style: TextStyle(fontSize: 14, color: _muted),
                 ),
               ),
@@ -1764,7 +1782,7 @@ class _ChatOverlayState extends State<_ChatOverlay>
           ),
           // FIX: removed `const` â€” Text style uses runtime color getter _accent
           child: Center(
-            child: Text('âœ¦', style: TextStyle(fontSize: 24, color: _accent)),
+            child: Text('\u2726', style: TextStyle(fontSize: 24, color: _accent)),
           ),
         ),
         const SizedBox(height: 8),
@@ -1854,7 +1872,7 @@ class _ChatOverlayState extends State<_ChatOverlay>
                     border: Border.all(color: _cardBorder),
                   ),
                   child: const Center(
-                    child: Text('ðŸ‘¤', style: TextStyle(fontSize: 11)),
+                    child: Text('\u{1F464}', style: TextStyle(fontSize: 11)),
                   ),
                 ),
               ]
@@ -1869,7 +1887,7 @@ class _ChatOverlayState extends State<_ChatOverlay>
                   // FIX: removed `const` â€” Text style uses runtime getter _accent
                   child: Center(
                     child: Text(
-                      'âœ¦',
+                      '\u2726',
                       style: TextStyle(fontSize: 12, color: _accent),
                     ),
                   ),
@@ -1940,7 +1958,7 @@ class _ChatOverlayState extends State<_ChatOverlay>
           ),
           // FIX: removed `const` â€” Text style uses runtime getter _accent
           child: Center(
-            child: Text('âœ¦', style: TextStyle(fontSize: 12, color: _accent)),
+            child: Text('\u2726', style: TextStyle(fontSize: 12, color: _accent)),
           ),
         ),
         const SizedBox(width: 9),
@@ -2482,7 +2500,7 @@ class _AskAhviFabState extends State<_AskAhviFab>
                   radius: 11,
                   backgroundColor: Colors.white.withValues(alpha: 0.18),
                   child: const Text(
-                    'âœ¦',
+                    '\u2726',
                     style: TextStyle(fontSize: 11, color: Colors.white),
                   ),
                 ),
