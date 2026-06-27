@@ -9,7 +9,11 @@ import 'package:myapp/widgets/ahvi_stylist_chat.dart';
 import 'package:myapp/widgets/ahvi_lens_sheet.dart';
 
 class MediTrackScreen extends StatefulWidget {
-  const MediTrackScreen({super.key});
+  final String? reminderMedId;
+
+  final String? reminderId;
+
+  const MediTrackScreen({super.key, this.reminderMedId, this.reminderId});
 
   @override
   State<MediTrackScreen> createState() => _MediTrackScreenState();
@@ -99,7 +103,15 @@ class _MediTrackScreenState extends State<MediTrackScreen>
       end: 0.0,
     ).animate(CurvedAnimation(parent: _ringCtrl, curve: Curves.easeOut));
 
-    _fetchData();
+    _fetchData();
+
+    if ((widget.reminderMedId ?? '').isNotEmpty ||
+        (widget.reminderId ?? '').isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _showToast('Medicine reminder opened', '💊');
+      });
+    }
   }
 
   @override
@@ -208,8 +220,11 @@ class _MediTrackScreenState extends State<MediTrackScreen>
     _prevRingProgress = newProgress;
   }
 
-  void _markTaken(String id) async {
-    final medIndex = meds.indexWhere((m) => m['id'] == id);
+  void _markTaken(String id) async {
+
+    debugPrint('AHVI_MED_MARK_TAKEN medId=$id');
+
+    final medIndex = meds.indexWhere((m) => m['id'] == id);
     if (medIndex == -1 || meds[medIndex]['taken']) return;
 
     final med = meds[medIndex];

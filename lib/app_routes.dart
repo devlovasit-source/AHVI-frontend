@@ -16,4 +16,5 @@ class AppRoutes {
   static const String calendar = '/calendar';
   static const String boards = '/boards';
   static const String mealPlanner = '/meal-planner';
+  static const String medi = '/medi';
 }

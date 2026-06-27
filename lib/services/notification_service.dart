@@ -19,7 +19,17 @@ class AhviNotificationService {
   static const String _tokenKey = 'ahvi_fcm_token';
   bool _firebaseReady = false;
   bool _initAttempted = false;
+  bool _handlersInstalled = false;
   StreamSubscription<String>? _refreshSub;
+  StreamSubscription<RemoteMessage>? _openedSub;
+  StreamSubscription<RemoteMessage>? _foregroundSub;
+  void Function(Map<String, String> data)? _onMediReminder;
+
+  void configureMediReminderHandler(
+    void Function(Map<String, String> data) onMediReminder,
+  ) {
+    _onMediReminder = onMediReminder;
+  }
 
   Future<bool> _ensureFirebase() async {
     if (_firebaseReady) return true;
@@ -60,6 +70,7 @@ class AhviNotificationService {
     if (!ready) return;
 
     try {
+      await _installMessageHandlers();
       final settings = await FirebaseMessaging.instance.requestPermission(
         alert: true,
         badge: true,
@@ -77,6 +88,48 @@ class AhviNotificationService {
       });
     } catch (e) {
       debugPrint('AHVI notification registration skipped: $e');
+    }
+  }
+
+  bool _isMediReminder(Map<String, dynamic> data) {
+    final action = (data['action'] ?? '').toString();
+    final screen = (data['screen'] ?? '').toString();
+    return action == 'med_reminder' || screen == 'medi';
+  }
+
+  Map<String, String> _stringData(Map<String, dynamic> data) {
+    return data.map((key, value) => MapEntry(key.toString(), value.toString()));
+  }
+
+  void _handleMediReminder(RemoteMessage message, String source) {
+    final data = _stringData(message.data);
+    if (!_isMediReminder(data)) return;
+    if (source == 'foreground') {
+      debugPrint('AHVI_MED_NOTIFICATION_FOREGROUND data=$data');
+    } else {
+      debugPrint('AHVI_MED_NOTIFICATION_OPENED source=$source data=$data');
+    }
+    _onMediReminder?.call(data);
+  }
+
+  Future<void> _installMessageHandlers() async {
+    final ready = await _ensureFirebase();
+    if (!ready || _handlersInstalled) return;
+    _handlersInstalled = true;
+
+    try {
+      final initial = await FirebaseMessaging.instance.getInitialMessage();
+      if (initial != null) {
+        _handleMediReminder(initial, 'initial');
+      }
+      _openedSub ??= FirebaseMessaging.onMessageOpenedApp.listen(
+        (message) => _handleMediReminder(message, 'opened'),
+      );
+      _foregroundSub ??= FirebaseMessaging.onMessage.listen(
+        (message) => _handleMediReminder(message, 'foreground'),
+      );
+    } catch (e) {
+      debugPrint('AHVI notification handlers skipped: $e');
     }
   }
 
