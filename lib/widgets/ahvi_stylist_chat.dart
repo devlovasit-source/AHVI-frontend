@@ -153,10 +153,9 @@ _MedicineReminderIntent? _extractMedicineReminderIntent(String value) {
   final hasReminderWord =
       lower.contains('remind') || lower.contains('reminder');
 
-  final hasMedicineWord =
-      lower.contains('medicine') ||
-      lower.contains('medication') ||
-      lower.contains('take');
+  final hasMedicineWord = RegExp(
+    r'\b(?:take|medicine|medication|meds|tablet|pill)\b',
+  ).hasMatch(lower);
 
   if (!hasReminderWord || !hasMedicineWord) return null;
 
@@ -179,13 +178,13 @@ _MedicineReminderIntent? _extractMedicineReminderIntent(String value) {
     ),
 
     RegExp(
-      r'\bset\s+(?:a\s+)?(?:medicine|medication)\s+reminder\s+for\s+(.+?)(?:\s+at\s+|$)',
+      r'\bset\s+(?:a\s+)?(?:medicine|medication|meds|tablet|pill)\s+reminder\s+for\s+(.+?)(?:\s+at\s+|$)',
 
       caseSensitive: false,
     ),
 
     RegExp(
-      r'\b(?:medicine|medication)\s+reminder\s+for\s+(.+?)(?:\s+at\s+|$)',
+      r'\b(?:medicine|medication|meds|tablet|pill)\s+reminder\s+for\s+(.+?)(?:\s+at\s+|$)',
 
       caseSensitive: false,
     ),
@@ -919,8 +918,6 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
   }
 
   Future<bool> _tryScheduleMedicineReminderFromChat(String text) async {
-    if (widget.moduleContext.toLowerCase() != 'medi') return false;
-
     final intent = _extractMedicineReminderIntent(text);
 
     if (intent == null) return false;
@@ -965,7 +962,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       final doseText = dose.isEmpty ? '' : ' $dose';
 
       debugPrint(
-        'AHVI_CHAT_MED_REMINDER_PARSED med=$medName raw_time=${intent.timeText} send_at=${sendAt.toIso8601String()}',
+        'AHVI_CHAT_MED_REMINDER_GLOBAL_INTERCEPT module=${widget.moduleContext} med=$medName raw_time=${intent.timeText} send_at=${sendAt.toIso8601String()}',
       );
 
       final ok = await backend.scheduleReminder(
