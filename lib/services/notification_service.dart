@@ -5,6 +5,7 @@ import 'dart:io' show Platform;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,13 +18,129 @@ class AhviNotificationService {
   static final AhviNotificationService instance = AhviNotificationService._();
 
   static const String _tokenKey = 'ahvi_fcm_token';
+  static const String _unreadKey = 'ahvi_medi_notification_unread_count';
+  static const String _latestKey = 'ahvi_medi_notification_latest';
+  static const String _reminderChannelId = 'ahvi_reminders';
+  static const String _reminderChannelName = 'AHVI Reminders';
+
+  final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
+
   bool _firebaseReady = false;
   bool _initAttempted = false;
   bool _handlersInstalled = false;
+  bool _localNotificationsReady = false;
+  bool _unreadLoaded = false;
   StreamSubscription<String>? _refreshSub;
   StreamSubscription<RemoteMessage>? _openedSub;
   StreamSubscription<RemoteMessage>? _foregroundSub;
   void Function(Map<String, String> data)? _onMediReminder;
+
+  Future<void> _loadUnreadCount() async {
+    if (_unreadLoaded) return;
+    _unreadLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      unreadCount.value = prefs.getInt(_unreadKey) ?? 0;
+    } catch (e) {
+      debugPrint('AHVI notification unread load skipped: $e');
+    }
+  }
+
+  Future<void> markMediNotificationsRead() async {
+    unreadCount.value = 0;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_unreadKey, 0);
+    } catch (e) {
+      debugPrint('AHVI notification unread reset skipped: $e');
+    }
+  }
+
+  Future<void> _storeForegroundMediReminder(Map<String, String> data) async {
+    await _loadUnreadCount();
+    final nextCount = unreadCount.value + 1;
+    unreadCount.value = nextCount;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_unreadKey, nextCount);
+      await prefs.setString(_latestKey, jsonEncode(data));
+    } catch (e) {
+      debugPrint('AHVI notification foreground store skipped: $e');
+    }
+  }
+
+  Future<void> _ensureLocalNotifications() async {
+    if (_localNotificationsReady || kIsWeb) return;
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initSettings = InitializationSettings(android: androidInit);
+    await _localNotifications.initialize(
+      settings: initSettings,
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload ?? '';
+        if (payload.isEmpty) return;
+        try {
+          final decoded = jsonDecode(payload);
+          if (decoded is Map) {
+            final data = _stringData(Map<String, dynamic>.from(decoded));
+            if (_isMediReminder(data)) {
+              _onMediReminder?.call(data);
+            }
+          }
+        } catch (e) {
+          debugPrint('AHVI notification tap payload ignored: $e');
+        }
+      },
+    );
+
+    if (Platform.isAndroid) {
+      const channel = AndroidNotificationChannel(
+        _reminderChannelId,
+        _reminderChannelName,
+        importance: Importance.high,
+        playSound: true,
+      );
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.createNotificationChannel(channel);
+    }
+    _localNotificationsReady = true;
+  }
+
+  Future<void> _showForegroundMediNotification(
+    RemoteMessage message,
+    Map<String, String> data,
+  ) async {
+    await _ensureLocalNotifications();
+    if (!_localNotificationsReady || !Platform.isAndroid) return;
+
+    final title =
+        message.notification?.title ?? data['title'] ?? 'Medicine reminder';
+    final body =
+        message.notification?.body ??
+        data['body'] ??
+        data['message'] ??
+        'Time to take your medicine.';
+    const androidDetails = AndroidNotificationDetails(
+      _reminderChannelId,
+      _reminderChannelName,
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+      channelShowBadge: true,
+    );
+    const details = NotificationDetails(android: androidDetails);
+    await _localNotifications.show(
+      id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+      title: title,
+      body: body,
+      notificationDetails: details,
+      payload: jsonEncode(data),
+    );
+  }
 
   void configureMediReminderHandler(
     void Function(Map<String, String> data) onMediReminder,
@@ -41,6 +158,7 @@ class AhviNotificationService {
         await Firebase.initializeApp();
       }
       _firebaseReady = true;
+      await _loadUnreadCount();
       return true;
     } catch (e) {
       debugPrint('AHVI notifications disabled: Firebase not configured ($e)');
@@ -101,11 +219,14 @@ class AhviNotificationService {
     return data.map((key, value) => MapEntry(key.toString(), value.toString()));
   }
 
-  void _handleMediReminder(RemoteMessage message, String source) {
+  Future<void> _handleMediReminder(RemoteMessage message, String source) async {
     final data = _stringData(message.data);
     if (!_isMediReminder(data)) return;
     if (source == 'foreground') {
       debugPrint('AHVI_MED_NOTIFICATION_FOREGROUND data=$data');
+      await _storeForegroundMediReminder(data);
+      await _showForegroundMediNotification(message, data);
+      return;
     } else {
       debugPrint('AHVI_MED_NOTIFICATION_OPENED source=$source data=$data');
     }
@@ -120,13 +241,13 @@ class AhviNotificationService {
     try {
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) {
-        _handleMediReminder(initial, 'initial');
+        await _handleMediReminder(initial, 'initial');
       }
       _openedSub ??= FirebaseMessaging.onMessageOpenedApp.listen(
-        (message) => _handleMediReminder(message, 'opened'),
+        (message) => unawaited(_handleMediReminder(message, 'opened')),
       );
       _foregroundSub ??= FirebaseMessaging.onMessage.listen(
-        (message) => _handleMediReminder(message, 'foreground'),
+        (message) => unawaited(_handleMediReminder(message, 'foreground')),
       );
     } catch (e) {
       debugPrint('AHVI notification handlers skipped: $e');
