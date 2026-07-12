@@ -155,6 +155,23 @@ void main() {
       },
     );
 
+    test('accessory subtype stays in items but shuffle slot is canonical', () {
+      const api = StyleBoardApiService();
+      final accessory = StyleBoardItem.fromJson({
+        ...itemJson('bag-1', 'accessory'),
+        'accessory_type': 'bag',
+      });
+      final payload = api.buildShufflePayload(
+        board: StyleBoardState(
+          boardId: 'board-123',
+          revision: 1,
+          items: [accessory],
+        ),
+      );
+      expect(payload['shuffle_slots'], ['accessory']);
+      expect((payload['board_items'] as List).single['accessory_type'], 'bag');
+    });
+
     test('typed failure restores exact snapshot', () async {
       final initial = boardState(locked: {'top'});
       final controller = StyleBoardController(

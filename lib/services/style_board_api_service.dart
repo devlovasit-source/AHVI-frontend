@@ -65,10 +65,7 @@ class StyleBoardApiService {
     );
     final slots = <String>{
       for (final item in board.items)
-        if (!board.lockedItemIds.contains(item.itemId))
-          item.role == BoardItemRole.accessory && item.accessoryType.isNotEmpty
-              ? item.accessoryType
-              : item.slot,
+        if (!board.lockedItemIds.contains(item.itemId)) item.slot,
     }..removeWhere((slot) => slot.isEmpty);
     return {
       'scenario': 'shuffle_unlocked',

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/ahvi_outfit_board_card.dart';
+import 'package:myapp/feature/chat/services/ahvi_block_response_parser.dart';
+import 'package:myapp/feature/chat/models/ahvi_response_block.dart';
 import 'package:myapp/services/style_board_api_service.dart';
 import 'package:myapp/style_board/board_models.dart';
 import 'package:myapp/style_board/style_board_state.dart';
@@ -107,6 +109,55 @@ void main() {
     expect(find.text('0 of 3 items locked'), findsOneWidget);
     expect(find.text('Unlock all'), findsNothing);
     expect(apiCalls, 0);
+  });
+
+  testWidgets('actual chat parser preserves connected Build Outfit contract', (
+    tester,
+  ) async {
+    final parsed = parseAhviResponse({
+      'success': true,
+      'style_boards': [_board()],
+    });
+    final block = parsed.blocks.singleWhere(
+      (block) => block.type == AhviBlockType.visualDirections,
+    );
+    final directions = (block.data['directions'] as List)
+        .whereType<Map>()
+        .map((value) => Map<String, dynamic>.from(value))
+        .toList();
+    expect(directions.single['board_id'], 'board-1');
+    expect(directions.single['revision'], 1);
+    expect(
+      (directions.single['board_items'] as List).first['item_id'],
+      'anchor',
+    );
+
+    await _pumpCard(
+      tester,
+      board: directions.single,
+      shuffleCall: (state) async => _success(state),
+    );
+    expect(find.text('1 of 3 items locked'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('anchor')), findsOneWidget);
+  });
+
+  testWidgets('revision conflict rolls back and shows safe conflict message', (
+    tester,
+  ) async {
+    await _pumpCard(
+      tester,
+      board: _board(),
+      shuffleCall: (_) async =>
+          throw const StyleBoardApiException('BOARD_REVISION_CONFLICT'),
+    );
+    await tester.tap(find.text('Shuffle unlocked pieces'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('bottom-1')), findsOneWidget);
+    expect(find.text('1 of 3 items locked'), findsOneWidget);
+    expect(
+      find.text('This board changed. Your current look has been preserved.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('loading keeps old items and affects only unlocked pieces', (

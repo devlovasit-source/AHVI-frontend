@@ -1555,6 +1555,16 @@ String? _transparentUrlFor(
     if (imageUrl.isNotEmpty) return imageUrl;
   }
 
+  final source = (item['source'] ?? '').toString().trim();
+  final imageUrl = (item['image_url'] ?? item['imageUrl'] ?? '')
+      .toString()
+      .trim();
+  if ((itemId ?? '').trim().isNotEmpty &&
+      source.isNotEmpty &&
+      imageUrl.isNotEmpty) {
+    return imageUrl;
+  }
+
   debugPrint(
     'AHVI_BOARD_ASSET_SKIPPED_NON_TRANSPARENT '
     'item_id=${itemId ?? ""} '

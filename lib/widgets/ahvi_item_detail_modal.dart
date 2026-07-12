@@ -21,8 +21,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/wardrobe.dart'; // WardrobeItem lives here
 import 'package:myapp/services/backend_service.dart'; // styleWardrobeItem
+import 'package:myapp/feature/chat/widgets/blocks/visual_directions/ahvi_outfit_board_card.dart';
 import 'package:myapp/style_board/board_models.dart';
-import 'package:myapp/style_board/board_renderer.dart';
 import 'package:myapp/style_board/board_layout_engine.dart';
 import 'pairing_engine.dart';
 
@@ -404,9 +404,8 @@ class _ItemDetailModal extends StatelessWidget {
     showDialog<void>(
       context: appContext,
       barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: Colors.white),
-      ),
+      builder: (_) =>
+          const Center(child: CircularProgressIndicator(color: Colors.white)),
     );
 
     debugPrint('AHVI_MODAL_GUARD start flow=styleCta');
@@ -441,9 +440,7 @@ class _ItemDetailModal extends StatelessWidget {
     if (!appContext.mounted) return;
     if (timedOut) {
       ScaffoldMessenger.maybeOf(appContext)?.showSnackBar(
-        const SnackBar(
-          content: Text('This took too long. Please try again.'),
-        ),
+        const SnackBar(content: Text('This took too long. Please try again.')),
       );
       return;
     }
@@ -477,23 +474,35 @@ class _ItemDetailModal extends StatelessWidget {
         : <Map<String, dynamic>>[];
     final Map<String, dynamic>? outfit =
         (mode == 'build_outfit' && result?['outfit'] is Map)
-            ? Map<String, dynamic>.from(result!['outfit'] as Map)
-            : null;
+        ? Map<String, dynamic>.from(result!['outfit'] as Map)
+        : null;
     final bool isAnchorBoard =
         outfit != null && outfit['payload_type'] == 'ANCHOR_OUTFIT_BOARD';
+    final bool hasBuildBoardContract =
+        outfit != null &&
+        (outfit['board_id'] ?? '').toString().trim().isNotEmpty &&
+        outfit['revision'] is num;
+    final bool hasStyleBoardContract = directions.any(
+      (direction) =>
+          (direction['board_id'] ?? '').toString().trim().isNotEmpty &&
+          direction['revision'] is num,
+    );
+    final bool usesActiveBoard = hasBuildBoardContract || hasStyleBoardContract;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => DraggableScrollableSheet(
-        initialChildSize: isAnchorBoard ? 0.9 : 0.7,
+        initialChildSize: isAnchorBoard || usesActiveBoard ? 0.9 : 0.7,
         minChildSize: 0.4,
         maxChildSize: 0.95,
         expand: false,
         builder: (ctx, scrollCtrl) => Container(
           decoration: BoxDecoration(
-            color: isAnchorBoard ? Colors.white : const Color(0xFF14110F),
+            color: isAnchorBoard || usesActiveBoard
+                ? Colors.white
+                : const Color(0xFF14110F),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
@@ -505,7 +514,7 @@ class _ItemDetailModal extends StatelessWidget {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: isAnchorBoard
+                    color: isAnchorBoard || usesActiveBoard
                         ? const Color(0x1A000000)
                         : Colors.white24,
                     borderRadius: BorderRadius.circular(2),
@@ -516,7 +525,7 @@ class _ItemDetailModal extends StatelessWidget {
               Text(
                 mode == 'style_this' ? 'Style Directions' : 'Build Outfit',
                 style: TextStyle(
-                  color: isAnchorBoard
+                  color: isAnchorBoard || usesActiveBoard
                       ? const Color(0xFF1A1A1A)
                       : Colors.white,
                   fontSize: 22,
@@ -527,7 +536,7 @@ class _ItemDetailModal extends StatelessWidget {
               Text(
                 item.name,
                 style: TextStyle(
-                  color: isAnchorBoard
+                  color: isAnchorBoard || usesActiveBoard
                       ? const Color(0xFF8A8A8E)
                       : Colors.white60,
                   fontSize: 13,
@@ -540,11 +549,39 @@ class _ItemDetailModal extends StatelessWidget {
                       ? message
                       : _friendlyFail,
                 ),
-              if (mode == 'style_this')
+              if (mode == 'style_this' && hasStyleBoardContract)
+                ...directions.map(
+                  (direction) => Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: AhviOutfitBoardCard(
+                      direction: {
+                        ...direction,
+                        'direction_name': direction['title'],
+                        'board_items': direction['items'],
+                      },
+                      width: MediaQuery.sizeOf(ctx).width - 40,
+                    ),
+                  ),
+                ),
+              if (mode == 'style_this' && !hasStyleBoardContract)
                 ...directions.map((d) => _StyleDirectionCard(direction: d)),
-              if (mode == 'build_outfit' && isAnchorBoard && outfit != null)
+              if (mode == 'build_outfit' && hasBuildBoardContract)
+                AhviOutfitBoardCard(
+                  direction: {
+                    ...outfit,
+                    'direction_name': outfit['title'],
+                    'board_items': outfit['items'],
+                  },
+                  width: MediaQuery.sizeOf(ctx).width - 40,
+                ),
+              if (mode == 'build_outfit' &&
+                  !hasBuildBoardContract &&
+                  isAnchorBoard)
                 _AnchorOutfitBoardCard(outfit: outfit),
-              if (mode == 'build_outfit' && !isAnchorBoard && outfit != null)
+              if (mode == 'build_outfit' &&
+                  !hasBuildBoardContract &&
+                  !isAnchorBoard &&
+                  outfit != null)
                 _StyleDirectionCard(direction: outfit, reasonKey: 'reason'),
             ],
           ),
@@ -1469,7 +1506,11 @@ class _StyleNotice extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
+        style: const TextStyle(
+          color: Colors.white70,
+          fontSize: 13,
+          height: 1.35,
+        ),
       ),
     );
   }
@@ -1512,11 +1553,12 @@ class _StyleDirectionCard extends StatelessWidget {
     final title = (direction['title'] ?? 'Your Look').toString();
     final items = _names(direction['items']);
     final missing = _missing(direction['missing_items']);
-    final note = (direction[reasonKey] ??
-            direction['styling_note'] ??
-            direction['reason'] ??
-            '')
-        .toString();
+    final note =
+        (direction[reasonKey] ??
+                direction['styling_note'] ??
+                direction['reason'] ??
+                '')
+            .toString();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -1562,8 +1604,9 @@ class _StyleDirectionCard extends StatelessWidget {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children:
-                  items.map((n) => _StyleChip(label: n, accent: false)).toList(),
+              children: items
+                  .map((n) => _StyleChip(label: n, accent: false))
+                  .toList(),
             ),
           ],
           if (missing.isNotEmpty) ...[
@@ -1580,8 +1623,9 @@ class _StyleDirectionCard extends StatelessWidget {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children:
-                  missing.map((n) => _StyleChip(label: n, accent: true)).toList(),
+              children: missing
+                  .map((n) => _StyleChip(label: n, accent: true))
+                  .toList(),
             ),
           ],
         ],
@@ -1600,8 +1644,9 @@ class _StyleChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color:
-            accent ? const Color(0x332E7D5B) : Colors.white.withOpacity(0.08),
+        color: accent
+            ? const Color(0x332E7D5B)
+            : Colors.white.withOpacity(0.08),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: accent ? const Color(0x662E7D5B) : Colors.white12,
@@ -1659,19 +1704,13 @@ class _AnchorOutfitBoardCard extends StatelessWidget {
   List<Map<String, dynamic>> _rawItems() {
     final v = outfit['board_items'] ?? outfit['items'];
     if (v is! List) return <Map<String, dynamic>>[];
-    return v
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
+    return v.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   List<Map<String, dynamic>> _missingItems() {
     final v = outfit['missing_items'];
     if (v is! List) return <Map<String, dynamic>>[];
-    return v
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
+    return v.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   @override
@@ -1679,7 +1718,9 @@ class _AnchorOutfitBoardCard extends StatelessWidget {
     final rawItems = _rawItems();
     final missing = _missingItems();
     final stylingNote =
-        outfit['styling_notes']?.toString() ?? outfit['reason']?.toString() ?? '';
+        outfit['styling_notes']?.toString() ??
+        outfit['reason']?.toString() ??
+        '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1724,8 +1765,7 @@ class _AnchorOutfitBoardCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: missing.map((m) {
-              final label =
-                  (m['label'] ?? m['name'] ?? '').toString().trim();
+              final label = (m['label'] ?? m['name'] ?? '').toString().trim();
               return _StyleChip(label: label, accent: true);
             }).toList(),
           ),
@@ -1747,10 +1787,14 @@ class _AnchorItemRow extends StatelessWidget {
     final source = raw['source']?.toString() ?? 'wardrobe';
     final imageUrl = raw['image_url']?.toString() ?? '';
 
-    final sourceLabel = isAnchor ? 'Your piece' : (source == 'wardrobe' ? 'Wardrobe' : 'Suggested');
+    final sourceLabel = isAnchor
+        ? 'Your piece'
+        : (source == 'wardrobe' ? 'Wardrobe' : 'Suggested');
     final sourceColor = isAnchor
         ? const Color(0xFF7B61FF)
-        : (source == 'wardrobe' ? const Color(0xFF34C759) : const Color(0xFFFF9500));
+        : (source == 'wardrobe'
+              ? const Color(0xFF34C759)
+              : const Color(0xFFFF9500));
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -1765,7 +1809,11 @@ class _AnchorItemRow extends StatelessWidget {
               color: const Color(0xFFF7F4EE),
               child: imageUrl.isNotEmpty
                   ? Image.network(imageUrl, fit: BoxFit.contain)
-                  : const Icon(Icons.checkroom, size: 20, color: Color(0xFFBFBFD6)),
+                  : const Icon(
+                      Icons.checkroom,
+                      size: 20,
+                      color: Color(0xFFBFBFD6),
+                    ),
             ),
           ),
           const SizedBox(width: 12),
@@ -1822,38 +1870,45 @@ class _AnchorBoardCanvas extends StatelessWidget {
   const _AnchorBoardCanvas({required this.items});
 
   static const _l3Classic = <String, _TileCfg>{
-    'top':      _TileCfg(0.08, 0.04, 0.62, 0.40, 1),
-    'bottom':   _TileCfg(0.36, 0.46, 0.54, 0.42, 2),
+    'top': _TileCfg(0.08, 0.04, 0.62, 0.40, 1),
+    'bottom': _TileCfg(0.36, 0.46, 0.54, 0.42, 2),
     'footwear': _TileCfg(0.08, 0.76, 0.44, 0.20, 3),
   };
   static const _l3Dress = <String, _TileCfg>{
-    'dress':     _TileCfg(0.10, 0.04, 0.58, 0.64, 1),
-    'footwear':  _TileCfg(0.08, 0.72, 0.40, 0.22, 2),
+    'dress': _TileCfg(0.10, 0.04, 0.58, 0.64, 1),
+    'footwear': _TileCfg(0.08, 0.72, 0.40, 0.22, 2),
     'accessory': _TileCfg(0.52, 0.68, 0.40, 0.26, 2),
   };
   static const _l4Classic = <String, _TileCfg>{
-    'top':       _TileCfg(0.08, 0.04, 0.55, 0.34, 1),
+    'top': _TileCfg(0.08, 0.04, 0.55, 0.34, 1),
     'accessory': _TileCfg(0.55, 0.06, 0.38, 0.26, 1),
-    'bottom':    _TileCfg(0.34, 0.42, 0.52, 0.38, 2),
-    'footwear':  _TileCfg(0.08, 0.72, 0.42, 0.22, 3),
+    'bottom': _TileCfg(0.34, 0.42, 0.52, 0.38, 2),
+    'footwear': _TileCfg(0.08, 0.72, 0.42, 0.22, 3),
   };
   static const _l5 = <String, _TileCfg>{
     'outerwear': _TileCfg(0.06, 0.04, 0.44, 0.30, 1),
-    'top':       _TileCfg(0.48, 0.04, 0.46, 0.28, 1),
-    'bottom':    _TileCfg(0.24, 0.36, 0.52, 0.36, 2),
-    'footwear':  _TileCfg(0.06, 0.68, 0.40, 0.22, 3),
+    'top': _TileCfg(0.48, 0.04, 0.46, 0.28, 1),
+    'bottom': _TileCfg(0.24, 0.36, 0.52, 0.36, 2),
+    'footwear': _TileCfg(0.06, 0.68, 0.40, 0.22, 3),
     'accessory': _TileCfg(0.50, 0.64, 0.42, 0.28, 2),
   };
 
   static String _roleKey(BoardItemRole r) {
     switch (r) {
-      case BoardItemRole.top: return 'top';
-      case BoardItemRole.bottom: return 'bottom';
-      case BoardItemRole.footwear: return 'footwear';
-      case BoardItemRole.outerwear: return 'outerwear';
-      case BoardItemRole.dress: return 'dress';
-      case BoardItemRole.accessory: return 'accessory';
-      case BoardItemRole.unknown: return 'unknown';
+      case BoardItemRole.top:
+        return 'top';
+      case BoardItemRole.bottom:
+        return 'bottom';
+      case BoardItemRole.footwear:
+        return 'footwear';
+      case BoardItemRole.outerwear:
+        return 'outerwear';
+      case BoardItemRole.dress:
+        return 'dress';
+      case BoardItemRole.accessory:
+        return 'accessory';
+      case BoardItemRole.unknown:
+        return 'unknown';
     }
   }
 
@@ -1878,45 +1933,60 @@ class _AnchorBoardCanvas extends StatelessWidget {
       }
     }
     final ordered = slots.entries.toList()
-      ..sort((a, b) =>
-          template[a.key]!.zIndex.compareTo(template[b.key]!.zIndex));
+      ..sort(
+        (a, b) => template[a.key]!.zIndex.compareTo(template[b.key]!.zIndex),
+      );
 
-    return LayoutBuilder(builder: (ctx, constraints) {
-      final W = constraints.maxWidth;
-      final H = constraints.maxHeight;
-      if (W <= 0 || H <= 0 || !W.isFinite || !H.isFinite) {
-        return const SizedBox.shrink();
-      }
-      debugPrint(
-        'AHVI_BOARD_CANVAS slots=${ordered.length} W=${W.toStringAsFixed(0)} H=${H.toStringAsFixed(0)}',
-      );
-      return Stack(
-        clipBehavior: Clip.hardEdge,
-        children: ordered.map((entry) {
-          final cfg = template[entry.key]!;
-          final left = cfg.left * W;
-          final top = cfg.top * H;
-          final w = cfg.width * W;
-          final h = cfg.height * H;
-          if (!left.isFinite || !top.isFinite || !w.isFinite || !h.isFinite || w <= 0 || h <= 0) {
-            return const SizedBox.shrink();
-          }
-          final raw = entry.value;
-          final imageUrl = raw['image_url']?.toString() ?? '';
-          final isAnchor = raw['is_anchor'] == true;
-          final name = raw['name']?.toString() ?? '';
-          debugPrint(
-            'AHVI_BOARD_TILE role=${entry.key} name=$name '
-            'x=${left.toStringAsFixed(1)} y=${top.toStringAsFixed(1)} '
-            'w=${w.toStringAsFixed(1)} h=${h.toStringAsFixed(1)} z=${cfg.zIndex} anchor=$isAnchor',
-          );
-          return Positioned(
-            left: left, top: top, width: w, height: h,
-            child: _FlatLayTile(imageUrl: imageUrl, isAnchor: isAnchor, name: name),
-          );
-        }).toList(),
-      );
-    });
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        final W = constraints.maxWidth;
+        final H = constraints.maxHeight;
+        if (W <= 0 || H <= 0 || !W.isFinite || !H.isFinite) {
+          return const SizedBox.shrink();
+        }
+        debugPrint(
+          'AHVI_BOARD_CANVAS slots=${ordered.length} W=${W.toStringAsFixed(0)} H=${H.toStringAsFixed(0)}',
+        );
+        return Stack(
+          clipBehavior: Clip.hardEdge,
+          children: ordered.map((entry) {
+            final cfg = template[entry.key]!;
+            final left = cfg.left * W;
+            final top = cfg.top * H;
+            final w = cfg.width * W;
+            final h = cfg.height * H;
+            if (!left.isFinite ||
+                !top.isFinite ||
+                !w.isFinite ||
+                !h.isFinite ||
+                w <= 0 ||
+                h <= 0) {
+              return const SizedBox.shrink();
+            }
+            final raw = entry.value;
+            final imageUrl = raw['image_url']?.toString() ?? '';
+            final isAnchor = raw['is_anchor'] == true;
+            final name = raw['name']?.toString() ?? '';
+            debugPrint(
+              'AHVI_BOARD_TILE role=${entry.key} name=$name '
+              'x=${left.toStringAsFixed(1)} y=${top.toStringAsFixed(1)} '
+              'w=${w.toStringAsFixed(1)} h=${h.toStringAsFixed(1)} z=${cfg.zIndex} anchor=$isAnchor',
+            );
+            return Positioned(
+              left: left,
+              top: top,
+              width: w,
+              height: h,
+              child: _FlatLayTile(
+                imageUrl: imageUrl,
+                isAnchor: isAnchor,
+                name: name,
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
   }
 }
 
@@ -1924,7 +1994,11 @@ class _FlatLayTile extends StatelessWidget {
   final String imageUrl;
   final bool isAnchor;
   final String name;
-  const _FlatLayTile({required this.imageUrl, required this.isAnchor, required this.name});
+  const _FlatLayTile({
+    required this.imageUrl,
+    required this.isAnchor,
+    required this.name,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1935,7 +2009,11 @@ class _FlatLayTile extends StatelessWidget {
             color: Colors.white,
             borderRadius: BorderRadius.circular(10),
             boxShadow: const [
-              BoxShadow(color: Color(0x1A000000), blurRadius: 12, offset: Offset(0, 4)),
+              BoxShadow(
+                color: Color(0x1A000000),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
             ],
           ),
           child: ClipRRect(
@@ -1947,17 +2025,26 @@ class _FlatLayTile extends StatelessWidget {
                     width: double.infinity,
                     height: double.infinity,
                     errorBuilder: (_, __, ___) => const Center(
-                      child: Icon(Icons.checkroom, color: Color(0xFFD0CAC3), size: 32),
+                      child: Icon(
+                        Icons.checkroom,
+                        color: Color(0xFFD0CAC3),
+                        size: 32,
+                      ),
                     ),
                   )
                 : const Center(
-                    child: Icon(Icons.checkroom, color: Color(0xFFD0CAC3), size: 32),
+                    child: Icon(
+                      Icons.checkroom,
+                      color: Color(0xFFD0CAC3),
+                      size: 32,
+                    ),
                   ),
           ),
         ),
         if (isAnchor)
           Positioned(
-            top: 6, left: 6,
+            top: 6,
+            left: 6,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               decoration: BoxDecoration(
@@ -1967,8 +2054,10 @@ class _FlatLayTile extends StatelessWidget {
               child: const Text(
                 'Yours',
                 style: TextStyle(
-                  color: Colors.white, fontSize: 9,
-                  fontWeight: FontWeight.w700, letterSpacing: 0.2,
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
                 ),
               ),
             ),
