@@ -8,8 +8,15 @@ import 'editorial_board_widgets.dart';
 /// Put this inside the existing AHVI board card body.
 class EditorialBoardCanvas extends StatelessWidget {
   final StyleBoardData board;
+  final Set<String> lockedItemIds;
+  final ValueChanged<String>? onToggleLock;
 
-  const EditorialBoardCanvas({super.key, required this.board});
+  const EditorialBoardCanvas({
+    super.key,
+    required this.board,
+    this.lockedItemIds = const {},
+    this.onToggleLock,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -24,23 +31,105 @@ class EditorialBoardCanvas extends StatelessWidget {
         builder: (context, constraints) {
           final w = constraints.maxWidth;
           final h = constraints.maxHeight;
-          final layout = EditorialBoardLayoutEngine.resolve(
+          final generated = EditorialBoardLayoutEngine.resolve(
             board,
             width: w,
             height: h,
           );
 
+          final placements = generated.placements.map((placement) {
+            final position = placement.item.position;
+            if (position == null || !position.isUsable) return placement;
+            return placement.copyWith(
+              x: position.x! * w,
+              y: position.y! * h,
+              width: position.width! * w,
+              height: position.height! * h,
+              rotation: position.rotation ?? placement.rotation,
+              zIndex: position.z ?? placement.zIndex,
+            );
+          }).toList()..sort((a, b) => a.zIndex.compareTo(b.zIndex));
           return Stack(
             clipBehavior: Clip.hardEdge,
             children: [
               const _EditorialBackgroundDecor(),
-              ...layout.placements.map((p) {
+              ...placements.map((p) {
+                final locked = lockedItemIds.contains(p.item.itemId);
                 return Positioned(
                   left: p.x,
                   top: p.y,
                   width: p.width,
                   height: p.height,
-                  child: EditorialBoardItem(item: p.item, rotation: p.rotation),
+                  child: KeyedSubtree(
+                    key: p.item.hasStableIdentity
+                        ? ValueKey<String>(p.item.itemId)
+                        : null,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: locked
+                                ? Border.all(
+                                    color: const Color(0xFF8A6A78),
+                                    width: 1.5,
+                                  )
+                                : null,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: EditorialBoardItem(
+                            item: p.item,
+                            rotation: p.rotation,
+                          ),
+                        ),
+                        if (p.item.isRegenerating)
+                          const ColoredBox(
+                            color: Color(0x22FFFFFF),
+                            child: Center(
+                              child: SizedBox.square(
+                                dimension: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (onToggleLock != null && p.item.isLockable)
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            child: Semantics(
+                              button: true,
+                              label:
+                                  '${locked ? 'Unlock' : 'Lock'} ${p.item.name}',
+                              child: IconButton(
+                                key: ValueKey<String>('lock-${p.item.itemId}'),
+                                constraints: const BoxConstraints(
+                                  minWidth: 44,
+                                  minHeight: 44,
+                                ),
+                                onPressed: () => onToggleLock!(p.item.itemId),
+                                icon: Icon(
+                                  locked
+                                      ? Icons.lock_rounded
+                                      : Icons.lock_outline_rounded,
+                                  size: 19,
+                                ),
+                                tooltip: locked
+                                    ? 'Locked ${p.item.name}'
+                                    : 'Lock ${p.item.name}',
+                              ),
+                            ),
+                          ),
+                        if (locked)
+                          const Positioned(
+                            left: 4,
+                            bottom: 4,
+                            child: _LockedPill(),
+                          ),
+                      ],
+                    ),
+                  ),
                 );
               }),
             ],
@@ -49,6 +138,26 @@ class EditorialBoardCanvas extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LockedPill extends StatelessWidget {
+  const _LockedPill();
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: const Color(0xDD8A6A78),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: const Text(
+      'Locked',
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: 9,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
 }
 
 /// Premium board headline + summary above the collage.

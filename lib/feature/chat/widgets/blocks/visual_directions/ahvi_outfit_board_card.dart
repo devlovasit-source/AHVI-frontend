@@ -4,13 +4,16 @@ import 'package:myapp/feature/chat/services/fashion_item_filter.dart';
 import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/editorial_collage.dart';
 import 'package:myapp/services/backend_service.dart';
+import 'package:myapp/services/style_board_api_service.dart';
+import 'package:myapp/style_board/style_board_controller.dart';
+import 'package:myapp/style_board/style_board_state.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/style_board/board_models.dart';
 import 'package:myapp/style_board/editorial_board_renderer.dart';
 
 typedef OutfitBoardMessageSender = void Function(String message);
 
-class AhviOutfitBoardCard extends StatelessWidget {
+class AhviOutfitBoardCard extends StatefulWidget {
   final Map<String, dynamic> direction;
   final double width;
   final OutfitBoardMessageSender? onSendMessage;
@@ -20,6 +23,7 @@ class AhviOutfitBoardCard extends StatelessWidget {
   /// sheet. The action bar keeps its own handlers and is excluded from this
   /// gesture so Save / Shuffle / Style This / Missing never trigger the sheet.
   final VoidCallback? onTapBoard;
+  final StyleBoardShuffleCall? shuffleCall;
 
   const AhviOutfitBoardCard({
     super.key,
@@ -28,22 +32,153 @@ class AhviOutfitBoardCard extends StatelessWidget {
     this.onSendMessage,
     this.editorialCover = const {},
     this.onTapBoard,
+    this.shuffleCall,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final model = OutfitBoardModel.fromPayload(
-      direction,
-      editorialCover: editorialCover,
-    );
+  State<AhviOutfitBoardCard> createState() => _AhviOutfitBoardCardState();
+}
 
-    final board = _toStyleBoardData(model, direction);
+class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
+  late OutfitBoardModel _model;
+  late StyleBoardData _initialBoard;
+  StyleBoardController? _controller;
+  StyleBoardData? _pendingBoard;
+
+  @override
+  void initState() {
+    super.initState();
+    _replaceBoard(_parseBoard(widget));
+  }
+
+  @override
+  void didUpdateWidget(covariant AhviOutfitBoardCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final incoming = _parseBoard(widget);
+    if (!_isMeaningfulBoardUpdate(_initialBoard, incoming.board)) return;
+    if (_controller?.state.isShuffling == true &&
+        incoming.board.boardId == _initialBoard.boardId) {
+      _pendingBoard = incoming.board;
+      return;
+    }
+    _replaceBoard(incoming);
+  }
+
+  ({OutfitBoardModel model, StyleBoardData board}) _parseBoard(
+    AhviOutfitBoardCard source,
+  ) {
+    final model = OutfitBoardModel.fromPayload(
+      source.direction,
+      editorialCover: source.editorialCover,
+    );
+    return (model: model, board: _toStyleBoardData(model, source.direction));
+  }
+
+  bool _isMeaningfulBoardUpdate(StyleBoardData current, StyleBoardData next) {
+    if (current.boardId != next.boardId || current.revision != next.revision) {
+      return true;
+    }
+    final currentIds = current.items.map((item) => item.itemId).toList()
+      ..sort();
+    final nextIds = next.items.map((item) => item.itemId).toList()..sort();
+    return currentIds.join('\u0000') != nextIds.join('\u0000');
+  }
+
+  void _replaceBoard(({OutfitBoardModel model, StyleBoardData board}) parsed) {
+    _controller?.removeListener(_handleControllerChange);
+    _controller?.dispose();
+    _model = parsed.model;
+    _initialBoard = parsed.board;
+    _pendingBoard = null;
+    final state = StyleBoardState(
+      boardId: parsed.board.boardId,
+      revision: parsed.board.revision,
+      items: parsed.board.items,
+      lockedItemIds: parsed.board.items
+          .where((item) => item.isLocked && item.hasStableIdentity)
+          .map((item) => item.itemId)
+          .toSet(),
+    );
+    if (!state.supportsShuffle) {
+      _controller = null;
+      debugPrint(
+        'AHVI_STYLE_BOARD_LOCK_DISABLED reason=missing_board_contract '
+        'board_id=${state.boardId} revision=${state.revision}',
+      );
+      return;
+    }
+    _controller = StyleBoardController(
+      initialState: state,
+      shuffleCall: widget.shuffleCall ?? _shuffleThroughApi,
+    )..addListener(_handleControllerChange);
+  }
+
+  Future<StyleBoardShuffleResult> _shuffleThroughApi(StyleBoardState board) {
+    final backend = Provider.of<BackendService>(context, listen: false);
+    return StyleBoardApiService(backend).shuffle(
+      board: board,
+      occasion: _initialBoard.occasion,
+      styleDirection: _initialBoard.styleArchetype,
+    );
+  }
+
+  void _handleControllerChange() {
+    if (!mounted) return;
+    setState(() {});
+    if (_controller?.state.isShuffling == false && _pendingBoard != null) {
+      final pending = _pendingBoard!;
+      _pendingBoard = null;
+      final current = _currentBoard;
+      final isNewBoard = pending.boardId != current.boardId;
+      final isNewerRevision = pending.revision > current.revision;
+      if (!isNewBoard && !isNewerRevision) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _replaceBoard((
+          model: OutfitBoardModel.fromPayload(
+            widget.direction,
+            editorialCover: widget.editorialCover,
+          ),
+          board: pending,
+        ));
+        setState(() {});
+      });
+    }
+  }
+
+  StyleBoardData get _currentBoard {
+    final state = _controller?.state;
+    if (state == null) return _initialBoard;
+    return StyleBoardData(
+      boardId: state.boardId,
+      revision: state.revision,
+      title: _initialBoard.title,
+      styleArchetype: _initialBoard.styleArchetype,
+      boardRole: _initialBoard.boardRole,
+      occasion: _initialBoard.occasion,
+      whyItWorks: _initialBoard.whyItWorks,
+      items: state.items,
+      story: _initialBoard.story,
+      stylingTip: _initialBoard.stylingTip,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller?.removeListener(_handleControllerChange);
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final board = _currentBoard;
     final renderable = _isRenderableOutfit(board.items);
 
     return SizedBox(
-      width: width,
+      width: widget.width,
       // 4:5 portrait (Instagram-feed ratio): height = width * 5 / 4.
-      height: width * 5 / 4,
+      height: widget.width * 5 / 4,
       child: DecoratedBox(
         decoration: BoxDecoration(
           // Soft off-white canvas so the board reads as one flat-lay surface,
@@ -64,17 +199,22 @@ class AhviOutfitBoardCard extends StatelessWidget {
             children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: onTapBoard,
-                child: OutfitContextStrip(model: model),
+                onTap: widget.onTapBoard,
+                child: OutfitContextStrip(model: _model),
               ),
               Expanded(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: onTapBoard,
+                  onTap: widget.onTapBoard,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
                     child: renderable
-                        ? EditorialBoardCanvas(board: board)
+                        ? EditorialBoardCanvas(
+                            board: board,
+                            lockedItemIds:
+                                _controller?.state.lockedItemIds ?? const {},
+                            onToggleLock: _controller?.toggleLock,
+                          )
                         : _IncompleteBoardFallback(
                             title: board.title,
                             whyItWorks: board.whyItWorks,
@@ -82,12 +222,14 @@ class AhviOutfitBoardCard extends StatelessWidget {
                   ),
                 ),
               ),
+              if (_controller != null)
+                BoardMutationBar(controller: _controller!),
               OutfitActionBar(
-                direction: direction,
-                editorialCover: editorialCover,
-                primaryLabel: model.title,
-                missingName: model.missingName,
-                onSendMessage: onSendMessage,
+                direction: widget.direction,
+                editorialCover: widget.editorialCover,
+                primaryLabel: _model.title,
+                missingName: _model.missingName,
+                onSendMessage: widget.onSendMessage,
               ),
             ],
           ),
@@ -249,10 +391,7 @@ class _OutfitTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: ColoredBox(
         color: const Color(0xFFF4F2EC),
-        child: Padding(
-          padding: EdgeInsets.all(hero ? 12 : 8),
-          child: image,
-        ),
+        child: Padding(padding: EdgeInsets.all(hero ? 12 : 8), child: image),
       ),
     );
   }
@@ -420,6 +559,93 @@ class _WardrobeMatchPill extends StatelessWidget {
   }
 }
 
+class BoardMutationBar extends StatelessWidget {
+  final StyleBoardController controller;
+
+  const BoardMutationBar({super.key, required this.controller});
+
+  Future<void> _shuffle(BuildContext context) async {
+    final code = await controller.shuffle();
+    if (!context.mounted || code == null) return;
+    final message = switch (code) {
+      'ALL_ITEMS_LOCKED' => 'Unlock an item to shuffle.',
+      'NO_REPLACEMENT_FOUND' =>
+        'AHVI couldn’t find a stronger replacement right now.',
+      'FIXED_ITEMS_INCOMPATIBLE' =>
+        'These locked pieces can’t form a complete look together. Unlock one piece and try again.',
+      'BOARD_REVISION_CONFLICT' =>
+        'This board changed. Your current look has been preserved.',
+      _ =>
+        'We couldn’t refresh these pieces. Your current look has been preserved.',
+    };
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.themeTokens;
+    final state = controller.state;
+    final locked = state.lockedItemIds.length;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: t.cardBorder)),
+      ),
+      child: SizedBox(
+        height: 58,
+        child: Row(
+          children: [
+            Expanded(
+              child: _BoardAction(
+                icon: state.isShuffling
+                    ? Icons.hourglass_top_rounded
+                    : Icons.shuffle_rounded,
+                label: state.allItemsLocked
+                    ? 'Unlock an item to shuffle'
+                    : 'Shuffle unlocked pieces',
+                enabled: !state.isShuffling && !state.allItemsLocked,
+                onTap: () => _shuffle(context),
+              ),
+            ),
+            if (locked > 0)
+              Expanded(
+                child: _BoardAction(
+                  icon: Icons.lock_open_rounded,
+                  label: 'Unlock all',
+                  enabled: !state.isShuffling,
+                  onTap: controller.unlockAll,
+                ),
+              ),
+            if (controller.canUndo)
+              Expanded(
+                child: _BoardAction(
+                  icon: Icons.undo_rounded,
+                  label: 'Undo shuffle',
+                  enabled: !state.isShuffling,
+                  onTap: controller.undo,
+                ),
+              ),
+            Expanded(
+              child: Center(
+                child: Text(
+                  '$locked of ${state.items.length} items locked',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    color: t.mutedText,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class OutfitActionBar extends StatefulWidget {
   final Map<String, dynamic> direction;
   final Map<String, dynamic> editorialCover;
@@ -448,8 +674,10 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
 
   void _sendFeedback(String action) {
     // Fire-and-forget; also the adaptive stylist-brain training signal.
-    Provider.of<BackendService>(context, listen: false)
-        .sendBoardFeedback(action: action, board: widget.direction);
+    Provider.of<BackendService>(
+      context,
+      listen: false,
+    ).sendBoardFeedback(action: action, board: widget.direction);
   }
 
   void _toggleLike() {
@@ -678,12 +906,15 @@ class OutfitBoardModel {
       direction['direction_name'] ?? direction['directionName'],
     );
     final archetype = _text(direction['archetype']);
-    final _wmRaw = direction['wardrobe_match_pct'] ?? direction['wardrobeMatchPct'];
-    final int? wardrobeMatchPct = _wmRaw is int
-        ? _wmRaw
-        : (_wmRaw is num
-              ? _wmRaw.round()
-              : (_wmRaw is String ? int.tryParse(_wmRaw) : null));
+    final wardrobeMatchRaw =
+        direction['wardrobe_match_pct'] ?? direction['wardrobeMatchPct'];
+    final int? wardrobeMatchPct = wardrobeMatchRaw is int
+        ? wardrobeMatchRaw
+        : (wardrobeMatchRaw is num
+              ? wardrobeMatchRaw.round()
+              : (wardrobeMatchRaw is String
+                    ? int.tryParse(wardrobeMatchRaw)
+                    : null));
     // Title preference: the curated archetype name ("Structured Ease",
     // "Clean Minimal") is the intended board title. Only fall back to
     // direction_name / generic title when archetype is absent.
@@ -722,15 +953,25 @@ class OutfitBoardModel {
     // complete_the_look / pieces (the legacy path below) silently dropped real
     // slots — footwear, then bottom — inconsistently across prompts/users.
     // Fall back to legacy aggregation only when board_items is absent.
-    final backendItems = _maps(direction['board_items'] ?? direction['boardItems']);
+    final backendItems = _maps(
+      direction['board_items'] ?? direction['boardItems'],
+    );
     if (backendItems.isNotEmpty) {
       final built = <OutfitBoardItem>[];
       final seenKeys = <String>{};
       for (final item in backendItems) {
         final name = _text(item['name'] ?? item['title'] ?? item['label']);
+        final itemId = _text(
+          item['item_id'] ??
+              item['id'] ??
+              item[r'$id'] ??
+              item['itemId'] ??
+              item['image_id'] ??
+              item['asset_id'],
+        );
         final url = _transparentUrlFor(
           item,
-          itemId: _text(item['asset_id'] ?? item['id']),
+          itemId: itemId,
           itemName: name,
           role: _text(item['role'] ?? item['slot']),
         );
@@ -740,8 +981,12 @@ class OutfitBoardModel {
         built.add(
           OutfitBoardItem(
             id: _text(
-              item['asset_id'] ??
+              item['item_id'] ??
                   item['id'] ??
+                  item[r'$id'] ??
+                  item['itemId'] ??
+                  item['image_id'] ??
+                  item['asset_id'] ??
                   item['wardrobeItemId'] ??
                   item['wardrobe_item_id'],
               fallback: key,
@@ -794,7 +1039,11 @@ class OutfitBoardModel {
     for (final item in complete) {
       final name = _text(item['name'] ?? item['title'] ?? item['label']);
       if (name.isEmpty) continue;
-      final ctlUrl = _transparentUrlFor(item, itemName: name, role: 'complete_the_look');
+      final ctlUrl = _transparentUrlFor(
+        item,
+        itemName: name,
+        role: 'complete_the_look',
+      );
       items.add(
         OutfitBoardItem(
           id: _text(item['asset_id'] ?? item['id'], fallback: '$name::$ctlUrl'),
@@ -891,87 +1140,59 @@ int outfitBoardImageCount(
   ).imageItems.length;
 }
 
-/// Garment slot inferred from an item name — drives board viability so the 85
-/// board only renders when it has the pieces to read as a real outfit.
-BoardItemRole _boardSlotForName(String name) {
-  final n = name.toLowerCase();
-  if (RegExp(r'\b(dress|gown|saree|sari|lehenga|jumpsuit|frock)\b').hasMatch(n)) {
-    return BoardItemRole.dress;
-  }
-  if (RegExp(
-    r'\b(shoe|shoes|sneaker|sneakers|loafer|loafers|boot|boots|sandal|sandals|heel|heels|jutti|mojari|slipper|slipers|slide|slides|espadrille|espadrilles|footwear)\b',
-  ).hasMatch(n)) {
-    return BoardItemRole.footwear;
-  }
-  if (RegExp(r'\b(jacket|blazer|overshirt|coat|cardigan|outerwear)\b').hasMatch(n)) {
-    return BoardItemRole.outerwear;
-  }
-  if (RegExp(
-    r'\b(jean|jeans|trouser|trousers|pant|pants|chino|chinos|skirt|skirts|short|shorts|denim|bottom|bottoms|churidar|dhoti|pajama|pyjama)\b',
-  ).hasMatch(n)) {
-    return BoardItemRole.bottom;
-  }
-  if (RegExp(
-    r'\b(watch|belt|bag|tote|clutch|backpack|sling|sunglass|sunglasses|necklace|bracelet|earring|earrings|ring|scarf|tie|jewelry|jewellery|cap|hat)\b',
-  ).hasMatch(n)) {
-    return BoardItemRole.accessory;
-  }
-  if (RegExp(
-    r'\b(shirt|tee|tees|t-shirt|tshirt|polo|blouse|top|tops|kurta|sweater|knit|hoodie|sweatshirt|turtleneck|tank)\b',
-  ).hasMatch(n)) {
-    return BoardItemRole.top;
-  }
-  return BoardItemRole.unknown;
-}
-
 /// The 85 flat-lay board only renders when it can read as a real outfit:
 ///   classic  = top + bottom + footwear
 ///   dress    = dress + footwear
 ///   fallback = >=3 real-image pieces with known roles
 /// Text-only placeholders (no image) never count.
-  bool outfitBoardHasRoles(
-    Map<String, dynamic> direction, {
-    Map<String, dynamic> editorialCover = const {},
-  }) {
-    final model = OutfitBoardModel.fromPayload(
-      direction,
-      editorialCover: editorialCover,
-    );
-    final slots =
-        model.items.map((item) => _mapItemRole(item.role)).toList();
-    final hasTop = slots.contains(BoardItemRole.top);
-    final hasBottom = slots.contains(BoardItemRole.bottom);
-    final hasFootwear = slots.contains(BoardItemRole.footwear);
-    final hasDress = slots.contains(BoardItemRole.dress);
-    final classicViable = hasTop && hasBottom && hasFootwear;
-    final dressViable = hasDress && hasFootwear;
-    final knownRoleImages =
-        slots.where((slot) => slot != BoardItemRole.unknown).length;
-    return classicViable || dressViable || knownRoleImages >= 3;
-  }
+bool outfitBoardHasRoles(
+  Map<String, dynamic> direction, {
+  Map<String, dynamic> editorialCover = const {},
+}) {
+  final model = OutfitBoardModel.fromPayload(
+    direction,
+    editorialCover: editorialCover,
+  );
+  final slots = model.items.map((item) => _mapItemRole(item.role)).toList();
+  final hasTop = slots.contains(BoardItemRole.top);
+  final hasBottom = slots.contains(BoardItemRole.bottom);
+  final hasFootwear = slots.contains(BoardItemRole.footwear);
+  final hasDress = slots.contains(BoardItemRole.dress);
+  final classicViable = hasTop && hasBottom && hasFootwear;
+  final dressViable = hasDress && hasFootwear;
+  final knownRoleImages = slots
+      .where((slot) => slot != BoardItemRole.unknown)
+      .length;
+  return classicViable || dressViable || knownRoleImages >= 3;
+}
 
-  bool outfitBoardViable(
-    Map<String, dynamic> direction, {
-    Map<String, dynamic> editorialCover = const {},
-  }) {
-    final model = OutfitBoardModel.fromPayload(
-      direction,
-      editorialCover: editorialCover,
-    );
-    final slots =
-        model.imageItems.map((item) => _mapItemRole(item.role)).toList();
-    final hasTop = slots.contains(BoardItemRole.top);
-    final hasBottom = slots.contains(BoardItemRole.bottom);
-    final hasFootwear = slots.contains(BoardItemRole.footwear);
-    final hasDress = slots.contains(BoardItemRole.dress);
-    final classicViable = hasTop && hasBottom && hasFootwear;
-    final dressViable = hasDress && hasFootwear;
-    final knownRoleImages =
-        slots.where((slot) => slot != BoardItemRole.unknown).length;
-    return classicViable || dressViable || knownRoleImages >= 3;
-  }
+bool outfitBoardViable(
+  Map<String, dynamic> direction, {
+  Map<String, dynamic> editorialCover = const {},
+}) {
+  final model = OutfitBoardModel.fromPayload(
+    direction,
+    editorialCover: editorialCover,
+  );
+  final slots = model.imageItems
+      .map((item) => _mapItemRole(item.role))
+      .toList();
+  final hasTop = slots.contains(BoardItemRole.top);
+  final hasBottom = slots.contains(BoardItemRole.bottom);
+  final hasFootwear = slots.contains(BoardItemRole.footwear);
+  final hasDress = slots.contains(BoardItemRole.dress);
+  final classicViable = hasTop && hasBottom && hasFootwear;
+  final dressViable = hasDress && hasFootwear;
+  final knownRoleImages = slots
+      .where((slot) => slot != BoardItemRole.unknown)
+      .length;
+  return classicViable || dressViable || knownRoleImages >= 3;
+}
 
-StyleBoardData _toStyleBoardData(OutfitBoardModel model, Map<String, dynamic> direction) {
+StyleBoardData _toStyleBoardData(
+  OutfitBoardModel model,
+  Map<String, dynamic> direction,
+) {
   final items = <StyleBoardItem>[];
   // Render-adjacent safety net: even if the backend (now family-capped) or the
   // upstream id-keyed dedup let a duplicate through, never paint the same image
@@ -985,39 +1206,78 @@ StyleBoardData _toStyleBoardData(OutfitBoardModel model, Map<String, dynamic> di
     if (normName.isNotEmpty && !seenNames.add(normName)) continue;
     var role = _mapItemRole(item.role);
     if (role == BoardItemRole.top &&
-        RegExp(r'\b(dress|gown|saree|sari|lehenga|jumpsuit)\b', caseSensitive: false)
-            .hasMatch(item.name.toLowerCase())) {
+        RegExp(
+          r'\b(dress|gown|saree|sari|lehenga|jumpsuit)\b',
+          caseSensitive: false,
+        ).hasMatch(item.name.toLowerCase())) {
       role = BoardItemRole.dress;
     }
+    final rawItems = _maps(direction['board_items'] ?? direction['boardItems']);
+    final raw = rawItems
+        .where(
+          (candidate) =>
+              _text(
+                candidate['item_id'] ??
+                    candidate['id'] ??
+                    candidate[r'$id'] ??
+                    candidate['itemId'] ??
+                    candidate['image_id'] ??
+                    candidate['asset_id'],
+              ) ==
+              item.id,
+        )
+        .firstOrNull;
+    final canonical = raw == null ? null : StyleBoardItem.fromJson(raw);
     items.add(
       StyleBoardItem(
         id: item.id,
+        slot: canonical?.slot ?? role.name,
+        boardRole: canonical?.boardRole ?? '',
+        source: canonical?.source ?? 'unknown',
+        accessoryType: canonical?.accessoryType ?? '',
         name: item.name,
-        imageUrl: image,
-        category: item.role.name,
+        imageUrl: canonical?.imageUrl ?? image,
+        maskedUrl: canonical?.maskedUrl ?? '',
+        boardImageUrl: canonical?.boardImageUrl ?? image,
+        normalizedUrl: canonical?.normalizedUrl ?? '',
+        category: canonical?.category ?? item.role.name,
+        subCategory: canonical?.subCategory ?? '',
         role: role,
+        position: canonical?.position,
+        isLocked: canonical?.isLocked ?? false,
+        raw: raw ?? const {},
       ),
     );
   }
-    final rendered = _enforceSlots(items);
-    final totalInput = model.imageItems.length;
-    final totalRendered = rendered.length;
-    debugPrint(
-      'AHVI_BOARD_RENDER_ASSET_SELECTION '
-      'total_input=$totalInput '
-      'rendered_items=$totalRendered '
-      'skipped_items=${totalInput - totalRendered} '
-      'roles_rendered=${rendered.map((e) => e.role.name).join(",")} '
-      'roles_skipped=${items.where((e) => !rendered.contains(e)).map((e) => e.role.name).join(",")}',
-    );
-    return StyleBoardData(
-      title: model.title,
-      styleArchetype: direction['style_archetype'] ?? direction['styleArchetype'],
-      boardRole: direction['board_role'] ?? direction['boardRole'],
-      occasion: direction['occasion'],
-      whyItWorks: direction['why_it_works'] ?? direction['whyThisWorks'] ?? direction['why_this_works'] ?? direction['explanation'] ?? '',
-      items: rendered,
-    );
+  final rendered = _enforceSlots(items);
+  final totalInput = model.imageItems.length;
+  final totalRendered = rendered.length;
+  debugPrint(
+    'AHVI_BOARD_RENDER_ASSET_SELECTION '
+    'total_input=$totalInput '
+    'rendered_items=$totalRendered '
+    'skipped_items=${totalInput - totalRendered} '
+    'roles_rendered=${rendered.map((e) => e.role.name).join(",")} '
+    'roles_skipped=${items.where((e) => !rendered.contains(e)).map((e) => e.role.name).join(",")}',
+  );
+  return StyleBoardData(
+    boardId: _text(direction['board_id'] ?? direction['boardId']),
+    revision:
+        (direction['revision'] as num?)?.toInt() ??
+        int.tryParse(_text(direction['revision'])) ??
+        0,
+    title: model.title,
+    styleArchetype: direction['style_archetype'] ?? direction['styleArchetype'],
+    boardRole: direction['board_role'] ?? direction['boardRole'],
+    occasion: direction['occasion'],
+    whyItWorks:
+        direction['why_it_works'] ??
+        direction['whyThisWorks'] ??
+        direction['why_this_works'] ??
+        direction['explanation'] ??
+        '',
+    items: rendered,
+  );
 }
 
 /// Per-role slot caps so a board never paints a random collage (e.g. three
@@ -1059,13 +1319,18 @@ List<StyleBoardItem> _enforceSlots(List<StyleBoardItem> items) {
 /// instead of painting a broken board. Logs the missing slots.
 bool _isRenderableOutfit(List<StyleBoardItem> items) {
   final roles = items.map((e) => e.role).toSet();
-  final classic = roles.containsAll(
-    {BoardItemRole.top, BoardItemRole.bottom, BoardItemRole.footwear},
-  );
+  final classic = roles.containsAll({
+    BoardItemRole.top,
+    BoardItemRole.bottom,
+    BoardItemRole.footwear,
+  });
   final dressed =
-      roles.contains(BoardItemRole.dress) && roles.contains(BoardItemRole.footwear);
-  
-  final knownRoleImages = items.where((i) => i.role != BoardItemRole.unknown).length;
+      roles.contains(BoardItemRole.dress) &&
+      roles.contains(BoardItemRole.footwear);
+
+  final knownRoleImages = items
+      .where((i) => i.role != BoardItemRole.unknown)
+      .length;
 
   if (!classic && !dressed && knownRoleImages < 3) {
     final missing = <String>[];
@@ -1189,21 +1454,21 @@ OutfitRole _roleFor(Map<String, dynamic> item, String name) {
   ).hasMatch(blob)) {
     return OutfitRole.footwear;
   }
-    if (RegExp(
-      r'\b(bag|tote|clutch|backpack|sling|duffle|briefcase)\b',
-    ).hasMatch(blob)) {
-      return OutfitRole.bag;
-    }
-    if (RegExp(
-      r'\b(jacket|blazer|overshirt|coat|cardigan|outerwear)\b',
-    ).hasMatch(blob)) {
-      return OutfitRole.outerwear;
-    }
-    if (RegExp(
-      r'\b(watch|belt|ring|brooch|necklace|bracelet|earring|scarf|tie|cap|hat|sunglasses|eyewear|travel|grooming|skincare|accessory|accessories)\b',
-    ).hasMatch(blob)) {
-      return OutfitRole.accessory;
-    }
+  if (RegExp(
+    r'\b(bag|tote|clutch|backpack|sling|duffle|briefcase)\b',
+  ).hasMatch(blob)) {
+    return OutfitRole.bag;
+  }
+  if (RegExp(
+    r'\b(jacket|blazer|overshirt|coat|cardigan|outerwear)\b',
+  ).hasMatch(blob)) {
+    return OutfitRole.outerwear;
+  }
+  if (RegExp(
+    r'\b(watch|belt|ring|brooch|necklace|bracelet|earring|scarf|tie|cap|hat|sunglasses|eyewear|travel|grooming|skincare|accessory|accessories)\b',
+  ).hasMatch(blob)) {
+    return OutfitRole.accessory;
+  }
   return OutfitRole.other;
 }
 
@@ -1224,12 +1489,13 @@ String _text(dynamic value, {String fallback = ''}) {
   return text.isEmpty ? fallback : text;
 }
 
-
 List<String> _strings(dynamic value) {
   if (value is! List) return const [];
   return value
       .map((item) {
-        if (item is Map) return _text(item['name'] ?? item['title'] ?? item['label']);
+        if (item is Map) {
+          return _text(item['name'] ?? item['title'] ?? item['label']);
+        }
         return _text(item);
       })
       .where((item) => item.isNotEmpty)
@@ -1267,17 +1533,25 @@ String? _transparentUrlFor(
     final v = item[key]?.toString().trim() ?? '';
     if (v.isNotEmpty) return v;
   }
-  final cutoutStatus =
-      (item['cutout_status'] ?? item['cutoutStatus'] ?? '').toString().toLowerCase().trim();
-  final cutoutUrl = (item['cutout_url'] ?? item['cutoutUrl'] ?? '').toString().trim();
+  final cutoutStatus = (item['cutout_status'] ?? item['cutoutStatus'] ?? '')
+      .toString()
+      .toLowerCase()
+      .trim();
+  final cutoutUrl = (item['cutout_url'] ?? item['cutoutUrl'] ?? '')
+      .toString()
+      .trim();
   if (cutoutUrl.isNotEmpty && cutoutStatus == 'ready') return cutoutUrl;
 
   // board_status == "cutout_ready" means the backend's resolver already picked
   // a transparent PNG and placed it in image_url. Trust the backend signal.
-  final boardStatus =
-      (item['board_status'] ?? item['boardStatus'] ?? '').toString().toLowerCase().trim();
+  final boardStatus = (item['board_status'] ?? item['boardStatus'] ?? '')
+      .toString()
+      .toLowerCase()
+      .trim();
   if (boardStatus == 'cutout_ready') {
-    final imageUrl = (item['image_url'] ?? item['imageUrl'] ?? '').toString().trim();
+    final imageUrl = (item['image_url'] ?? item['imageUrl'] ?? '')
+        .toString()
+        .trim();
     if (imageUrl.isNotEmpty) return imageUrl;
   }
 

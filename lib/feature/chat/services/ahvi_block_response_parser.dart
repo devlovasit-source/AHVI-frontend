@@ -60,11 +60,17 @@ AhviParsedResponse parseAhviResponse(Map<String, dynamic> response) {
     }
   }
   final hasVisualDirections = visualDirections.isNotEmpty;
-  final hasVisualBoard = AhviVisualBoard.isVisualBoard(response) || response['visual_board'] != null || response['visualBoard'] != null || data['visual_board'] != null || data['visualBoard'] != null;
+  final hasVisualBoard =
+      AhviVisualBoard.isVisualBoard(response) ||
+      response['visual_board'] != null ||
+      response['visualBoard'] != null ||
+      data['visual_board'] != null ||
+      data['visualBoard'] != null;
 
   // Visual inspiration board.
   final visualInspiration = _extractVisualInspiration(response, data);
-  if (visualInspiration.isNotEmpty && !(kVisualBoard85Enabled && (hasVisualDirections || hasVisualBoard))) {
+  if (visualInspiration.isNotEmpty &&
+      !(kVisualBoard85Enabled && (hasVisualDirections || hasVisualBoard))) {
     blocks.add(
       AhviResponseBlock(
         type: AhviBlockType.visualInspiration,
@@ -233,8 +239,7 @@ Map<String, dynamic> _extractVisualInspiration(
   Map<String, dynamic> data,
 ) {
   final direct =
-      response['visual_inspiration_board'] ??
-      data['visual_inspiration_board'];
+      response['visual_inspiration_board'] ?? data['visual_inspiration_board'];
   if (direct is Map && direct.isNotEmpty) {
     return Map<String, dynamic>.from(direct);
   }
@@ -300,13 +305,15 @@ Map<String, dynamic> _styleBoardToDirection(Map<String, dynamic> board) {
   );
   final boardItems = items
       .map((it) {
-        final image = it['image_url'] ??
+        final image =
+            it['image_url'] ??
             it['imageUrl'] ??
             it['normalized_url'] ??
             it['normalizedUrl'] ??
             it['masked_url'] ??
             it['maskedUrl'];
         return <String, dynamic>{
+          ...it,
           'name': it['name'] ?? it['title'] ?? it['label'],
           'role': it['role'] ?? it['slot'] ?? it['category'],
           'image_url': image,
@@ -317,6 +324,7 @@ Map<String, dynamic> _styleBoardToDirection(Map<String, dynamic> board) {
       .where((it) => (it['image_url']?.toString().trim().isNotEmpty ?? false))
       .toList();
   return <String, dynamic>{
+    ...board,
     'direction_name': board['title'] ?? board['name'],
     'title': board['title'] ?? board['name'],
     'why_it_works':
@@ -368,10 +376,18 @@ List<Map<String, dynamic>> _extractModuleCards(
   if (visualSections.isNotEmpty) {
     out.add({
       'type': 'visual_packing_checklist',
-      'title': response['title'] ?? data['title'] ?? 'Carry-on Packing Checklist',
-      'subtitle': data['duration_label'] ?? response['subtitle'] ?? data['subtitle'] ?? '',
+      'title':
+          response['title'] ?? data['title'] ?? 'Carry-on Packing Checklist',
+      'subtitle':
+          data['duration_label'] ??
+          response['subtitle'] ??
+          data['subtitle'] ??
+          '',
       'visual_sections': visualSections,
-      'actions': response['quick_actions'] ?? response['chips'] ?? data['quick_actions'],
+      'actions':
+          response['quick_actions'] ??
+          response['chips'] ??
+          data['quick_actions'],
     });
     return out;
   }

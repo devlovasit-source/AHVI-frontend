@@ -98,6 +98,41 @@ class BackendService {
   BackendService({AppwriteService? appwriteService})
     : _appwriteService = appwriteService ?? AppwriteService();
 
+  Future<Map<String, dynamic>> shuffleStyleBoard({
+    required String boardId,
+    required Map<String, dynamic> payload,
+  }) async {
+    final endpoint =
+        '/api/style-boards/${Uri.encodeComponent(boardId)}/shuffle';
+    final body = Map<String, dynamic>.from(payload)
+      ..['user_id'] = await _currentUserId();
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl$endpoint'),
+            headers: await _authHeaders(),
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 30));
+      Map<String, dynamic> data;
+      try {
+        data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+      } catch (_) {
+        throw const BackendRequestException('Malformed style board response');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final detail = data['detail'];
+        if (detail is Map) return {'success': false, 'error': detail};
+        throw BackendRequestException(
+          'Style board request failed (${response.statusCode})',
+        );
+      }
+      return data;
+    } on TimeoutException {
+      throw const BackendRequestException('Style board request timed out');
+    }
+  }
+
   Future<String> _currentUserId() async {
     final user = await _appwriteService.getCurrentUser();
 
