@@ -93,6 +93,9 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
     final state = StyleBoardState(
       boardId: parsed.board.boardId,
       revision: parsed.board.revision,
+      scenario: parsed.board.scenario,
+      sourcePolicy: parsed.board.sourcePolicy,
+      allowWardrobeFallback: parsed.board.allowWardrobeFallback,
       items: parsed.board.items,
       lockedItemIds: parsed.board.items
           .where((item) => item.isLocked && item.hasStableIdentity)
@@ -103,7 +106,8 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
       _controller = null;
       debugPrint(
         'AHVI_STYLE_BOARD_LOCK_DISABLED reason=missing_board_contract '
-        'board_id=${state.boardId} revision=${state.revision}',
+        'board_id=${state.boardId} revision=${state.revision} '
+        'source_policy=${state.sourcePolicy.isEmpty ? "<missing>" : state.sourcePolicy}',
       );
       return;
     }
@@ -152,6 +156,9 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
     return StyleBoardData(
       boardId: state.boardId,
       revision: state.revision,
+      scenario: state.scenario,
+      sourcePolicy: state.sourcePolicy,
+      allowWardrobeFallback: state.allowWardrobeFallback,
       title: _initialBoard.title,
       styleArchetype: _initialBoard.styleArchetype,
       boardRole: _initialBoard.boardRole,
@@ -575,6 +582,12 @@ class BoardMutationBar extends StatelessWidget {
         'These locked pieces can’t form a complete look together. Unlock one piece and try again.',
       'BOARD_REVISION_CONFLICT' =>
         'This board changed. Your current look has been preserved.',
+      'SOURCE_POLICY_CHANGED' || 'SOURCE_POLICY_VIOLATION' =>
+        'The board’s styling source changed unexpectedly. Your current look has been preserved.',
+      'STYLE_ASSET_POOL_EMPTY' =>
+        'No curated pieces are available for this look right now.',
+      'BOARD_SOURCE_POLICY_UNKNOWN' =>
+        'This board is missing its styling source. Ask AHVI for a fresh look to continue.',
       _ =>
         'We couldn’t refresh these pieces. Your current look has been preserved.',
     };
@@ -1266,6 +1279,13 @@ StyleBoardData _toStyleBoardData(
         (direction['revision'] as num?)?.toInt() ??
         int.tryParse(_text(direction['revision'])) ??
         0,
+    scenario: _text(direction['scenario']),
+    sourcePolicy: _text(
+      direction['source_policy'] ?? direction['sourcePolicy'],
+    ),
+    allowWardrobeFallback:
+        direction['allow_wardrobe_fallback'] == true ||
+        direction['allowWardrobeFallback'] == true,
     title: model.title,
     styleArchetype: direction['style_archetype'] ?? direction['styleArchetype'],
     boardRole: direction['board_role'] ?? direction['boardRole'],

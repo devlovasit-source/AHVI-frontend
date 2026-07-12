@@ -42,9 +42,16 @@ Map<String, dynamic> _item(
   },
 };
 
-Map<String, dynamic> _board({String boardId = 'board-1', int revision = 1}) => {
+Map<String, dynamic> _board({
+  String boardId = 'board-1',
+  int revision = 1,
+  String scenario = 'build_outfit',
+  String sourcePolicy = 'wardrobe',
+}) => {
   'board_id': boardId,
   'revision': revision,
+  'scenario': scenario,
+  'source_policy': sourcePolicy,
   'title': 'Build Outfit',
   'occasion': 'Client meeting',
   'style_archetype': 'Business professional',
@@ -255,6 +262,67 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'mocked connected Style This flow keeps style_asset policy end to end',
+    (tester) async {
+      final board = _board(
+        boardId: 'board-sty',
+        scenario: 'style_this',
+        sourcePolicy: 'style_asset',
+      );
+      // Completion pieces on a Style This board are curated style assets;
+      // only the anchor is wardrobe-owned.
+      for (final item in (board['board_items'] as List).skip(1)) {
+        (item as Map)['source'] = 'style_asset';
+      }
+      StyleBoardState? captured;
+      await _pumpCard(
+        tester,
+        board: board,
+        shuffleCall: (state) async {
+          captured = state.deepCopy();
+          final items = state.items.map((item) {
+            if (state.lockedItemIds.contains(item.itemId)) return item;
+            return StyleBoardItem.fromJson({
+              ..._item('${item.itemId}-new', item.slot,
+                  x: item.position!.x!),
+              'source': 'style_asset',
+            });
+          }).toList();
+          return StyleBoardShuffleResult(
+            boardId: state.boardId,
+            revision: state.revision + 1,
+            previousRevision: state.revision,
+            lockedItemsPreserved: true,
+            changedSlots: const ['bottom', 'footwear'],
+            items: items,
+            scenario: 'style_this',
+            sourcePolicy: 'style_asset',
+          );
+        },
+      );
+
+      // 1-3: parsed real Style This board with policy, anchor-only lock.
+      expect(find.text('1 of 3 items locked'), findsOneWidget);
+      await tester.tap(find.text('Shuffle unlocked pieces'));
+      await tester.pumpAndSettle();
+
+      // 5: request sends the explicit policy.
+      final payload = const StyleBoardApiService().buildShufflePayload(
+        board: captured!,
+      );
+      expect(payload['source_policy'], 'style_asset');
+      expect(captured!.lockedItemIds, {'anchor'});
+
+      // 7-9: response accepted, revision advanced, policy preserved.
+      expect(find.byKey(const ValueKey<String>('anchor')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('bottom-1-new')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('legacy board renders without mutation controls', (tester) async {
     await _pumpCard(

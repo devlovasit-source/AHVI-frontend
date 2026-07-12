@@ -331,9 +331,19 @@ class StyleBoardData {
   final BoardStory? story;
   final String? stylingTip;
 
+  /// Explicit board contract from the backend: which scenario created the
+  /// board and which completion sources a shuffle may use. Never inferred
+  /// from item sources or UI labels.
+  final String scenario;
+  final String sourcePolicy;
+  final bool allowWardrobeFallback;
+
   const StyleBoardData({
     this.boardId = '',
     this.revision = 0,
+    this.scenario = '',
+    this.sourcePolicy = '',
+    this.allowWardrobeFallback = false,
     required this.title,
     this.styleArchetype,
     this.boardRole,

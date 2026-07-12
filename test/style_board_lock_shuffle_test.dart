@@ -27,9 +27,17 @@ Map<String, dynamic> itemJson(String id, String slot, {bool locked = false}) =>
       },
     };
 
-StyleBoardState boardState({Set<String> locked = const {}}) => StyleBoardState(
+StyleBoardState boardState({
+  Set<String> locked = const {},
+  String scenario = '',
+  String sourcePolicy = '',
+  bool allowWardrobeFallback = false,
+}) => StyleBoardState(
   boardId: 'board_123',
   revision: 1,
+  scenario: scenario,
+  sourcePolicy: sourcePolicy,
+  allowWardrobeFallback: allowWardrobeFallback,
   items: [
     'top',
     'bottom',
@@ -38,15 +46,21 @@ StyleBoardState boardState({Set<String> locked = const {}}) => StyleBoardState(
   lockedItemIds: locked,
 );
 
-StyleBoardShuffleResult success(StyleBoardState board) =>
-    StyleBoardShuffleResult(
-      boardId: board.boardId,
-      revision: board.revision + 1,
-      previousRevision: board.revision,
-      lockedItemsPreserved: true,
-      changedSlots: const ['bottom'],
-      items: board.items,
-    );
+StyleBoardShuffleResult success(
+  StyleBoardState board, {
+  String scenario = '',
+  String sourcePolicy = '',
+  List<StyleBoardItem>? items,
+}) => StyleBoardShuffleResult(
+  boardId: board.boardId,
+  revision: board.revision + 1,
+  previousRevision: board.revision,
+  lockedItemsPreserved: true,
+  changedSlots: const ['bottom'],
+  items: items ?? board.items,
+  scenario: scenario,
+  sourcePolicy: sourcePolicy,
+);
 
 void main() {
   group('canonical item parsing', () {
@@ -185,6 +199,148 @@ void main() {
       expect(
         controller.state.items.map((item) => item.itemId),
         initial.items.map((item) => item.itemId),
+      );
+    });
+
+    test('legacy board without explicit policy cannot shuffle', () {
+      expect(boardState().supportsShuffle, isFalse);
+      expect(
+        boardState(sourcePolicy: 'style_asset').supportsShuffle,
+        isTrue,
+      );
+    });
+
+    test('shuffle request sends the explicit board policy', () {
+      const api = StyleBoardApiService();
+      final styleThis = api.buildShufflePayload(
+        board: boardState(
+          scenario: 'style_this',
+          sourcePolicy: 'style_asset',
+          locked: {'top'},
+        ),
+      );
+      expect(styleThis['source_policy'], 'style_asset');
+      expect(styleThis.containsKey('allow_wardrobe_fallback'), isFalse);
+
+      final buildOutfit = api.buildShufflePayload(
+        board: boardState(scenario: 'build_outfit', sourcePolicy: 'wardrobe'),
+      );
+      expect(buildOutfit['source_policy'], 'wardrobe');
+
+      final mixed = api.buildShufflePayload(
+        board: boardState(
+          sourcePolicy: 'mixed',
+          allowWardrobeFallback: true,
+        ),
+      );
+      expect(mixed['source_policy'], 'mixed');
+      expect(mixed['allow_wardrobe_fallback'], isTrue);
+    });
+
+    test('controller preserves policy through success, rollback and undo',
+        () async {
+      final initial = boardState(
+        scenario: 'style_this',
+        sourcePolicy: 'style_asset',
+        locked: {'top'},
+      );
+      var fail = false;
+      final controller = StyleBoardController(
+        initialState: initial,
+        shuffleCall: (board) async {
+          if (fail) throw const StyleBoardApiException('NO_REPLACEMENT_FOUND');
+          final replacements = board.items
+              .map(
+                (item) => board.lockedItemIds.contains(item.itemId)
+                    ? item
+                    : StyleBoardItem.fromJson({
+                        ...itemJson('${item.itemId}-new', item.slot),
+                        'source': 'style_asset',
+                      }),
+              )
+              .toList();
+          return success(
+            board,
+            scenario: 'style_this',
+            sourcePolicy: 'style_asset',
+            items: replacements,
+          );
+        },
+      );
+      expect(await controller.shuffle(), isNull);
+      expect(controller.state.sourcePolicy, 'style_asset');
+      expect(controller.state.scenario, 'style_this');
+      fail = true;
+      expect(await controller.shuffle(), 'NO_REPLACEMENT_FOUND');
+      expect(controller.state.sourcePolicy, 'style_asset');
+      controller.undo();
+      expect(controller.state.sourcePolicy, 'style_asset');
+      expect(controller.state.revision, initial.revision);
+    });
+
+    test('conflicting response policy is rejected and board restored',
+        () async {
+      final initial = boardState(
+        scenario: 'style_this',
+        sourcePolicy: 'style_asset',
+        locked: {'top'},
+      );
+      final controller = StyleBoardController(
+        initialState: initial,
+        shuffleCall: (board) async =>
+            success(board, sourcePolicy: 'wardrobe'),
+      );
+      expect(await controller.shuffle(), 'SOURCE_POLICY_CHANGED');
+      expect(controller.state.revision, initial.revision);
+      expect(controller.state.sourcePolicy, 'style_asset');
+    });
+
+    test('wardrobe completion under style_asset policy is rejected',
+        () async {
+      final initial = boardState(
+        sourcePolicy: 'style_asset',
+        locked: {'top'},
+      );
+      final controller = StyleBoardController(
+        initialState: initial,
+        // itemJson source is 'wardrobe': unlocked bottom/footwear violate.
+        shuffleCall: (board) async =>
+            success(board, sourcePolicy: 'style_asset'),
+      );
+      expect(await controller.shuffle(), 'SOURCE_POLICY_VIOLATION');
+      expect(controller.state.revision, initial.revision);
+    });
+
+    test('locked wardrobe anchor is valid inside a style_asset board',
+        () async {
+      final initial = boardState(
+        sourcePolicy: 'style_asset',
+        locked: {'top'},
+      );
+      final controller = StyleBoardController(
+        initialState: initial,
+        shuffleCall: (board) async => success(
+          board,
+          sourcePolicy: 'style_asset',
+          items: board.items
+              .map(
+                (item) => item.itemId == 'top'
+                    ? item
+                    : StyleBoardItem.fromJson({
+                        ...itemJson('${item.itemId}-new', item.slot),
+                        'source': 'style_asset',
+                      }),
+              )
+              .toList(),
+        ),
+      );
+      expect(await controller.shuffle(), isNull);
+      expect(controller.state.revision, 2);
+      expect(
+        controller.state.items
+            .singleWhere((item) => item.itemId == 'top')
+            .source,
+        'wardrobe',
       );
     });
 

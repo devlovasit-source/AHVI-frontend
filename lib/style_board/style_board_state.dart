@@ -4,6 +4,14 @@ import 'board_models.dart';
 
 @immutable
 class StyleBoardState {
+  /// Canonical board-level completion-source policies. The policy is an
+  /// explicit backend contract - never inferred from item sources.
+  static const Set<String> validSourcePolicies = {
+    'wardrobe',
+    'style_asset',
+    'mixed',
+  };
+
   final String boardId;
   final int revision;
   final List<StyleBoardItem> items;
@@ -11,6 +19,9 @@ class StyleBoardState {
   final Set<String> excludedItemIds;
   final bool isShuffling;
   final int? previousRevision;
+  final String scenario;
+  final String sourcePolicy;
+  final bool allowWardrobeFallback;
 
   const StyleBoardState({
     required this.boardId,
@@ -20,12 +31,19 @@ class StyleBoardState {
     this.excludedItemIds = const {},
     this.isShuffling = false,
     this.previousRevision,
+    this.scenario = '',
+    this.sourcePolicy = '',
+    this.allowWardrobeFallback = false,
   });
+
+  bool get hasExplicitSourcePolicy =>
+      validSourcePolicies.contains(sourcePolicy);
 
   bool get supportsShuffle =>
       boardId.isNotEmpty &&
       revision > 0 &&
       items.isNotEmpty &&
+      hasExplicitSourcePolicy &&
       items.every((item) => item.isLockable);
   bool get allItemsLocked =>
       items.isNotEmpty &&
@@ -46,6 +64,9 @@ class StyleBoardState {
     excludedItemIds: Set.unmodifiable(excludedItemIds ?? this.excludedItemIds),
     isShuffling: isShuffling ?? this.isShuffling,
     previousRevision: previousRevision ?? this.previousRevision,
+    scenario: scenario,
+    sourcePolicy: sourcePolicy,
+    allowWardrobeFallback: allowWardrobeFallback,
   );
 
   StyleBoardState deepCopy() => copyWith(

@@ -14,6 +14,8 @@ class StyleBoardShuffleResult {
   final bool lockedItemsPreserved;
   final List<String> changedSlots;
   final List<StyleBoardItem> items;
+  final String scenario;
+  final String sourcePolicy;
 
   const StyleBoardShuffleResult({
     required this.boardId,
@@ -22,6 +24,8 @@ class StyleBoardShuffleResult {
     required this.lockedItemsPreserved,
     required this.changedSlots,
     required this.items,
+    this.scenario = '',
+    this.sourcePolicy = '',
   });
 
   factory StyleBoardShuffleResult.fromJson(Map<String, dynamic> json) {
@@ -43,6 +47,10 @@ class StyleBoardShuffleResult {
       changedSlots: (json['changed_slots'] as List? ?? const [])
           .map((e) => e.toString())
           .toList(),
+      scenario: (json['scenario'] ?? '').toString().trim(),
+      sourcePolicy: json['source_policy'] is String
+          ? (json['source_policy'] as String).trim()
+          : '',
       items: rawItems
           .whereType<Map>()
           .map((e) => StyleBoardItem.fromJson(Map<String, dynamic>.from(e)))
@@ -80,7 +88,13 @@ class StyleBoardApiService {
       'exclude_item_ids': board.excludedItemIds
           .where((id) => !board.lockedItemIds.contains(id))
           .toList(),
-      'source_policy': 'inherit',
+      // Contract-complete boards send their explicit board-level policy;
+      // 'inherit' remains only as legacy compatibility (backend resolves it
+      // from persisted board state, never from locked-item sources).
+      'source_policy': board.hasExplicitSourcePolicy
+          ? board.sourcePolicy
+          : 'inherit',
+      if (board.sourcePolicy == 'mixed') 'allow_wardrobe_fallback': true,
       'board_items': board.items.map((item) => item.toContractJson()).toList(),
     };
   }

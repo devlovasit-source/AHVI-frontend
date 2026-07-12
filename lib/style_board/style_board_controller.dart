@@ -82,6 +82,9 @@ class StyleBoardController extends ChangeNotifier {
         boardId: result.boardId,
         revision: result.revision,
         previousRevision: result.previousRevision,
+        scenario: snapshot.scenario,
+        sourcePolicy: snapshot.sourcePolicy,
+        allowWardrobeFallback: snapshot.allowWardrobeFallback,
         items: result.items
             .map(
               (item) => item.copyWith(
@@ -123,6 +126,32 @@ class StyleBoardController extends ChangeNotifier {
         !result.lockedItemsPreserved ||
         result.items.isEmpty) {
       throw const StyleBoardApiException('INVALID_SHUFFLE_RESPONSE');
+    }
+    // Board policy is immutable across a shuffle: a response that silently
+    // changes it (e.g. style_asset -> wardrobe) is rejected and the current
+    // board snapshot is restored by the caller.
+    if (previous.hasExplicitSourcePolicy &&
+        result.sourcePolicy.isNotEmpty &&
+        result.sourcePolicy != previous.sourcePolicy) {
+      throw const StyleBoardApiException('SOURCE_POLICY_CHANGED');
+    }
+    if (previous.scenario.isNotEmpty &&
+        result.scenario.isNotEmpty &&
+        result.scenario != previous.scenario) {
+      throw const StyleBoardApiException('SOURCE_POLICY_CHANGED');
+    }
+    if (previous.hasExplicitSourcePolicy) {
+      final allowed = switch (previous.sourcePolicy) {
+        'wardrobe' => const {'wardrobe'},
+        'style_asset' => const {'style_asset'},
+        _ => const {'style_asset', 'wardrobe'},
+      };
+      for (final item in result.items) {
+        if (previous.lockedItemIds.contains(item.itemId)) continue;
+        if (!allowed.contains(item.source)) {
+          throw const StyleBoardApiException('SOURCE_POLICY_VIOLATION');
+        }
+      }
     }
     final returned = {for (final item in result.items) item.itemId: item};
     for (final old in previous.items.where(
