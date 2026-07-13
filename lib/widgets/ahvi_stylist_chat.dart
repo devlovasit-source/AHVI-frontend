@@ -117,6 +117,9 @@ class _MedicineReminderIntent {
   });
 }
 
+const String _medicineReminderQuestionNoAccessMessage =
+    'I can help, but I don’t have access to your saved reminder times yet.';
+
 String _normalizeMedicineName(String value) => value
     .toLowerCase()
     .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
@@ -143,6 +146,88 @@ String _normalizeMedicineReminderTimeText(String value) {
   return text.trim();
 }
 
+bool _isAhviChatQuestion(String value) {
+  final text = value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  if (text.isEmpty) return false;
+
+  if (text.endsWith('?')) return true;
+
+  if (RegExp(
+    r'^(?:when|what|where|who|why|how|do|does|did|is|are|am|can|could|should|would|will)\b',
+  ).hasMatch(text)) {
+    return true;
+  }
+
+  final asksToRead = RegExp(r'^(?:show|list|check)\b').hasMatch(text);
+
+  final dataNoun = RegExp(
+    r'\b(?:reminders?|medicines?|medications?|meds|tablets?|pills?|bills?|plans?|calendar|events?|schedule)\b',
+  ).hasMatch(text);
+
+  return asksToRead && dataNoun;
+}
+
+bool _isMedicineReminderCreateRequest(String value) {
+  var text = value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  if (text.isEmpty) return false;
+
+  // Explicit creation intent wins over question FORM: polite phrasing
+  // ("Can you remind me to take Dolo at 8 PM?") is still a command, so a
+  // trailing '?' or a leading modal verb must not cancel it. Strip that
+  // framing, then require an explicit action phrase.
+  text = text.replaceAll(RegExp(r'[?!.\s]+$'), '');
+  text = text.replaceFirst(
+    RegExp(
+      r'^(?:hey\s+)?(?:ahvi[,\s]+)?(?:can|could|will|would)\s+you\s+(?:please\s+)?',
+    ),
+    '',
+  );
+  text = text.replaceFirst(RegExp(r'^please\s+'), '');
+
+  return RegExp(
+    r'\b(?:remind\s+me\s+to\s+take|set\s+(?:a\s+)?(?:medicine|medication|meds|tablet|pill)?\s*reminder|schedule\s+(?:a\s+)?(?:medicine|medication|meds|tablet|pill)?\s*reminder|add\s+(?:a\s+)?(?:medicine|medication|meds|tablet|pill)?\s*reminder|create\s+(?:a\s+)?(?:medicine|medication|meds|tablet|pill)?\s*reminder)\b',
+  ).hasMatch(text);
+}
+
+bool _isReminderQuestion(String value) {
+  final text = value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  // Precedence: an explicit creation request is never a reminder-information
+  // question, even when phrased politely with a trailing '?'.
+  if (_isMedicineReminderCreateRequest(text)) return false;
+
+  if (!_isAhviChatQuestion(text)) return false;
+
+  return RegExp(r'\breminders?\b').hasMatch(text);
+}
+
+@visibleForTesting
+bool debugIsAhviChatQuestion(String text) => _isAhviChatQuestion(text);
+
+@visibleForTesting
+bool debugIsMedicineReminderCreateRequest(String text) =>
+    _isMedicineReminderCreateRequest(text);
+
+@visibleForTesting
+bool debugIsReminderQuestion(String text) => _isReminderQuestion(text);
+
+@visibleForTesting
+Map<String, String>? debugExtractMedicineReminderIntent(String text) {
+  final intent = _extractMedicineReminderIntent(text);
+  if (intent == null) return null;
+  return {'name': intent.medicineName, 'time': intent.timeText};
+}
+
+bool _asksForReminderCreationDetails(String value) {
+  final text = value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  return text.contains('what time should i remind you') ||
+      text.contains('when should i remind you') ||
+      (text.contains('what time') && text.contains('remind you'));
+}
+
 _MedicineReminderIntent? _extractMedicineReminderIntent(String value) {
   final text = value.trim();
 
@@ -157,7 +242,11 @@ _MedicineReminderIntent? _extractMedicineReminderIntent(String value) {
     r'\b(?:take|medicine|medication|meds|tablet|pill)\b',
   ).hasMatch(lower);
 
-  if (!hasReminderWord || !hasMedicineWord) return null;
+  if (!hasReminderWord ||
+      !hasMedicineWord ||
+      !_isMedicineReminderCreateRequest(text)) {
+    return null;
+  }
 
   final timeMatch = RegExp(
     r'\b(?:at\s+)?(\d{1,2}\s*[:.]\s*\d{2}\s*(?:am|pm)?|\d{1,2}\s+\d{2}\s*(?:am|pm)|\d{1,2}\s*(?:am|pm))\b',
@@ -173,6 +262,18 @@ _MedicineReminderIntent? _extractMedicineReminderIntent(String value) {
   final patterns = [
     RegExp(
       r'\bremind\s+me\s+to\s+take\s+(.+?)(?:\s+at\s+|$)',
+
+      caseSensitive: false,
+    ),
+
+    RegExp(
+      r'\bschedule\s+(?:a\s+)?(?:medicine|medication|meds|tablet|pill)?\s*reminder\s+to\s+take\s+(.+?)(?:\s+at\s+|$)',
+
+      caseSensitive: false,
+    ),
+
+    RegExp(
+      r'\b(?:schedule|add|create)\s+(?:a\s+)?(?:medicine|medication|meds|tablet|pill)?\s*reminder\s+for\s+(.+?)(?:\s+at\s+|$)',
 
       caseSensitive: false,
     ),
@@ -1043,7 +1144,23 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
 
     try {
       final backend = Provider.of<BackendService>(context, listen: false);
-      if (trimmed.isNotEmpty &&
+      // Intent precedence: explicit creation intent first (a polite
+      // question-shaped command still schedules); only non-creation
+      // messages are classified as questions and bypass the interceptor.
+      final isCreateRequest =
+          trimmed.isNotEmpty && _isMedicineReminderCreateRequest(trimmed);
+      final isQuestion =
+          !isCreateRequest &&
+          trimmed.isNotEmpty &&
+          _isAhviChatQuestion(trimmed);
+
+      if (isQuestion) {
+        debugPrint(
+          'AHVI_CHAT_ACTION_BYPASS_REASON reason=question module=${widget.moduleContext} text=$trimmed',
+        );
+      }
+
+      if (isCreateRequest &&
           await _tryScheduleMedicineReminderFromChat(trimmed)) {
         return;
       }
@@ -1080,6 +1197,17 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       final interpretedOccasion = _occasionFromStylePrompt(
         resolvedStylePrompt.isNotEmpty ? resolvedStylePrompt : query,
       );
+      final moduleContextData = _isReminderQuestion(trimmed)
+          ? {
+              ...widget.contextData,
+              'frontend_intent_guard': {
+                'kind': 'reminder_question',
+                'rule': 'answer_q_and_a_do_not_start_reminder_creation',
+                'missing_data_response':
+                    _medicineReminderQuestionNoAccessMessage,
+              },
+            }
+          : widget.contextData;
       final response =
           styleModules.contains(widget.moduleContext) || allowPlanPackRoute
           ? await backend.sendChatQuery(
@@ -1128,7 +1256,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
               domain: widget.moduleContext,
               message: query,
               chatHistory: List<Map<String, String>>.from(_chatHistory),
-              context: widget.contextData,
+              context: moduleContextData,
             );
       if (!mounted) return;
       final refreshTarget =
@@ -1153,6 +1281,12 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       final aiText = message.isNotEmpty
           ? message
           : 'AHVI returned an empty response. Please try again.';
+      final suppressReminderCreationResponse =
+          _isReminderQuestion(trimmed) &&
+          _asksForReminderCreationDetails(aiText);
+      final guardedAiText = suppressReminderCreationResponse
+          ? _medicineReminderQuestionNoAccessMessage
+          : aiText;
 
       final updatedMemory = response['updated_memory'];
       if (updatedMemory != null) _runningMemory = updatedMemory.toString();
@@ -1182,6 +1316,9 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
           visualPayload.hasDirections || boardPayload.hasBoards
           ? null
           : rawStylistReasoning;
+      final displayModuleCards = suppressReminderCreationResponse
+          ? const <Map<String, dynamic>>[]
+          : moduleCards;
       final adviceBlock =
           _styleBlockFromResponse(response, 'body_proportion_advice') ??
           _styleBlockFromResponse(response, 'color_advice') ??
@@ -1190,7 +1327,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
           ? "I couldn't build even a closest option from the available wardrobe slots."
           : gapPayload.active && gapPayload.message.trim().isNotEmpty
           ? gapPayload.message.trim()
-          : aiText;
+          : guardedAiText;
 
       setState(() {
         _typing = false;
@@ -1198,7 +1335,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
           _SheetMessage(
             text: displayText,
             isUser: false,
-            moduleCards: moduleCards,
+            moduleCards: displayModuleCards,
             visualDirectionPayload: visualPayload.hasDirections
                 ? visualPayload
                 : null,
@@ -1208,13 +1345,13 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
             stylistReasoning: stylistReasoning,
             adviceBlock: adviceBlock,
             boardPayload:
-                moduleCards.isEmpty &&
+                displayModuleCards.isEmpty &&
                     boardPayload.hasBoards &&
                     !gapPayload.hasContent &&
                     !visualPayload.hasDirections
                 ? boardPayload
                 : null,
-            wardrobeGapPayload: moduleCards.isNotEmpty
+            wardrobeGapPayload: displayModuleCards.isNotEmpty
                 ? null
                 : isClosestStyleAction && !boardPayload.hasBoards
                 ? null
