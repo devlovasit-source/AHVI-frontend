@@ -423,6 +423,10 @@ class _ItemDetailModal extends StatelessWidget {
               'name': item.name,
               'category': item.cat,
               if (item.displayUrl != null) 'image_url': item.displayUrl,
+              // Display/context hint only: this modal renders the user's own
+              // wardrobe records. The backend re-verifies the item against
+              // the authenticated wardrobe and remains the trust boundary.
+              'source': 'wardrobe',
             },
           )
           .timeout(const Duration(seconds: 15));
