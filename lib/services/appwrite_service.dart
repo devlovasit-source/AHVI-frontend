@@ -1272,6 +1272,43 @@ class AppwriteService extends ChangeNotifier {
   // planner pages (occasion / office / party / vacation / everything_else).
   // Schema fields the planner reads:
   //   userId, occasion, outfitDescription, emoji, imageUrl, $createdAt.
+  /// Create a saved_boards document, adaptively dropping any attribute the
+  /// (older/recovery) schema reports as unknown. This persists the maximal
+  /// supported set — crucially the `board_payload` string that carries the
+  /// full outfit — instead of collapsing to a content-free minimal record.
+  Future<Document?> _createSavedBoardAdaptive(Map<String, dynamic> data) async {
+    final payload = Map<String, dynamic>.from(data);
+    for (var attempt = 0; attempt < 16; attempt++) {
+      try {
+        final doc = await databases.createDocument(
+          databaseId: Env.appwriteDatabaseId,
+          collectionId: Env.savedBoardsCollection,
+          documentId: ID.unique(),
+          data: payload,
+        );
+        debugPrint(
+          'AHVI_BOARD_SAVE_PERSIST kept=${payload.keys.toList()} '
+          'board_payload=${payload.containsKey('board_payload')}',
+        );
+        return doc;
+      } on AppwriteException catch (e) {
+        final unknown = _unknownAttribute(e.message);
+        if (unknown == null || !payload.containsKey(unknown)) rethrow;
+        debugPrint('AHVI_BOARD_SAVE_DROP_ATTR attribute=$unknown');
+        payload.remove(unknown);
+        if (payload.length <= 1) rethrow; // nothing meaningful left to write
+      }
+    }
+    return null;
+  }
+
+  String? _unknownAttribute(String? message) {
+    if (message == null) return null;
+    final match = RegExp(r'[Uu]nknown attribute:?\s*"?([A-Za-z0-9_]+)"?')
+        .firstMatch(message);
+    return match?.group(1);
+  }
+
   Future<Document?> saveBoardToCollection({
     required String occasion,
     required String outfitDescription,
@@ -1301,8 +1338,6 @@ class AppwriteService extends ChangeNotifier {
           : <String>[];
       final outfitItems = _savedBoardItemList(extra?['outfitItems']);
       final items = _savedBoardItemList(extra?['items']);
-      final boardPayload = _savedBoardPayload(extra?['board_payload']);
-      final boardPayloadCamel = _savedBoardPayload(extra?['boardPayload']);
 
       final storageOccasion = _savedBoardOccasionLabel(occasion);
       final categoryLabel = boardCategoryLabel?.trim().isNotEmpty == true
@@ -1311,7 +1346,6 @@ class AppwriteService extends ChangeNotifier {
       final categoryKey = boardCategory?.trim().isNotEmpty == true
           ? boardCategory!.trim()
           : _savedBoardCategoryKey(categoryLabel);
-      final nowIso = DateTime.now().toIso8601String();
 
       final richData = <String, dynamic>{
         'userId': user.$id,
@@ -1331,70 +1365,26 @@ class AppwriteService extends ChangeNotifier {
       };
       if (outfitItems.isNotEmpty) richData['outfitItems'] = outfitItems;
       if (items.isNotEmpty) richData['items'] = items;
-      if (boardPayload.isNotEmpty) richData['board_payload'] = boardPayload;
-      if (boardPayloadCamel.isNotEmpty) {
-        richData['boardPayload'] = boardPayloadCamel;
-      }
+      // Serialize the COMPLETE board into board_payload (a plain string
+      // attribute). The saved-board reader reconstructs items/title/occasion
+      // from here, so the full outfit survives even when the recovery schema
+      // lacks the newer typed attributes (boardCategory/thumbnailUrl/items...).
+      final payloadItems = outfitItems.isNotEmpty ? outfitItems : items;
+      richData['board_payload'] = jsonEncode({
+        'title': richData['title'],
+        'occasion': storageOccasion,
+        'outfitDescription': outfitDescription.trim(),
+        'imageUrl': cleanImageUrl,
+        'itemIds': itemIds,
+        'items': payloadItems,
+      });
 
-      try {
-        return await databases.createDocument(
-          databaseId: Env.appwriteDatabaseId,
-          collectionId: Env.savedBoardsCollection,
-          documentId: ID.unique(),
-          data: richData,
-        );
-      } catch (e) {
-        debugPrint(
-          'Rich saved board write failed, retrying JSON payload schema: $e',
-        );
-      }
-
-      if (outfitItems.isNotEmpty || items.isNotEmpty) {
-        final payloadItems = outfitItems.isNotEmpty ? outfitItems : items;
-        final jsonPayload = jsonEncode({
-          'title': richData['title'],
-          'occasion': storageOccasion,
-          'items': payloadItems,
-        });
-        try {
-          return await databases.createDocument(
-            databaseId: Env.appwriteDatabaseId,
-            collectionId: Env.savedBoardsCollection,
-            documentId: ID.unique(),
-            data: {
-              'userId': user.$id,
-              'occasion': storageOccasion,
-              'imageUrl': cleanImageUrl,
-              'thumbnailUrl': cleanImageUrl,
-              'itemIds': itemIds,
-              'boardCategory': categoryKey,
-              'boardCategoryLabel': categoryLabel,
-              'title': richData['title'],
-              'prompt': richData['prompt'],
-              'outfitDescription': richData['outfitDescription'],
-              'emoji': richData['emoji'],
-              // ✅ REMOVED: 'createdAt' - Appwrite manages this as $createdAt
-              'board_payload': jsonPayload,
-            },
-          );
-        } catch (e) {
-          debugPrint(
-            'JSON saved board write failed, retrying minimal schema: $e',
-          );
-        }
-      }
-
-      return await databases.createDocument(
-        databaseId: Env.appwriteDatabaseId,
-        collectionId: Env.savedBoardsCollection,
-        documentId: ID.unique(),
-        data: {
-          'userId': user.$id,
-          'occasion': storageOccasion,
-          'imageUrl': cleanImageUrl,
-          'itemIds': itemIds,
-        },
-      );
+      // Adaptive write: the recovery schema rejects newer attributes
+      // (boardCategory/thumbnailUrl/native items...). Instead of pre-guessing
+      // the schema, drop ONLY the attributes Appwrite reports as unknown and
+      // retry, so the reliable string carrier `board_payload` (full outfit)
+      // survives whenever it is supported.
+      return await _createSavedBoardAdaptive(richData);
     } catch (e) {
       debugPrint('Error saving board: $e');
       return null;
@@ -1420,11 +1410,6 @@ class AppwriteService extends ChangeNotifier {
       return url.isNotEmpty;
     })
         .toList();
-  }
-
-  Map<String, dynamic> _savedBoardPayload(Object? raw) {
-    if (raw is Map) return Map<String, dynamic>.from(raw);
-    return const <String, dynamic>{};
   }
 
   String _savedBoardOccasionLabel(String value) {
