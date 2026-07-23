@@ -2572,7 +2572,12 @@ class _SkincarePlusButtonState extends State<_SkincarePlusButton>
 
   @override
   void dispose() {
-    _closeMenu();
+    // Tear down the overlay/controller directly. Do NOT call _closeMenu():
+    // it calls setState(), but during dispose the element is being unmounted
+    // (mounted can still read true here), so setState() triggers a defunct
+    // _ElementLifecycle assertion. Clean up without rebuilding.
+    _overlay?.remove();
+    _overlay = null;
     _ctrl.dispose();
     super.dispose();
   }
@@ -2752,4 +2757,13 @@ class _SkincarePlusMenuRowState extends State<_SkincarePlusMenuRow> {
       ),
     );
   }
+}
+
+@visibleForTesting
+Widget debugSkincarePlusButton({VoidCallback? onCameraSelected}) {
+  const c = Color(0xFF222222);
+  return _SkincarePlusButton(
+    panel: c, panel2: c, cardBorder: c, accent: c, text: c, muted: c,
+    onCameraSelected: onCameraSelected,
+  );
 }
