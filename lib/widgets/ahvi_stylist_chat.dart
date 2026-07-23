@@ -13,6 +13,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:mime/mime.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/services/backend_service.dart';
+import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/widgets/ahvi_chat_prompt_bar.dart';
 import 'package:myapp/widgets/ahvi_home_text.dart';
 import 'package:myapp/theme/theme_tokens.dart';
@@ -638,12 +639,16 @@ class _ChatSession {
   final String title;
   final DateTime createdAt;
   final List<_SheetMessage> messages;
+  final Map<String, dynamic> styleState;
+  final String? styleStateOwnerId;
 
   _ChatSession({
     required this.id,
     required this.title,
     required this.createdAt,
     required this.messages,
+    this.styleState = const {},
+    this.styleStateOwnerId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -651,6 +656,8 @@ class _ChatSession {
     'title': title,
     'createdAt': createdAt.toIso8601String(),
     'messages': messages.map((m) => m.toJson()).toList(),
+    'styleState': styleState,
+    'styleStateOwnerId': styleStateOwnerId,
   };
 
   factory _ChatSession.fromJson(Map<String, dynamic> j) => _ChatSession(
@@ -660,6 +667,10 @@ class _ChatSession {
     messages: (j['messages'] as List)
         .map((e) => _SheetMessage.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList(),
+    styleState: j['styleState'] is Map
+        ? Map<String, dynamic>.from(j['styleState'] as Map)
+        : const {},
+    styleStateOwnerId: j['styleStateOwnerId']?.toString(),
   );
 }
 
@@ -698,6 +709,8 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
   final List<Map<String, String>> _chatHistory = [];
   String _runningMemory = '';
   Map<String, dynamic>? _lastStyleContext;
+  Map<String, dynamic> _latestStyleState = {};
+  String? _styleStateOwnerId;
   bool _typing = false;
   bool _chipsVisible = true;
   bool _chatHasText = false;
@@ -748,6 +761,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
   String get _historyStorageKey => 'ahvi_chat_history_${widget.moduleContext}';
 
   Future<void> _loadHistoryFromDisk() async {
+    await _ensureStyleStateOwner();
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_historyStorageKey);
     if (raw == null) return;
@@ -774,6 +788,19 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     );
   }
 
+  Future<void> _ensureStyleStateOwner() async {
+    String? ownerId;
+    try {
+      ownerId = (await AppwriteService().getCurrentUser())?.$id.trim();
+    } catch (_) {
+      ownerId = null;
+    }
+    if (ownerId == _styleStateOwnerId) return;
+    _styleStateOwnerId = ownerId;
+    _latestStyleState = {};
+    _lastStyleContext = null;
+  }
+
   void _saveCurrentSession() {
     if (_messages.isEmpty) return;
     final userMessages = _messages.where((m) => m.isUser).toList();
@@ -788,6 +815,10 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       title: title,
       createdAt: DateTime.now(),
       messages: List.from(_messages),
+      styleState: _styleStateOwnerId == null
+          ? const {}
+          : Map<String, dynamic>.from(_latestStyleState),
+      styleStateOwnerId: _styleStateOwnerId,
     );
     if (existingIdx != -1) {
       _history[existingIdx] = session;
@@ -805,6 +836,8 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       _messages.clear();
       _chatHistory.clear();
       _runningMemory = '';
+      _lastStyleContext = null;
+      _latestStyleState = {};
       _chipsVisible = true;
       _chatHasText = false;
       _inputController.clear();
@@ -833,6 +866,9 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
               .where((m) => (m['content'] ?? '').trim().isNotEmpty),
         );
       _chipsVisible = false;
+      _latestStyleState = session.styleStateOwnerId == _styleStateOwnerId
+          ? Map<String, dynamic>.from(session.styleState)
+          : {};
     });
     _scrollToBottom();
   }
@@ -1210,6 +1246,8 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     final trimmed = text.trim();
     if (trimmed.isEmpty && _pendingAttachment == null) return;
     if (_typing) return;
+    await _ensureStyleStateOwner();
+    if (!mounted) return;
     final attachment = _pendingAttachment;
     final prompt = [
       if (trimmed.isNotEmpty) trimmed,
@@ -1336,6 +1374,9 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
         }
             : null,
         lastStyleContext: _lastStyleContext,
+        styleState: _latestStyleState.isEmpty
+            ? null
+            : Map<String, dynamic>.from(_latestStyleState),
         showClosestOption: isClosestStyleAction,
         allowClosestOption: isClosestStyleAction,
         closest: isClosestStyleAction,
@@ -1379,6 +1420,23 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       if (updatedMemory != null) _runningMemory = updatedMemory.toString();
       final _lsc = _styleBlockFromResponse(response, 'last_style_context');
       if (_lsc != null) _lastStyleContext = _lsc;
+      final nextStyleState = response['style_state'];
+      if (nextStyleState is Map) {
+        _latestStyleState = Map<String, dynamic>.from(nextStyleState);
+      }
+      final betaInsights = <String, dynamic>{
+        if (response['understood'] is Map)
+          'understood': Map<String, dynamic>.from(response['understood'] as Map),
+        if (response['constraint_status'] is Map)
+          'constraint_status':
+              Map<String, dynamic>.from(response['constraint_status'] as Map),
+        if (response['visual_intelligence'] is Map)
+          'visual_intelligence':
+              Map<String, dynamic>.from(response['visual_intelligence'] as Map),
+        if (response['recommended_actions'] is List)
+          'recommended_actions':
+              List<dynamic>.from(response['recommended_actions'] as List),
+      };
       final moduleCards = _moduleCardsFromSheetResponse(response);
       final boardPayload = _StyleBoardPayload.fromResponse(response);
       final gapPayload = _WardrobeGapPayload.fromResponse(response);
@@ -1423,6 +1481,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
             transitionPlan: transitionPlan,
             stylistReasoning: stylistReasoning,
             adviceBlock: adviceBlock,
+            betaInsights: betaInsights.isEmpty ? null : betaInsights,
             boardPayload:
             displayModuleCards.isEmpty &&
                 boardPayload.hasBoards &&
@@ -1928,6 +1987,7 @@ class _SheetMessage {
   final Map<String, dynamic>? transitionPlan;
   final Map<String, dynamic>? stylistReasoning;
   final Map<String, dynamic>? adviceBlock;
+  final Map<String, dynamic>? betaInsights;
   final List<Map<String, dynamic>> moduleCards;
 
   _SheetMessage({
@@ -1942,6 +2002,7 @@ class _SheetMessage {
     this.transitionPlan,
     this.stylistReasoning,
     this.adviceBlock,
+    this.betaInsights,
     this.moduleCards = const [],
   }) : assert(text != null || textKey != null);
 
@@ -1962,6 +2023,7 @@ class _SheetMessage {
     'transitionPlan': transitionPlan,
     'stylistReasoning': stylistReasoning,
     'adviceBlock': adviceBlock,
+    'betaInsights': betaInsights,
     'moduleCards': moduleCards,
   };
 
@@ -1988,6 +2050,7 @@ class _SheetMessage {
       transitionPlan: asMap(j['transitionPlan']),
       stylistReasoning: asMap(j['stylistReasoning']),
       adviceBlock: asMap(j['adviceBlock']),
+      betaInsights: asMap(j['betaInsights']),
       moduleCards: _mapList(j['moduleCards']),
     );
   }
@@ -2361,6 +2424,8 @@ class _Bubble extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (!_suppressDuplicateBubble(context, msg)) bubble,
+        if (msg.betaInsights != null)
+          _BetaStyleInsightCard(data: msg.betaInsights!, onPrompt: onPrompt),
         if (msg.wardrobeGapPayload != null)
           _WardrobeGapCard(
             payload: msg.wardrobeGapPayload!,
@@ -2436,6 +2501,96 @@ class _Bubble extends StatelessWidget {
 // ════════════════════════════════════════════════════════════════════
 //  ADD MENU ROW  — list style matching design
 // ════════════════════════════════════════════════════════════════════
+
+class _BetaStyleInsightCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final ValueChanged<String> onPrompt;
+  const _BetaStyleInsightCard({required this.data, required this.onPrompt});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.themeTokens;
+    Map<String, dynamic> map(String key) => data[key] is Map
+        ? Map<String, dynamic>.from(data[key] as Map)
+        : <String, dynamic>{};
+    final understood = map('understood');
+    final status = map('constraint_status');
+    final visual = map('visual_intelligence');
+    final actions = (data['recommended_actions'] as List? ?? const [])
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .take(3)
+        .toList();
+    final passed = (status['passed_constraints'] as List? ?? const [])
+        .map((item) => '✓ ${item.toString().replaceAll('_', ' ')}');
+    final unresolved = (status['unresolved_constraints'] as List? ?? const [])
+        .map((item) => '⚠ ${item.toString().replaceAll('_', ' ')}');
+    final validationStatus =
+        (status['final_validation_status'] ?? '').toString().trim();
+    Widget section(String title, Iterable<String> values) {
+      final lines = values.where((value) => value.trim().isNotEmpty).toList();
+      if (lines.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: TextStyle(
+              color: t.accent.primary, fontSize: 10,
+              fontWeight: FontWeight.w800, letterSpacing: .7,
+            )),
+            ...lines.map((line) => Text(
+              line, style: TextStyle(color: t.textPrimary, fontSize: 11.5),
+            )),
+          ],
+        ),
+      );
+    }
+    return Container(
+      width: 280,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: t.panel,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: t.cardBorder),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        section('AHVI UNDERSTOOD', [
+          if ((understood['occasion'] ?? '').toString().isNotEmpty)
+            'Occasion: ${understood['occasion']}',
+          if ((understood['source_mode'] ?? '').toString().isNotEmpty)
+            'Source: ${understood['source_mode']}',
+          if ((understood['action'] ?? '').toString().isNotEmpty)
+            'Request: ${understood['action'].toString().replaceAll('_', ' ')}',
+        ]),
+        section('CONSTRAINT CHECK', [
+          if (validationStatus == 'partial' || validationStatus == 'failed')
+            'Status: $validationStatus',
+          ...passed,
+          ...unresolved,
+        ]),
+        section('AHVI VISUAL READ', [
+          (visual['summary'] ?? '').toString(),
+          if ((visual['color_story'] ?? '').toString().isNotEmpty)
+            'Color: ${visual['color_story']}',
+          if ((visual['silhouette_story'] ?? '').toString().isNotEmpty)
+            'Silhouette: ${visual['silhouette_story']}',
+          if ((visual['weakest_reason'] ?? '').toString().isNotEmpty)
+            'Visual weakness: ${visual['weakest_reason']}',
+        ]),
+        if (actions.isNotEmpty)
+          Wrap(
+            spacing: 6,
+            children: actions.map((action) => ActionChip(
+              label: Text(action), onPressed: () => onPrompt(action),
+            )).toList(),
+          ),
+      ]),
+    );
+  }
+
+}
 
 class _SheetModuleCards extends StatelessWidget {
   final List<Map<String, dynamic>> cards;
