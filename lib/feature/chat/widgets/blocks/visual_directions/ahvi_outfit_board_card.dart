@@ -1,5 +1,14 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/feature/chat/services/fashion_item_filter.dart';
 import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/editorial_collage.dart';
@@ -12,6 +21,17 @@ import 'package:myapp/style_board/board_models.dart';
 import 'package:myapp/style_board/editorial_board_renderer.dart';
 
 typedef OutfitBoardMessageSender = void Function(String message);
+
+/// Persists a board and returns the created document id (or null on failure).
+/// Overridable so tests can drive Save without a live Appwrite backend.
+typedef BoardSaveFn = Future<String?> Function({
+  required String occasion,
+  required String outfitDescription,
+  required String imageUrl,
+  required String title,
+  required List<String> itemIds,
+  required List<Map<String, dynamic>> items,
+});
 
 class AhviOutfitBoardCard extends StatefulWidget {
   final Map<String, dynamic> direction;
@@ -44,6 +64,9 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
   late StyleBoardData _initialBoard;
   StyleBoardController? _controller;
   StyleBoardData? _pendingBoard;
+  // Wraps ONLY the shareable board visual (context strip + collage), never the
+  // mutation/action controls, so Share captures a clean image.
+  final GlobalKey _shareBoundaryKey = GlobalKey();
 
   @override
   void initState() {
@@ -204,28 +227,38 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
           borderRadius: BorderRadius.circular(18),
           child: Column(
             children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: widget.onTapBoard,
-                child: OutfitContextStrip(model: _model),
-              ),
               Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: widget.onTapBoard,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
-                    child: renderable
-                        ? EditorialBoardCanvas(
-                            board: board,
-                            lockedItemIds:
-                                _controller?.state.lockedItemIds ?? const {},
-                            onToggleLock: _controller?.toggleLock,
-                          )
-                        : _IncompleteBoardFallback(
-                            title: board.title,
-                            whyItWorks: board.whyItWorks,
+                child: RepaintBoundary(
+                  key: _shareBoundaryKey,
+                  child: Column(
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: widget.onTapBoard,
+                        child: OutfitContextStrip(model: _model),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: widget.onTapBoard,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
+                            child: renderable
+                                ? EditorialBoardCanvas(
+                                    board: board,
+                                    lockedItemIds:
+                                        _controller?.state.lockedItemIds ??
+                                            const {},
+                                    onToggleLock: _controller?.toggleLock,
+                                  )
+                                : _IncompleteBoardFallback(
+                                    title: board.title,
+                                    whyItWorks: board.whyItWorks,
+                                  ),
                           ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -237,6 +270,7 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
                 primaryLabel: _model.title,
                 missingName: _model.missingName,
                 onSendMessage: widget.onSendMessage,
+                shareBoundaryKey: _shareBoundaryKey,
               ),
             ],
           ),
@@ -665,6 +699,13 @@ class OutfitActionBar extends StatefulWidget {
   final String primaryLabel;
   final String missingName;
   final OutfitBoardMessageSender? onSendMessage;
+  final GlobalKey? shareBoundaryKey;
+  // Test seams (production uses the real Appwrite + share_plus paths).
+  final BoardSaveFn? saveBoardOverride;
+  final Future<Uint8List?> Function()? captureOverride;
+  final Future<void> Function(Uint8List bytes, String caption)?
+      shareImageOverride;
+  final Future<void> Function(String text)? shareTextOverride;
 
   const OutfitActionBar({
     super.key,
@@ -673,6 +714,11 @@ class OutfitActionBar extends StatefulWidget {
     required this.primaryLabel,
     required this.missingName,
     this.onSendMessage,
+    this.shareBoundaryKey,
+    this.saveBoardOverride,
+    this.captureOverride,
+    this.shareImageOverride,
+    this.shareTextOverride,
   });
 
   @override
@@ -687,10 +733,13 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
 
   void _sendFeedback(String action) {
     // Fire-and-forget; also the adaptive stylist-brain training signal.
-    Provider.of<BackendService>(
-      context,
-      listen: false,
-    ).sendBoardFeedback(action: action, board: widget.direction);
+    // Never let a missing provider or feedback error break Save/Share.
+    try {
+      Provider.of<BackendService>(
+        context,
+        listen: false,
+      ).sendBoardFeedback(action: action, board: widget.direction);
+    } catch (_) {}
   }
 
   void _toggleLike() {
@@ -709,15 +758,63 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
     if (_disliked) _sendFeedback('dislike');
   }
 
-  void _share() {
-    _sendFeedback('shared');
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(
-        content: Text('Sharing this look…'),
-        duration: Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
+  String _shareCaption() {
+    final title = widget.primaryLabel.trim().isEmpty
+        ? _occasion
+        : widget.primaryLabel.trim();
+    return 'My "$title" look, styled on AHVI.';
+  }
+
+  Future<Uint8List?> _captureBoardPng() async {
+    final ctx = widget.shareBoundaryKey?.currentContext;
+    final renderObject = ctx?.findRenderObject();
+    if (renderObject is! RenderRepaintBoundary) return null;
+    final image = await renderObject.toImage(pixelRatio: 3.0);
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData?.buffer.asUint8List();
+  }
+
+  Future<void> _shareImageDefault(Uint8List bytes, String caption) async {
+    final dir = await getTemporaryDirectory();
+    final file = File(
+      '${dir.path}/ahvi_board_${DateTime.now().millisecondsSinceEpoch}.png',
     );
+    await file.writeAsBytes(bytes, flush: true);
+    await Share.shareXFiles([XFile(file.path)], text: caption);
+  }
+
+  Future<void> _share() async {
+    debugPrint('AHVI_BOARD_SHARE_TAP');
+    final caption = _shareCaption();
+    try {
+      debugPrint('AHVI_BOARD_SHARE_CAPTURE_START');
+      final bytes = await (widget.captureOverride ?? _captureBoardPng)();
+      if (bytes == null || bytes.isEmpty) {
+        throw Exception('capture_returned_no_bytes');
+      }
+      debugPrint('AHVI_BOARD_SHARE_CAPTURE_SUCCESS bytes=${bytes.length}');
+      final shareImage = widget.shareImageOverride ?? _shareImageDefault;
+      await shareImage(bytes, caption);
+      debugPrint('AHVI_BOARD_SHARE_SHEET_OPENED');
+      _sendFeedback('shared');
+    } catch (e) {
+      // Image path failed -> never do nothing: fall back to text sharing.
+      debugPrint('AHVI_BOARD_SHARE_FAILED error=$e');
+      try {
+        final shareText =
+            widget.shareTextOverride ?? (text) => Share.share(text);
+        await shareText(caption);
+        debugPrint('AHVI_BOARD_SHARE_TEXT_FALLBACK');
+        _sendFeedback('shared');
+      } catch (e2) {
+        debugPrint('AHVI_BOARD_SHARE_FAILED error=$e2');
+        if (mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            const SnackBar(content: Text('Could not open the share sheet.')),
+          );
+        }
+      }
+    }
   }
 
   String get _occasion {
@@ -744,29 +841,136 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
     setState(() => _saved = saved);
   }
 
+  List<Map<String, dynamic>> _saveItems() {
+    final items = _maps(
+      widget.direction['board_items'] ??
+          widget.direction['boardItems'] ??
+          widget.direction['items'],
+    );
+    return items;
+  }
+
+  List<String> _saveItemIds() {
+    final ids = <String>[];
+    for (final item in _saveItems()) {
+      final id = _text(
+        item['item_id'] ??
+            item['id'] ??
+            item[r'$id'] ??
+            item['itemId'] ??
+            item['image_id'] ??
+            item['asset_id'] ??
+            item['wardrobe_item_id'] ??
+            item['wardrobeItemId'],
+      );
+      if (id.isNotEmpty) ids.add(id);
+    }
+    return ids;
+  }
+
+  String _saveImageUrl() {
+    String pick(dynamic v) => _text(v);
+    // Prefer an explicit board/cover image, else the first item's image.
+    final candidates = <String>[
+      pick(widget.direction['image_url']),
+      pick(widget.direction['imageUrl']),
+      pick(widget.direction['board_image_url']),
+      pick(widget.editorialCover['image_url']),
+      pick(widget.editorialCover['imageUrl']),
+    ];
+    for (final item in _saveItems()) {
+      candidates.add(pick(item['image_url']));
+      candidates.add(pick(item['imageUrl']));
+      candidates.add(pick(item['normalized_url']));
+      candidates.add(pick(item['cutout_url']));
+    }
+    return candidates.firstWhere((u) => u.isNotEmpty, orElse: () => '');
+  }
+
+  String _saveExplanation() {
+    final why = _text(
+      widget.direction['why'] ??
+          widget.direction['why_it_works'] ??
+          widget.direction['explanation'] ??
+          widget.direction['style_tip'] ??
+          widget.direction['style_tip'],
+    );
+    return why.isEmpty ? 'AHVI styled look' : why;
+  }
+
+  Future<String?> _defaultSaveBoard({
+    required String occasion,
+    required String outfitDescription,
+    required String imageUrl,
+    required String title,
+    required List<String> itemIds,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final doc = await AppwriteService().saveBoardToCollection(
+      occasion: occasion,
+      outfitDescription: outfitDescription,
+      imageUrl: imageUrl,
+      title: title,
+      emoji: '✨',
+      extra: {
+        'itemIds': itemIds,
+        'items': items,
+        'outfitItems': items,
+        'board_payload': {'title': title, 'occasion': occasion, 'items': items},
+      },
+    );
+    return doc?.$id;
+  }
+
   Future<void> _toggleSave() async {
-    if (_saving) return;
+    debugPrint('AHVI_BOARD_SAVE_TAP');
+    // Idempotent: ignore taps while saving or once already saved.
+    if (_saving || _saved) return;
     setState(() => _saving = true);
+    debugPrint('AHVI_BOARD_SAVE_START');
     try {
-      if (_saved) {
-        await SavedBoardsStore.remove(_id);
-      } else {
-        await SavedBoardsStore.saveBoard(
+      final items = _saveItems();
+      final saver = widget.saveBoardOverride ?? _defaultSaveBoard;
+      final docId = await saver(
+        occasion: _occasion,
+        outfitDescription: _saveExplanation(),
+        imageUrl: _saveImageUrl(),
+        title: widget.primaryLabel,
+        itemIds: _saveItemIds(),
+        items: items,
+      );
+      if (docId == null || docId.isEmpty) {
+        throw Exception('appwrite_returned_null_document');
+      }
+      debugPrint('AHVI_BOARD_SAVE_SUCCESS board_document_id=$docId');
+      _sendFeedback('saved');
+      // Best-effort local echo so the heart persists on reload. Appwrite is the
+      // authoritative store; this is UI state only, not a replacement.
+      unawaited(
+        SavedBoardsStore.saveBoard(
           occasion: _occasion,
           directionName: widget.primaryLabel,
           direction: widget.direction,
           editorialCover: widget.editorialCover,
-        );
-        _sendFeedback('saved');
-      }
+        ),
+      );
       if (!mounted) return;
       setState(() {
-        _saved = !_saved;
+        _saved = true; // heart only flips AFTER persistence succeeds
         _saving = false;
       });
-    } catch (_) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('Saved to your boards')),
+      );
+    } catch (e) {
+      debugPrint('AHVI_BOARD_SAVE_FAILED error=$e');
       if (!mounted) return;
-      setState(() => _saving = false);
+      setState(() => _saving = false); // stays unsaved on failure
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text('Could not save board. Please try again.'),
+        ),
+      );
     }
   }
 
