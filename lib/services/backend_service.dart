@@ -1350,24 +1350,29 @@ class BackendService {
   }
 
   Future<Map<String, dynamic>> getTodayWorkout() async {
+    final url =
+        '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/api/workouts/today';
+    debugPrint('AHVI_WORKOUT_TODAY_REQUEST endpoint=$url');
     try {
+      final headers = await _authHeaders();
+      final hasAuth =
+          (headers['Authorization'] ?? headers['authorization'] ?? '')
+              .toString()
+              .isNotEmpty;
+      debugPrint('AHVI_WORKOUT_TODAY_AUTH authorization=$hasAuth');
       final response = await http
-          .get(
-        Uri.parse('$baseUrl/api/workouts/today'),
-        headers: await _authHeaders(),
-      )
+          .get(Uri.parse(url), headers: headers)
           .timeout(const Duration(seconds: 20));
-
+      debugPrint(
+        'AHVI_WORKOUT_TODAY_STATUS status=${response.statusCode} '
+        'content_type=${response.headers['content-type'] ?? ''}',
+      );
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return await compute(_parseJsonMap, response.body);
       }
-
-      debugPrint(
-        'Today workout load failed: ${response.statusCode} ${response.body}',
-      );
       return <String, dynamic>{};
     } catch (e) {
-      debugPrint('Today workout load error: $e');
+      debugPrint('AHVI_WORKOUT_TODAY_STATUS status=error content_type= error=$e');
       return <String, dynamic>{};
     }
   }
