@@ -31,7 +31,9 @@ void main() {
   });
 
   test('optional beta cards preserve legacy rendering', () {
-    expect(chatSource, contains('if (msg.betaInsights != null)'));
+    // Beta diagnostics (AHVI UNDERSTOOD / CONSTRAINT CHECK) are gated behind
+    // the explicit developer flag so they never show in the beta APK.
+    expect(chatSource, contains('if (msg.betaInsights != null && Env.showStyleDebug)'));
     expect(chatSource, contains('AHVI UNDERSTOOD'));
     expect(chatSource, contains('CONSTRAINT CHECK'));
     expect(chatSource, contains('AHVI VISUAL READ'));

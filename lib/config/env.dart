@@ -7,6 +7,22 @@ class Env {
     defaultValue: '1.0.0+1',
   );
 
+  /// Developer-only Style diagnostics (AHVI UNDERSTOOD / Source / Request /
+  /// CONSTRAINT CHECK). Default OFF. Must NOT rely on kDebugMode — the beta
+  /// APK is a debug build, so these are gated by an explicit env flag instead.
+  static bool get showStyleDebug {
+    try {
+      final raw = (dotenv.env['EXPO_PUBLIC_SHOW_STYLE_DEBUG'] ??
+              dotenv.env['SHOW_STYLE_DEBUG'] ??
+              '')
+          .trim()
+          .toLowerCase();
+      return raw == 'true' || raw == '1' || raw == 'yes' || raw == 'on';
+    } catch (_) {
+      return false;
+    }
+  }
+
   static String get appwriteEndpoint =>
       dotenv.env['EXPO_PUBLIC_APPWRITE_ENDPOINT'] ?? '';
   static String get appwriteProjectId =>

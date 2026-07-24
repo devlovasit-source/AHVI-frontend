@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:mime/mime.dart';
 import 'package:myapp/app_localizations.dart';
+import 'package:myapp/config/env.dart';
 import 'package:myapp/services/backend_service.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/widgets/ahvi_chat_prompt_bar.dart';
@@ -2424,7 +2425,10 @@ class _Bubble extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (!_suppressDuplicateBubble(context, msg)) bubble,
-        if (msg.betaInsights != null)
+        // Developer-only diagnostics (AHVI UNDERSTOOD / Source / Request /
+        // CONSTRAINT CHECK). Hidden in the beta APK unless the explicit
+        // EXPO_PUBLIC_SHOW_STYLE_DEBUG env flag is set (never kDebugMode).
+        if (msg.betaInsights != null && Env.showStyleDebug)
           _BetaStyleInsightCard(data: msg.betaInsights!, onPrompt: onPrompt),
         if (msg.wardrobeGapPayload != null)
           _WardrobeGapCard(
