@@ -80,6 +80,38 @@ bool _isShowClosestStyleAction(String value) {
       normalized == 'show closest safe option';
 }
 
+const List<String> _kAlternativeLookPhrases = [
+  'another look',
+  'another wardrobe look',
+  'another wardrobe',
+  'another option',
+  'try another',
+  'give me another',
+  'more looks',
+  'different look',
+  'something else',
+  'show me another',
+];
+
+bool isAlternativeLookPhrase(String value) {
+  final v = value.trim().toLowerCase();
+  return _kAlternativeLookPhrases.any((p) => v.contains(p));
+}
+
+List<String> renderedItemIdsFrom(Map<String, dynamic> state) {
+  final items = state['board_items'];
+  if (items is! List) return const <String>[];
+  final out = <String>[];
+  for (final item in items) {
+    if (item is Map) {
+      final id =
+          (item['item_id'] ?? item['id'] ?? item[r'$id'] ?? '').toString();
+      if (id.isNotEmpty) out.add(id);
+    }
+  }
+  return out;
+}
+
 bool _isPlanPackRequest(String value) {
   final text = value.toLowerCase().trim();
   final asksForPacking =
@@ -1303,6 +1335,27 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       final isClosestStyleAction =
           styleModules.contains(widget.moduleContext) &&
               _isShowClosestStyleAction(trimmed);
+      // Alternative-board follow-up ("show me another look" etc.) over an
+      // existing rendered board. Routes through the structured style path with
+      // the canonical create_alternative_board action; the carried style_state
+      // supplies occasion / source / item IDs the backend excludes.
+      final isAlternativeLook = styleModules.contains(widget.moduleContext) &&
+          !isClosestStyleAction &&
+          _latestStyleState.isNotEmpty &&
+          isAlternativeLookPhrase(trimmed);
+      if (isAlternativeLook) {
+        final excludedIds = renderedItemIdsFrom(_latestStyleState);
+        debugPrint('AHVI_STYLE_FOLLOWUP_ALTERNATIVE_DETECTED phrase=$trimmed');
+        debugPrint(
+          'AHVI_STYLE_FOLLOWUP_CONTEXT '
+          'occasion=${_latestStyleState['occasion']} '
+          'source_policy=${_latestStyleState['source_mode']} '
+          'excluded_items=${excludedIds.length}',
+        );
+        debugPrint(
+          'AHVI_STYLE_FOLLOWUP_ALTERNATIVE_SENT action=create_alternative_board',
+        );
+      }
       final pendingClarificationPrompt =
       styleModules.contains(widget.moduleContext) && !isClosestStyleAction
           ? _pendingStyleClarificationPrompt()
@@ -1343,10 +1396,14 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
         List<Map<String, String>>.from(_chatHistory),
         _runningMemory,
         moduleContext: isPlanPackRequest ? 'chat' : styleModuleContext,
-        styleAction: isClosestStyleAction ? 'show_closest_option' : null,
-        action: isClosestStyleAction
-            ? 'show_closest_option'
-            : (isClarificationAnswer ? 'clarification_selected' : null),
+        styleAction: isAlternativeLook
+            ? 'create_alternative_board'
+            : (isClosestStyleAction ? 'show_closest_option' : null),
+        action: isAlternativeLook
+            ? 'create_alternative_board'
+            : isClosestStyleAction
+                ? 'show_closest_option'
+                : (isClarificationAnswer ? 'clarification_selected' : null),
         clarification: isClarificationAnswer ? trimmed : null,
         previousPrompt: isClarificationAnswer
             ? pendingClarificationPrompt
