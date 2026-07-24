@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/feature/chat/services/fashion_item_filter.dart';
+import 'package:myapp/feature/chat/widgets/blocks/visual_directions/board_render_completeness.dart';
 import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/editorial_collage.dart';
 import 'package:myapp/services/backend_service.dart';
@@ -1542,33 +1543,36 @@ List<StyleBoardItem> _enforceSlots(List<StyleBoardItem> items) {
 /// dress(fullBody)+footwear. Otherwise the caller shows the text direction
 /// instead of painting a broken board. Logs the missing slots.
 bool _isRenderableOutfit(List<StyleBoardItem> items) {
-  final roles = items.map((e) => e.role).toSet();
-  final classic = roles.containsAll({
-    BoardItemRole.top,
-    BoardItemRole.bottom,
-    BoardItemRole.footwear,
-  });
-  final dressed =
-      roles.contains(BoardItemRole.dress) &&
-      roles.contains(BoardItemRole.footwear);
-
-  final knownRoleImages = items
-      .where((i) => i.role != BoardItemRole.unknown)
-      .length;
-
-  if (!classic && !dressed && knownRoleImages < 3) {
-    final missing = <String>[];
-    if (!roles.contains(BoardItemRole.footwear)) missing.add('footwear');
-    if (!roles.contains(BoardItemRole.dress)) {
-      if (!roles.contains(BoardItemRole.top)) missing.add('top');
-      if (!roles.contains(BoardItemRole.bottom)) missing.add('bottom');
-    }
+  // Validate the FINAL rendered roles. Accessories never satisfy a core role,
+  // and >=3 "known" items is NOT completeness (bottom+footwear+accessory used
+  // to slip through). One-piece needs no separate top/bottom.
+  final result = evaluateRenderCompleteness(items);
+  if (result.complete) {
     debugPrint(
-      'AHVI_BOARD_INCOMPLETE missing=${missing.join(",")} '
-      'roles=${roles.map((e) => e.name).join(",")}',
+      'AHVI_BOARD_RENDER_COMPLETENESS_PASS structure=${result.structure} '
+      'roles=${result.roles.join(",")}',
+    );
+  } else {
+    debugPrint(
+      'AHVI_BOARD_RENDER_COMPLETENESS_REJECT reason=${result.reason} '
+      'roles=${result.roles.join(",")}',
     );
   }
-  return classic || dressed || knownRoleImages >= 3;
+  return result.complete;
+}
+
+/// Public completeness check over a raw backend direction, using the SAME
+/// normalization + image resolution the card renders with. Used by the
+/// carousel to skip invalid boards before they reach the viewport.
+BoardRenderCompleteness boardCompletenessForDirection(
+  Map<String, dynamic> direction, {
+  Map<String, dynamic> editorialCover = const <String, dynamic>{},
+}) {
+  final model = OutfitBoardModel.fromPayload(
+    direction,
+    editorialCover: editorialCover,
+  );
+  return evaluateRenderCompleteness(_toStyleBoardData(model, direction).items);
 }
 
 /// Shown instead of a broken board when required slots are missing. Keeps the

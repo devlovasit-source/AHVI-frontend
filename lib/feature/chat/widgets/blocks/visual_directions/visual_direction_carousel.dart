@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:myapp/feature/chat/services/fashion_item_filter.dart';
 import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/ahvi_outfit_board_card.dart';
+import 'package:myapp/feature/chat/widgets/blocks/visual_directions/board_render_completeness.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/curation_reveal.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 
@@ -45,8 +46,30 @@ class VisualDirectionCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final usable = directions.where((item) => item.isNotEmpty).toList();
-    if (usable.isEmpty) return const SizedBox.shrink();
+    final nonEmpty = directions.where((item) => item.isNotEmpty).toList();
+    if (nonEmpty.isEmpty) return const SizedBox.shrink();
+
+    // Final rendered-role completeness guard. The backend may claim a complete
+    // outfit, but after normalization/dedup/image-resolution a board can end up
+    // as e.g. bottom+footwear+accessory. Skip those; if every board is invalid,
+    // show one honest fallback instead of an accessory-only visual.
+    final usable = <Map<String, dynamic>>[];
+    for (final d in nonEmpty) {
+      final result = boardCompletenessForDirection(d, editorialCover: editorialCover);
+      if (result.complete) {
+        usable.add(d);
+      } else {
+        debugPrint(
+          'AHVI_BOARD_RENDER_COMPLETENESS_REJECT reason=${result.reason} '
+          'roles=${result.roles.join(",")} '
+          'title=${_text(d['title'] ?? d['direction_name'], '')}',
+        );
+      }
+    }
+    if (usable.isEmpty) {
+      debugPrint('AHVI_BOARD_RENDER_ALL_REJECTED count=${nonEmpty.length}');
+      return const _AllBoardsIncompleteFallback();
+    }
 
     // Wider hero — premium boards command the viewport instead of feeling
     // like nested chat cards. ~360 keeps two boards peeking in on a 6"
@@ -1444,4 +1467,21 @@ List<Map<String, dynamic>> _mapList(dynamic value) {
       .whereType<Map>()
       .map((item) => Map<String, dynamic>.from(item))
       .toList(growable: false);
+}
+
+class _AllBoardsIncompleteFallback extends StatelessWidget {
+  const _AllBoardsIncompleteFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+      child: Text(
+        "I could not build a complete outfit from those pieces yet - I need a "
+        "top or dress with a bottom and footwear. Tell me the occasion or add a "
+        "missing piece and I will restyle it.",
+        style: Theme.of(context).textTheme.bodyMedium,
+      ),
+    );
+  }
 }

@@ -214,7 +214,18 @@ BoardItemRole boardItemRoleFromText(String value) =>
       'bottom' => BoardItemRole.bottom,
       'footwear' => BoardItemRole.footwear,
       'outerwear' => BoardItemRole.outerwear,
-      'dress' => BoardItemRole.dress,
+      // One-piece garments all normalize to the dress role (they need no
+      // separate top/bottom for completeness).
+      'dress' ||
+      'gown' ||
+      'jumpsuit' ||
+      'romper' ||
+      'saree' ||
+      'sari' ||
+      'lehenga' ||
+      'ethnic' ||
+      'one_piece' ||
+      'onepiece' => BoardItemRole.dress,
       'accessory' ||
       'bag' ||
       'watch' ||
