@@ -104,35 +104,19 @@ class BackendService {
     required String boardId,
     required Map<String, dynamic> payload,
   }) async {
-    final endpoint =
-        '/api/style-boards/${Uri.encodeComponent(boardId)}/shuffle';
-    final body = Map<String, dynamic>.from(payload)
-      ..['user_id'] = await _currentUserId();
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl$endpoint'),
-            headers: await _authHeaders(),
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 30));
-      Map<String, dynamic> data;
-      try {
-        data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
-      } catch (_) {
-        throw const BackendRequestException('Malformed style board response');
-      }
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        final detail = data['detail'];
-        if (detail is Map) return {'success': false, 'error': detail};
-        throw BackendRequestException(
-          'Style board request failed (${response.statusCode})',
-        );
-      }
-      return data;
-    } on TimeoutException {
-      throw const BackendRequestException('Style board request timed out');
-    }
+    // There is no durable backend shuffle route yet. Avoid the historical
+    // guaranteed-404 URL and fail honestly; chat "More options" remains the
+    // supported regeneration path.
+    return {
+      'success': false,
+      'error': {
+        'code': 'UNSUPPORTED_BETA_MUTATION',
+        'message':
+            'Locked board shuffle is not available in this beta. Ask AHVI for more options instead.',
+        'retryable': false,
+        'board_id': boardId,
+      },
+    };
   }
 
   Future<String> _currentUserId() async {
@@ -200,10 +184,17 @@ class BackendService {
 
   Future<Map<String, dynamic>?> getDailyBoard() async {
     try {
+      final userId = await _currentUserId();
       final response = await http
-          .get(
-        Uri.parse('$baseUrl/api/stylist/daily-board'),
+          .post(
+        Uri.parse('$baseUrl/api/stylist/pipeline'),
         headers: await _authHeaders(),
+        body: jsonEncode({
+          'user_id': userId,
+          'query': 'What should I wear today?',
+          'include_base64': false,
+          'upload_style_boards_to_r2': false,
+        }),
       )
           .timeout(const Duration(seconds: 45));
       if (response.statusCode == 200) {
@@ -220,24 +211,7 @@ class BackendService {
   }
 
   Future<bool> logWear(List<String> itemIds) async {
-    final ids = itemIds
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList(growable: false);
-    if (ids.isEmpty) return false;
-    try {
-      final response = await http
-          .post(
-        Uri.parse('$baseUrl/api/style/log-wear'),
-        headers: await _authHeaders(),
-        body: jsonEncode({'item_ids': ids}),
-      )
-          .timeout(const Duration(seconds: 20));
-      return response.statusCode >= 200 && response.statusCode < 300;
-    } catch (e) {
-      debugPrint('logWear error: $e');
-      return false;
-    }
+    return wearToday(itemIds: itemIds);
   }
 
   // --- ACCOUNT & PROFILE ---
@@ -397,6 +371,7 @@ class BackendService {
         String? resolvedPrompt,
         String? currentLookId,
         Map<String, dynamic>? styleContext,
+        Map<String, dynamic>? styleState,
         // Persisted style-pairing session (anchor/route/persona). Echoed into
         // current_memory so backend follow-ups keep the anchor.
         Map<String, dynamic>? lastStyleContext,
@@ -445,6 +420,8 @@ class BackendService {
           'current_look_id': currentLookId.trim(),
         if (styleContext != null && styleContext.isNotEmpty)
           'style_context': styleContext,
+        if (styleState != null && styleState.isNotEmpty)
+          'style_state': styleState,
       };
 
       final requestPayload = {
@@ -552,6 +529,7 @@ class BackendService {
             wardrobeFirst: wardrobeFirst,
             assetPolicy: assetPolicy,
             allowGenericAssetsInMainBoard: allowGenericAssetsInMainBoard,
+            styleState: styleState,
           );
         }
 
