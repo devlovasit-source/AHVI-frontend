@@ -1371,25 +1371,84 @@ class BackendService {
     }
   }
 
-  Future<Map<String, dynamic>> getTodayWorkout() async {
-    try {
-      final response = await http
-          .get(
-        Uri.parse('$baseUrl/api/workouts/today'),
-        headers: await _authHeaders(),
-      )
-          .timeout(const Duration(seconds: 20));
+  // --- Today-workout session coordination --------------------------------
+  // Both home.dart and fitness_page.dart request today's workout. To stop a
+  // request storm (and repeated calls on rebuild) a single completed result is
+  // cached for the app session, and concurrent callers share ONE in-flight
+  // request. A failed / non-2xx request is never cached, so an explicit user
+  // retry can try again — but nothing retries automatically.
+  Map<String, dynamic>? _todayWorkoutCache;
+  Future<Map<String, dynamic>>? _todayWorkoutInFlight;
 
+  /// Clears the cached today-workout result. Call only from an explicit user
+  /// retry action; never on a rebuild or an automatic path.
+  void clearTodayWorkoutCache() {
+    _todayWorkoutCache = null;
+  }
+
+  /// Test seam: when set, replaces the real network fetch so the coordination
+  /// logic (cache / single-flight / no-auto-retry) can be exercised in unit
+  /// tests without real HTTP or Appwrite.
+  @visibleForTesting
+  Future<Map<String, dynamic>> Function()? debugTodayWorkoutFetcher;
+
+  Future<Map<String, dynamic>> getTodayWorkout({bool forceRefresh = false}) {
+    if (forceRefresh) {
+      _todayWorkoutCache = null;
+    }
+    final cached = _todayWorkoutCache;
+    if (cached != null) {
+      debugPrint('AHVI_WORKOUT_TODAY_SKIPPED reason=cached');
+      return Future<Map<String, dynamic>>.value(cached);
+    }
+    final inFlight = _todayWorkoutInFlight;
+    if (inFlight != null) {
+      debugPrint('AHVI_WORKOUT_TODAY_SKIPPED reason=already_loading');
+      return inFlight;
+    }
+    final fetch = debugTodayWorkoutFetcher ?? _fetchTodayWorkout;
+    final future = fetch();
+    _todayWorkoutInFlight = future;
+    return future.then((result) {
+      // Cache only a real (non-empty) result so home + fitness reuse one
+      // session result. Empty / failed results stay uncached, so an explicit
+      // user retry can try again without any automatic retry loop.
+      if (result.isNotEmpty) {
+        _todayWorkoutCache = result;
+      }
+      return result;
+    }).whenComplete(() {
+      _todayWorkoutInFlight = null;
+    });
+  }
+
+  Future<Map<String, dynamic>> _fetchTodayWorkout() async {
+    // Normalize any trailing slashes on the base URL exactly once, then append
+    // the exact route so we never emit `//api/workouts/today`.
+    final root = baseUrl.replaceAll(RegExp(r'/+$'), '');
+    final url = '$root/api/workouts/today';
+    debugPrint('AHVI_WORKOUT_TODAY_REQUEST endpoint=$url');
+    try {
+      final headers = await _authHeaders();
+      final hasAuth =
+          (headers['Authorization'] ?? headers['authorization'] ?? '')
+              .trim()
+              .isNotEmpty;
+      debugPrint('AHVI_WORKOUT_TODAY_AUTH authorization=$hasAuth');
+      final response = await http
+          .get(Uri.parse(url), headers: headers)
+          .timeout(const Duration(seconds: 20));
+      debugPrint(
+        'AHVI_WORKOUT_TODAY_STATUS status=${response.statusCode} '
+        'content_type=${response.headers['content-type'] ?? ''}',
+      );
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return await compute(_parseJsonMap, response.body);
       }
-
-      debugPrint(
-        'Today workout load failed: ${response.statusCode} ${response.body}',
-      );
+      // Non-2xx: controlled empty state, not cached, no automatic retry.
       return <String, dynamic>{};
     } catch (e) {
-      debugPrint('Today workout load error: $e');
+      debugPrint('AHVI_WORKOUT_TODAY_STATUS status=error content_type=');
       return <String, dynamic>{};
     }
   }
