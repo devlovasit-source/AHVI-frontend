@@ -424,6 +424,49 @@ void main() {
       matchesGoldenFile('goldens/visual_board_phase1_after.png'),
     );
   });
+
+  testWidgets('density: footwear is visually zoomed more than the top', (
+    tester,
+  ) async {
+    await _pumpBoard(tester, use85Layout: true, width: 320);
+    final shoe = tester.widget<Transform>(
+      find.byKey(const ValueKey<String>('vscale-shoe-1')),
+    );
+    final top = tester.widget<Transform>(
+      find.byKey(const ValueKey<String>('vscale-kurta-1')),
+    );
+    final shoeScale = shoe.transform.getMaxScaleOnAxis();
+    final topScale = top.transform.getMaxScaleOnAxis();
+    expect(shoeScale, greaterThan(topScale));
+    expect(shoeScale, greaterThan(1.30));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('density: no overflow + actions intact on wide 430px board', (
+    tester,
+  ) async {
+    await _pumpBoard(
+      tester,
+      use85Layout: true,
+      width: 390,
+      surface: const Size(430, 900),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('Save'), findsOneWidget);
+    expect(find.text('Shuffle'), findsOneWidget);
+    expect(find.text('Like'), findsOneWidget);
+    expect(find.text('Dislike'), findsOneWidget);
+    expect(find.text('Share'), findsOneWidget);
+  });
+
+  testWidgets('density: no overflow + actions intact on narrow 286px board', (
+    tester,
+  ) async {
+    await _pumpBoard(tester, use85Layout: true, width: 286);
+    expect(tester.takeException(), isNull);
+    expect(find.text('Save'), findsOneWidget);
+    expect(find.text('Share'), findsOneWidget);
+  });
 }
 
 Future<void> _pumpConnectedBoard(
@@ -458,9 +501,10 @@ Future<void> _pumpBoard(
   double width = 320,
   Map<String, dynamic>? direction,
   ValueChanged<String>? onSendMessage,
+  Size surface = const Size(390, 760),
 }) async {
   await _withFixtureImages(() async {
-    await tester.binding.setSurfaceSize(const Size(390, 760));
+    await tester.binding.setSurfaceSize(surface);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       _testApp(

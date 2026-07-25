@@ -108,8 +108,16 @@ class EditorialBoardLayoutEngine {
     // Enforce safe zones, then sanitize any non-finite/overflowing geometry.
     final safe = _applySafeZone(raw.placements, width, height);
     final sane = _sanitize(safe, width, height);
-    _logLayout(raw.mode, sane, width, height);
-    return EditorialLayoutResult(mode: raw.mode, placements: sane);
+    // Coverage-gated composition pass: only sparse boards get enlarged; a dense
+    // template (the common 3-piece already fills ~85%) is returned untouched.
+    final dense = _normalizeComposition(sane, width, height);
+    final finalPlacements = _sanitize(
+      _applySafeZone(dense, width, height),
+      width,
+      height,
+    );
+    _logLayout(raw.mode, finalPlacements, width, height);
+    return EditorialLayoutResult(mode: raw.mode, placements: finalPlacements);
   }
 
   static StyleBoardItem? _firstOf(
@@ -485,6 +493,97 @@ class EditorialBoardLayoutEngine {
       );
     }
   }
+
+  // --- Composition density pass -----------------------------------------
+  static const double _covWMin = 0.78;
+  static const double _covHMin = 0.74;
+  static const double _covWTarget = 0.88;
+  static const double _covHTarget = 0.86;
+  static const double _compMaxScale = 1.18;
+
+  /// Fractional width/height coverage of the union of [placements] over the
+  /// canvas. Exposed for tests.
+  static ({double width, double height}) unionCoverage(
+    List<BoardItemPlacement> placements,
+    double width,
+    double height,
+  ) {
+    if (placements.isEmpty ||
+        !_finitePositive(width) ||
+        !_finitePositive(height)) {
+      return (width: 0.0, height: 0.0);
+    }
+    final b = _unionBounds(placements);
+    final uw = (b[2] - b[0]).clamp(0.0, width);
+    final uh = (b[3] - b[1]).clamp(0.0, height);
+    return (width: uw / width, height: uh / height);
+  }
+
+  static List<double> _unionBounds(List<BoardItemPlacement> placements) {
+    double minX = double.infinity,
+        minY = double.infinity,
+        maxX = -double.infinity,
+        maxY = -double.infinity;
+    for (final p in placements) {
+      minX = math.min(minX, p.x);
+      minY = math.min(minY, p.y);
+      maxX = math.max(maxX, p.x + p.width);
+      maxY = math.max(maxY, p.y + p.height);
+    }
+    return <double>[minX, minY, maxX, maxY];
+  }
+
+  /// Uniformly scale + recentre the whole composition ONLY when its union
+  /// covers too little of the canvas (width < [_covWMin] OR height < [_covHMin]).
+  /// Dense boards are returned untouched. Never enlarges past [_compMaxScale];
+  /// downstream _applySafeZone + _sanitize keep everything in-bounds.
+  static List<BoardItemPlacement> _normalizeComposition(
+    List<BoardItemPlacement> placements,
+    double width,
+    double height,
+  ) {
+    if (placements.length < 2 ||
+        !_finitePositive(width) ||
+        !_finitePositive(height)) {
+      return placements;
+    }
+    final cov = unionCoverage(placements, width, height);
+    if (cov.width >= _covWMin && cov.height >= _covHMin) return placements;
+    if (cov.width <= 0 || cov.height <= 0) return placements;
+
+    final scale = math
+        .min(_covWTarget / cov.width, _covHTarget / cov.height)
+        .clamp(1.0, _compMaxScale);
+    if (scale <= 1.0) return placements;
+
+    final b = _unionBounds(placements);
+    final cx = (b[0] + b[2]) / 2;
+    final cy = (b[1] + b[3]) / 2;
+    final scaled = placements
+        .map(
+          (p) => p.copyWith(
+            x: cx + (p.x - cx) * scale,
+            y: cy + (p.y - cy) * scale,
+            width: p.width * scale,
+            height: p.height * scale,
+          ),
+        )
+        .toList();
+
+    // Recentre the enlarged union on the canvas centre.
+    final nb = _unionBounds(scaled);
+    final dx = width / 2 - (nb[0] + nb[2]) / 2;
+    final dy = height / 2 - (nb[1] + nb[3]) / 2;
+    return scaled.map((p) => p.copyWith(x: p.x + dx, y: p.y + dy)).toList();
+  }
+
+  /// Test hook for the composition pass.
+  @visibleForTesting
+  static List<BoardItemPlacement> debugNormalizeComposition(
+    List<BoardItemPlacement> placements,
+    double width,
+    double height,
+  ) => _normalizeComposition(placements, width, height);
 
   static bool _finitePositive(double v) => v.isFinite && v > 0;
 }
