@@ -18,6 +18,7 @@ import 'package:myapp/style_board/style_board_controller.dart';
 import 'package:myapp/style_board/style_board_state.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/style_board/board_models.dart';
+import 'package:myapp/feature/chat/widgets/blocks/visual_directions/shareable_outfit_board.dart';
 import 'package:myapp/style_board/editorial_board_renderer.dart';
 
 typedef OutfitBoardMessageSender = void Function(String message);
@@ -765,7 +766,80 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
     return 'My "$title" look, styled on AHVI.';
   }
 
+  List<ShareBoardItem> _shareBoardItems() {
+    final out = <ShareBoardItem>[];
+    for (final item in _saveItems()) {
+      final url = _text(
+        item['board_image_url'] ??
+            item['transparent_image_url'] ??
+            item['cutout_url'] ??
+            item['image_url'] ??
+            item['imageUrl'],
+      ).trim();
+      if (url.isEmpty) continue;
+      out.add(
+        ShareBoardItem(
+          role: _text(item['role'] ?? item['slot']).trim().toLowerCase(),
+          imageUrl: url,
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// Build a dedicated opaque ShareableOutfitBoard offscreen and capture it, so
+  /// the exported PNG is never transparent and never bakes in the paragraph
+  /// copy. Returns null when it cannot mount (caller falls back).
+  Future<Uint8List?> _captureShareComposition() async {
+    if (!mounted) return null;
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return null;
+    final items = _shareBoardItems();
+    if (items.isEmpty) return null;
+    final key = GlobalKey();
+    final entry = OverlayEntry(
+      builder: (_) => Positioned(
+        left: -10000,
+        top: -10000,
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Material(
+            color: Colors.transparent,
+            child: ShareableOutfitBoard(
+              boundaryKey: key,
+              title: widget.primaryLabel.trim().isEmpty
+                  ? _occasion
+                  : widget.primaryLabel.trim(),
+              occasion: _occasion,
+              items: items,
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(entry);
+    try {
+      // Let it lay out + paint. The garment images are already in Flutter's
+      // image cache from the visible card, so they resolve within a few frames.
+      for (var i = 0; i < 5; i++) {
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await WidgetsBinding.instance.endOfFrame;
+      final ro = key.currentContext?.findRenderObject();
+      if (ro is! RenderRepaintBoundary) return null;
+      final image = await ro.toImage(pixelRatio: 3.0);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      return data?.buffer.asUint8List();
+    } finally {
+      entry.remove();
+    }
+  }
+
   Future<Uint8List?> _captureBoardPng() async {
+    final composed = await _captureShareComposition();
+    if (composed != null && composed.isNotEmpty) return composed;
+    // Fallback: the in-app boundary (kept so Share never does nothing).
     final ctx = widget.shareBoundaryKey?.currentContext;
     final renderObject = ctx?.findRenderObject();
     if (renderObject is! RenderRepaintBoundary) return null;
