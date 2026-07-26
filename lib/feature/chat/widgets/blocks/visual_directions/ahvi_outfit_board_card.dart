@@ -784,6 +784,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
   }
 
   Future<void> _share() async {
+    debugPrint('AHVI_BOARD_ACTION_TAP action=share surface=outfit_board');
     debugPrint('AHVI_BOARD_SHARE_TAP');
     final caption = _shareCaption();
     try {
@@ -923,6 +924,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
   }
 
   Future<void> _toggleSave() async {
+    debugPrint('AHVI_BOARD_ACTION_TAP action=save surface=outfit_board');
     debugPrint('AHVI_BOARD_SAVE_TAP');
     // Idempotent: ignore taps while saving or once already saved.
     if (_saving || _saved) return;
