@@ -78,6 +78,22 @@ bool _isShowClosestStyleAction(String value) {
       normalized == 'show closest safe option';
 }
 
+bool _looksLikeStyleClarification(String value) {
+  final t = value.toLowerCase();
+  return t.contains('what are we dressing') ||
+      t.contains('what are you dressing for') ||
+      t.contains('pick an occasion');
+}
+
+bool _isBoardActionPhrase(String value) {
+  final t = value.toLowerCase().trim();
+  return t.contains('another look') ||
+      t.contains('more looks') ||
+      t.contains('show me another') ||
+      t.contains('different look') ||
+      t.startsWith('shuffle');
+}
+
 bool _isPlanPackRequest(String value) {
   final text = value.toLowerCase().trim();
   final asksForPacking =
@@ -698,6 +714,10 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
   final List<Map<String, String>> _chatHistory = [];
   String _runningMemory = '';
   Map<String, dynamic>? _lastStyleContext;
+  // Once a Style response renders cards/boards, any earlier occasion
+  // clarification is resolved. Later board actions (Shuffle / another look)
+  // must NOT be serialized as answers to that stale clarification.
+  bool _clarificationResolvedByCards = false;
   bool _typing = false;
   bool _chipsVisible = true;
   bool _chatHasText = false;
@@ -1031,6 +1051,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
   }
 
   String _pendingStyleClarificationPrompt() {
+    if (_clarificationResolvedByCards) return '';
     for (var i = _chatHistory.length - 1; i >= 0; i--) {
       final entry = _chatHistory[i];
       if (entry['role'] != 'assistant') continue;
@@ -1264,8 +1285,11 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       final isClosestStyleAction =
           styleModules.contains(widget.moduleContext) &&
               _isShowClosestStyleAction(trimmed);
+      final isBoardActionPhrase = _isBoardActionPhrase(trimmed);
       final pendingClarificationPrompt =
-      styleModules.contains(widget.moduleContext) && !isClosestStyleAction
+      styleModules.contains(widget.moduleContext) &&
+              !isClosestStyleAction &&
+              !isBoardActionPhrase
           ? _pendingStyleClarificationPrompt()
           : '';
       final isClarificationAnswer =
@@ -1383,6 +1407,18 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       final boardPayload = _StyleBoardPayload.fromResponse(response);
       final gapPayload = _WardrobeGapPayload.fromResponse(response);
       final visualPayload = _VisualDirectionPayload.fromResponse(response);
+      // Clarification lifecycle: a rendered board/cards resolves any pending
+      // clarification; a fresh clarification response re-arms it.
+      final bool renderedBoards =
+          boardPayload.hasBoards || visualPayload.hasDirections;
+      final bool isClarificationResponse = !renderedBoards &&
+          ((response['type']?.toString().toLowerCase() == 'clarification') ||
+              _looksLikeStyleClarification(guardedAiText));
+      if (renderedBoards) {
+        _clarificationResolvedByCards = true;
+      } else if (isClarificationResponse) {
+        _clarificationResolvedByCards = false;
+      }
       final visualInspiration = _styleBlockFromResponse(
         response,
         'visual_inspiration_board',

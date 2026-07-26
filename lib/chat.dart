@@ -459,6 +459,22 @@ String _chipLabel(dynamic chip) => AhviChip.fromDynamic(chip).label;
 
 String _chipValue(dynamic chip) => AhviChip.fromDynamic(chip).value;
 
+bool _looksLikeStyleClarification(String value) {
+  final t = value.toLowerCase();
+  return t.contains('what are we dressing') ||
+      t.contains('what are you dressing for') ||
+      t.contains('pick an occasion');
+}
+
+bool _isBoardActionPhrase(String value) {
+  final t = value.toLowerCase().trim();
+  return t.contains('another look') ||
+      t.contains('more looks') ||
+      t.contains('show me another') ||
+      t.contains('different look') ||
+      t.startsWith('shuffle');
+}
+
 List<dynamic> _extractStyleBoardsFromResponse(Map<String, dynamic> response) {
   if ((response['type'] ?? '').toString().toLowerCase() == 'module_response') {
     return const [];
@@ -990,6 +1006,9 @@ class _ChatScreenState extends State<ChatScreen>
   // Persisted style-pairing session — kept across follow-ups so anchor/route/
   // persona survive "use my wardrobe" / "show visual inspiration" / etc.
   Map<String, dynamic>? _lastStyleContext;
+  // A rendered board/cards response resolves any pending occasion
+  // clarification; later board actions must not be sent as clarification answers.
+  bool _clarificationResolvedByCards = false;
   bool _isTyping = false;
   bool _lastRequestWasWardrobe = false;
   String _userName = 'User';
@@ -1450,7 +1469,9 @@ class _ChatScreenState extends State<ChatScreen>
         queryText.toLowerCase().trim(),
       );
       final isClosestAction = isStyleModule && _isShowClosestChip(queryText);
-      final pendingClarificationPrompt = isStyleModule && !isClosestAction
+      final isBoardActionPhrase = _isBoardActionPhrase(queryText);
+      final pendingClarificationPrompt =
+          isStyleModule && !isClosestAction && !isBoardActionPhrase
           ? _pendingStyleClarificationPrompt()
           : '';
       final isClarificationAnswer =
@@ -1556,6 +1577,17 @@ class _ChatScreenState extends State<ChatScreen>
       final responseBoards = isModuleResponse
           ? const <dynamic>[]
           : _extractStyleBoardsFromResponse(response);
+      // Clarification lifecycle: rendered boards resolve a pending
+      // clarification; a fresh clarification response re-arms it.
+      final clarificationMsg =
+          (response['message_text'] ?? response['message'] ?? '').toString();
+      if (responseBoards.isNotEmpty) {
+        _clarificationResolvedByCards = true;
+      } else if ((response['type'] ?? '').toString().toLowerCase() ==
+              'clarification' ||
+          _looksLikeStyleClarification(clarificationMsg)) {
+        _clarificationResolvedByCards = false;
+      }
       final moduleCards = isModuleResponse && sharedModuleCard == null
           ? _moduleCardsFromResponse(response)
           : const <Map<String, dynamic>>[];
@@ -2496,6 +2528,7 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   String _pendingStyleClarificationPrompt() {
+    if (_clarificationResolvedByCards) return '';
     for (var i = _chatHistory.length - 1; i >= 0; i--) {
       final row = _chatHistory[i];
       if (row['role'] != 'assistant') continue;
