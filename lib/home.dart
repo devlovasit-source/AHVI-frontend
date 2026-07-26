@@ -3244,7 +3244,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                             _AnimatedPressable(
                               liftY: -3.0,
                               scalePressed: 0.93,
-                              onTap: () => _openChatWithPrompt('Suggest a complete outfit for me today.'),
+                              onTap: () => _openChatWithPrompt('Suggest an outfit for today.'),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                                 decoration: BoxDecoration(
