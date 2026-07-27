@@ -23,6 +23,23 @@ import 'package:myapp/style_board/editorial_board_renderer.dart';
 
 typedef OutfitBoardMessageSender = void Function(String message);
 
+String _shuffleFailureMessage(String code) => switch (code) {
+  'ALL_ITEMS_LOCKED' => 'Unlock an item to shuffle.',
+  'NO_REPLACEMENT_FOUND' =>
+    'AHVI couldn’t find a stronger replacement right now.',
+  'FIXED_ITEMS_INCOMPATIBLE' =>
+    'These locked pieces can’t form a complete look together. Unlock one piece and try again.',
+  'BOARD_REVISION_CONFLICT' =>
+    'This board changed. Your current look has been preserved.',
+  'SOURCE_POLICY_CHANGED' || 'SOURCE_POLICY_VIOLATION' =>
+    'The board’s styling source changed unexpectedly. Your current look has been preserved.',
+  'STYLE_ASSET_POOL_EMPTY' =>
+    'No curated pieces are available for this look right now.',
+  'BOARD_SOURCE_POLICY_UNKNOWN' =>
+    'This board is missing its styling source. Ask AHVI for a fresh look to continue.',
+  _ => 'We couldn’t refresh these pieces. Your current look has been preserved.',
+};
+
 /// Persists a board and returns the created document id (or null on failure).
 /// Overridable so tests can drive Save without a live Appwrite backend.
 typedef BoardSaveFn = Future<String?> Function({
@@ -126,13 +143,25 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
           .map((item) => item.itemId)
           .toSet(),
     );
+    final failedPredicates = state.failedContractPredicates;
+    debugPrint(
+      'AHVI_BOARD_CONTRACT_CHECK '
+      'board_id=${state.boardId} '
+      'board_id_ok=${state.boardIdOk} '
+      'revision=${state.revision} '
+      'revision_ok=${state.revisionOk} '
+      'source_policy=${state.sourcePolicy.isEmpty ? "<missing>" : state.sourcePolicy} '
+      'source_policy_ok=${state.sourcePolicyOk} '
+      'item_count=${state.items.length} '
+      'stable_item_ids_ok=${state.stableItemIdsOk} '
+      'positions_ok=${state.positionsOk} '
+      'request_carried_items_ok=${state.requestCarriedItemsOk} '
+      'can_lock=${state.canLock} '
+      'can_shuffle=${state.canShuffle} '
+      'failed_predicates=${failedPredicates.isEmpty ? "none" : failedPredicates.join(",")}',
+    );
     if (!state.supportsShuffle) {
       _controller = null;
-      debugPrint(
-        'AHVI_STYLE_BOARD_LOCK_DISABLED reason=missing_board_contract '
-        'board_id=${state.boardId} revision=${state.revision} '
-        'source_policy=${state.sourcePolicy.isEmpty ? "<missing>" : state.sourcePolicy}',
-      );
       return;
     }
     _controller = StyleBoardController(
@@ -147,6 +176,25 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
       board: board,
       occasion: _initialBoard.occasion,
       styleDirection: _initialBoard.styleArchetype,
+    );
+  }
+
+  Future<void> _shuffleBoard() async {
+    final controller = _controller;
+    if (controller == null) return;
+    final state = controller.state;
+    debugPrint(
+      'AHVI_BOARD_SHUFFLE board_id=${state.boardId} '
+      'revision=${state.revision} source_policy=${state.sourcePolicy} '
+      'locked_count=${state.lockedItemIds.length}',
+    );
+    final code = await controller.shuffle();
+    if (!mounted || code == null) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(_shuffleFailureMessage(code)),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
@@ -264,13 +312,17 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
                 ),
               ),
               if (_controller != null)
-                BoardMutationBar(controller: _controller!),
+                BoardMutationBar(
+                  controller: _controller!,
+                  onShuffle: _shuffleBoard,
+                ),
               OutfitActionBar(
                 direction: widget.direction,
                 editorialCover: widget.editorialCover,
                 primaryLabel: _model.title,
                 missingName: _model.missingName,
                 onSendMessage: widget.onSendMessage,
+                onShuffle: _controller == null ? null : _shuffleBoard,
                 shareBoundaryKey: _shareBoundaryKey,
               ),
             ],
@@ -603,32 +655,16 @@ class _WardrobeMatchPill extends StatelessWidget {
 
 class BoardMutationBar extends StatelessWidget {
   final StyleBoardController controller;
+  final Future<void> Function() onShuffle;
 
-  const BoardMutationBar({super.key, required this.controller});
+  const BoardMutationBar({
+    super.key,
+    required this.controller,
+    required this.onShuffle,
+  });
 
-  Future<void> _shuffle(BuildContext context) async {
-    final code = await controller.shuffle();
-    if (!context.mounted || code == null) return;
-    final message = switch (code) {
-      'ALL_ITEMS_LOCKED' => 'Unlock an item to shuffle.',
-      'NO_REPLACEMENT_FOUND' =>
-        'AHVI couldn’t find a stronger replacement right now.',
-      'FIXED_ITEMS_INCOMPATIBLE' =>
-        'These locked pieces can’t form a complete look together. Unlock one piece and try again.',
-      'BOARD_REVISION_CONFLICT' =>
-        'This board changed. Your current look has been preserved.',
-      'SOURCE_POLICY_CHANGED' || 'SOURCE_POLICY_VIOLATION' =>
-        'The board’s styling source changed unexpectedly. Your current look has been preserved.',
-      'STYLE_ASSET_POOL_EMPTY' =>
-        'No curated pieces are available for this look right now.',
-      'BOARD_SOURCE_POLICY_UNKNOWN' =>
-        'This board is missing its styling source. Ask AHVI for a fresh look to continue.',
-      _ =>
-        'We couldn’t refresh these pieces. Your current look has been preserved.',
-    };
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
+  Future<void> _shuffle() async {
+    await onShuffle();
   }
 
   @override
@@ -653,7 +689,7 @@ class BoardMutationBar extends StatelessWidget {
                     ? 'Unlock an item to shuffle'
                     : 'Shuffle unlocked pieces',
                 enabled: !state.isShuffling && !state.allItemsLocked,
-                onTap: () => _shuffle(context),
+                onTap: _shuffle,
               ),
             ),
             if (locked > 0)
@@ -700,6 +736,7 @@ class OutfitActionBar extends StatefulWidget {
   final String primaryLabel;
   final String missingName;
   final OutfitBoardMessageSender? onSendMessage;
+  final Future<void> Function()? onShuffle;
   final GlobalKey? shareBoundaryKey;
   // Test seams (production uses the real Appwrite + share_plus paths).
   final BoardSaveFn? saveBoardOverride;
@@ -715,6 +752,7 @@ class OutfitActionBar extends StatefulWidget {
     required this.primaryLabel,
     required this.missingName,
     this.onSendMessage,
+    this.onShuffle,
     this.shareBoundaryKey,
     this.saveBoardOverride,
     this.captureOverride,
@@ -1053,7 +1091,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
   @override
   Widget build(BuildContext context) {
     final t = context.themeTokens;
-    final canSend = widget.onSendMessage != null;
+    final canShuffle = widget.onShuffle != null;
     final actions = <Widget>[
       _BoardAction(
         icon: _saved
@@ -1065,11 +1103,9 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
       ),
       _BoardAction(
         icon: Icons.shuffle_rounded,
-        label: 'Shuffle',
-        enabled: canSend,
-        onTap: () => widget.onSendMessage?.call(
-          'Show me another look for ${widget.primaryLabel}',
-        ),
+        label: canShuffle ? 'Shuffle' : 'Shuffle unavailable',
+        enabled: canShuffle,
+        onTap: () => unawaited(widget.onShuffle?.call()),
       ),
       _BoardAction(
         icon: _liked
@@ -1260,7 +1296,9 @@ class OutfitBoardModel {
               item[r'$id'] ??
               item['itemId'] ??
               item['image_id'] ??
-              item['asset_id'],
+              item['asset_id'] ??
+              item['wardrobe_item_id'] ??
+              item['wardrobeItemId'],
         );
         final url = _transparentUrlFor(
           item,
@@ -1505,7 +1543,11 @@ StyleBoardData _toStyleBoardData(
         ).hasMatch(item.name.toLowerCase())) {
       role = BoardItemRole.dress;
     }
-    final rawItems = _maps(direction['board_items'] ?? direction['boardItems']);
+    final rawItems = <Map<String, dynamic>>[
+      ..._maps(direction['board_items'] ?? direction['boardItems']),
+      ..._maps(direction['items'] ?? direction['pieces']),
+      ..._maps(direction['composition_items']),
+    ];
     final raw = rawItems
         .where(
           (candidate) =>
@@ -1515,7 +1557,9 @@ StyleBoardData _toStyleBoardData(
                     candidate[r'$id'] ??
                     candidate['itemId'] ??
                     candidate['image_id'] ??
-                    candidate['asset_id'],
+                    candidate['asset_id'] ??
+                    candidate['wardrobe_item_id'] ??
+                    candidate['wardrobeItemId'],
               ) ==
               item.id,
         )

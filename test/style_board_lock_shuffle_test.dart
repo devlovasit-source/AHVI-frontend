@@ -94,6 +94,22 @@ void main() {
       expect(item.position!.toJson(), containsPair('rotation', 2.0));
     });
 
+    test('accepts wardrobe item identity aliases', () {
+      final snake = StyleBoardItem.fromJson({
+        ...itemJson('', 'top'),
+        'item_id': '',
+        'wardrobe_item_id': 'wardrobe-snake',
+      });
+      final camel = StyleBoardItem.fromJson({
+        ...itemJson('', 'bottom'),
+        'item_id': '',
+        'wardrobeItemId': 'wardrobe-camel',
+      });
+
+      expect(snake.itemId, 'wardrobe-snake');
+      expect(camel.itemId, 'wardrobe-camel');
+    });
+
     test('legacy item remains displayable but cannot lock', () {
       final item = StyleBoardItem.fromJson({
         'name': 'Legacy',
@@ -208,6 +224,47 @@ void main() {
         boardState(sourcePolicy: 'style_asset').supportsShuffle,
         isTrue,
       );
+    });
+
+    test('wardrobe contract remains durable without backend positions', () {
+      final items = ['top', 'bottom', 'footwear']
+          .map(
+            (slot) => StyleBoardItem.fromJson({
+              ...itemJson(slot, slot)..remove('position'),
+            }),
+          )
+          .toList();
+      final state = StyleBoardState(
+        boardId: 'board_b2fe1847ee39',
+        revision: 1,
+        sourcePolicy: 'wardrobe',
+        items: items,
+      );
+
+      expect(state.positionsOk, isFalse);
+      expect(state.canLock, isTrue);
+      expect(state.canShuffle, isTrue);
+      expect(state.failedContractPredicates, isEmpty);
+    });
+
+    test('unknown policy identifies the exact failed predicate', () {
+      final state = boardState(sourcePolicy: 'unknown');
+
+      expect(state.canShuffle, isFalse);
+      expect(state.failedContractPredicates, ['source_policy']);
+    });
+
+    test('transient outfit card id is not a durable board id', () {
+      final state = StyleBoardState(
+        boardId: 'outfit_card_123',
+        revision: 1,
+        sourcePolicy: 'wardrobe',
+        items: boardState(sourcePolicy: 'wardrobe').items,
+      );
+
+      expect(state.boardIdOk, isFalse);
+      expect(state.canShuffle, isFalse);
+      expect(state.failedContractPredicates, ['board_id']);
     });
 
     test('shuffle request sends the explicit board policy', () {

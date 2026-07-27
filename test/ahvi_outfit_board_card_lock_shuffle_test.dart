@@ -148,6 +148,79 @@ void main() {
     expect(find.byKey(const ValueKey<String>('anchor')), findsOneWidget);
   });
 
+  testWidgets(
+    'wardrobe board without positions enables footer durable shuffle only',
+    (tester) async {
+      final board = _board();
+      for (final item in (board['board_items'] as List).whereType<Map>()) {
+        item.remove('position');
+      }
+      final sentMessages = <String>[];
+      StyleBoardState? request;
+      await _pumpCard(
+        tester,
+        board: board,
+        onSendMessage: sentMessages.add,
+        shuffleCall: (state) async {
+          request = state.deepCopy();
+          return StyleBoardShuffleResult(
+            boardId: state.boardId,
+            revision: 2,
+            previousRevision: 1,
+            lockedItemsPreserved: true,
+            changedSlots: const ['bottom', 'footwear'],
+            items: state.items,
+            scenario: state.scenario,
+            sourcePolicy: state.sourcePolicy,
+          );
+        },
+      );
+
+      expect(find.text('Shuffle'), findsOneWidget);
+      await tester.tap(find.text('Shuffle'));
+      await tester.pumpAndSettle();
+
+      expect(sentMessages, isEmpty);
+      expect(request!.boardId, 'board-1');
+      expect(request!.revision, 1);
+      expect(request!.sourcePolicy, 'wardrobe');
+      expect(request!.lockedItemIds, {'anchor'});
+
+      await tester.tap(find.text('Shuffle'));
+      await tester.pumpAndSettle();
+      expect(request!.revision, 2);
+      expect(request!.sourcePolicy, 'wardrobe');
+      expect(request!.lockedItemIds, {'anchor'});
+      expect(find.byKey(const ValueKey<String>('anchor')), findsOneWidget);
+    },
+  );
+
+  testWidgets('contract check logs the actual failed predicate', (tester) async {
+    final messages = <String>[];
+    final previousDebugPrint = debugPrint;
+    debugPrint = (message, {wrapWidth}) {
+      if (message != null) messages.add(message);
+    };
+    try {
+      await _pumpCard(
+        tester,
+        board: _board(sourcePolicy: 'unknown'),
+        shuffleCall: (state) async => _success(state),
+      );
+
+      final check = messages.singleWhere(
+        (message) => message.startsWith('AHVI_BOARD_CONTRACT_CHECK'),
+      );
+      expect(check, contains('source_policy_ok=false'));
+      expect(check, contains('can_lock=false'));
+      expect(check, contains('can_shuffle=false'));
+      expect(check, contains('failed_predicates=source_policy'));
+      expect(find.text('Shuffle unavailable'), findsOneWidget);
+    } finally {
+      debugPrint = previousDebugPrint;
+    }
+  });
+
   testWidgets('revision conflict rolls back and shows safe conflict message', (
     tester,
   ) async {
@@ -339,7 +412,7 @@ void main() {
     );
     expect(find.text('Shuffle unlocked pieces'), findsNothing);
     expect(find.text('0 of 3 items locked'), findsNothing);
-    expect(find.text('Shuffle'), findsOneWidget);
+    expect(find.text('Shuffle unavailable'), findsOneWidget);
   });
 
   testWidgets(
@@ -382,6 +455,7 @@ Future<void> _pumpCard(
   required Map<String, dynamic> board,
   required Future<StyleBoardShuffleResult> Function(StyleBoardState)
   shuffleCall,
+  ValueChanged<String>? onSendMessage,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -396,7 +470,7 @@ Future<void> _pumpCard(
           child: AhviOutfitBoardCard(
             direction: board,
             width: 390,
-            onSendMessage: (_) {},
+            onSendMessage: onSendMessage ?? (_) {},
             shuffleCall: shuffleCall,
           ),
         ),

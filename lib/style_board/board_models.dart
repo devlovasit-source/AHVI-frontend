@@ -59,6 +59,8 @@ class StyleBoardItem {
       'itemId',
       'image_id',
       'asset_id',
+      'wardrobe_item_id',
+      'wardrobeItemId',
     ]);
     final slot = _firstText(json, const ['slot', 'role']);
     final role = boardItemRoleFromText(slot);
@@ -66,7 +68,9 @@ class StyleBoardItem {
       id: itemId,
       slot: slot.toLowerCase(),
       boardRole: _firstText(json, const ['board_role', 'boardRole']),
-      source: _canonicalSource(json['source']),
+      source: _canonicalSource(
+        _firstText(json, const ['source', 'item_source', 'itemSource']),
+      ),
       accessoryType: _firstText(json, const [
         'accessory_type',
         'accessoryType',
@@ -111,7 +115,7 @@ class StyleBoardItem {
       hasStableIdentity &&
       source != 'unknown' &&
       role != BoardItemRole.unknown &&
-      (position?.isUsable ?? false);
+      raw.isNotEmpty;
 
   StyleBoardItem copyWith({bool? isLocked, bool? isRegenerating}) =>
       StyleBoardItem(

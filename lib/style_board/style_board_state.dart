@@ -39,12 +39,38 @@ class StyleBoardState {
   bool get hasExplicitSourcePolicy =>
       validSourcePolicies.contains(sourcePolicy);
 
-  bool get supportsShuffle =>
-      boardId.isNotEmpty &&
-      revision > 0 &&
+  bool get boardIdOk =>
+      boardId.trim().isNotEmpty &&
+      !boardId.trim().toLowerCase().startsWith('outfit_card_');
+  bool get revisionOk => revision >= 1;
+  bool get sourcePolicyOk => hasExplicitSourcePolicy;
+  bool get stableItemIdsOk =>
+      items.isNotEmpty && items.every((item) => item.hasStableIdentity);
+  bool get positionsOk =>
+      items.isNotEmpty && items.every((item) => item.position?.isUsable ?? false);
+  bool get requestCarriedItemsOk =>
       items.isNotEmpty &&
-      hasExplicitSourcePolicy &&
-      items.every((item) => item.isLockable);
+      items.every(
+        (item) =>
+            item.raw.isNotEmpty &&
+            item.source != 'unknown' &&
+            item.role != BoardItemRole.unknown,
+      );
+  bool get canLock =>
+      boardIdOk &&
+      revisionOk &&
+      sourcePolicyOk &&
+      stableItemIdsOk &&
+      requestCarriedItemsOk;
+  bool get canShuffle => canLock;
+  bool get supportsShuffle => canShuffle;
+  List<String> get failedContractPredicates => [
+    if (!boardIdOk) 'board_id',
+    if (!revisionOk) 'revision',
+    if (!sourcePolicyOk) 'source_policy',
+    if (!stableItemIdsOk) 'stable_item_ids',
+    if (!requestCarriedItemsOk) 'request_carried_items',
+  ];
   bool get allItemsLocked =>
       items.isNotEmpty &&
       items.every((item) => lockedItemIds.contains(item.itemId));

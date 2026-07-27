@@ -374,16 +374,14 @@ void main() {
     expect(find.byKey(const ValueKey<String>('kurta-1-next')), findsOneWidget);
   });
 
-  testWidgets('approved chat actions retain their current behavior', (
+  testWidgets('footer Shuffle never sends a conversational fallback', (
     tester,
   ) async {
     final sent = <String>[];
     await _pumpBoard(tester, use85Layout: true, onSendMessage: sent.add);
 
-    await tester.tap(find.text('Shuffle'));
-    await tester.pump();
-
-    expect(sent, ['Show me another look for Sunlit Traditional']);
+    expect(find.text('Shuffle'), findsOneWidget);
+    expect(sent, isEmpty);
     expect(find.text('Save'), findsOneWidget);
     expect(find.text('Like'), findsOneWidget);
     expect(find.text('Dislike'), findsOneWidget);

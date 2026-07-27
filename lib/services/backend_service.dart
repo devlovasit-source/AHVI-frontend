@@ -506,6 +506,43 @@ class BackendService {
           rethrow;
         }
 
+        void logBoardContract(String label, dynamic value) {
+          if (value is! List || value.isEmpty || value.first is! Map) {
+            debugPrint('AHVI_RAW_BOARD_CONTRACT alias=$label count=0');
+            return;
+          }
+
+          final board = Map<String, dynamic>.from(value.first as Map);
+
+          debugPrint(
+            'AHVI_RAW_BOARD_CONTRACT '
+            'alias=$label '
+            'count=${value.length} '
+            'board_id=${board['board_id'] ?? board['boardId'] ?? '<missing>'} '
+            'revision=${board['revision'] ?? '<missing>'} '
+            'source_policy=${board['source_policy'] ?? board['sourcePolicy'] ?? '<missing>'} '
+            'id=${board['id'] ?? '<missing>'} '
+            'occasion=${board['occasion'] ?? '<missing>'}',
+          );
+        }
+
+        final nestedData = data['data'] is Map
+            ? Map<String, dynamic>.from(data['data'] as Map)
+            : <String, dynamic>{};
+
+        logBoardContract('cards', data['cards']);
+        logBoardContract('style_boards', data['style_boards']);
+        logBoardContract('visual_directions', data['visual_directions']);
+        logBoardContract('data.outfits', nestedData['outfits']);
+        logBoardContract(
+          'data.rendered_boards',
+          nestedData['rendered_boards'],
+        );
+        logBoardContract(
+          'data.visual_directions',
+          nestedData['visual_directions'],
+        );
+
         if (data['ok'] == false || data['success'] == false) {
           final err = data['error'];
           final code = err is Map ? (err['code'] ?? '').toString() : '';

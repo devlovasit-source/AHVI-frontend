@@ -16,11 +16,12 @@ StyleBoardItem _lockable(String id, String slot, BoardItemRole role) =>
       category: slot,
       role: role,
       position: const BoardPosition(x: 0.1, y: 0.1, width: 0.3, height: 0.3),
+      raw: {'item_id': id, 'slot': slot, 'source': 'wardrobe'},
     );
 
 StyleBoardState _officeWardrobeBoard() => StyleBoardState(
       boardId: 'board_abc123',
-      revision: 2,
+      revision: 1,
       sourcePolicy: 'wardrobe',
       items: [
         _lockable('top-1', 'top', BoardItemRole.top),
@@ -37,7 +38,7 @@ void main() {
         occasion: 'office',
         styleDirection: 'Composed Authority',
       );
-      expect(payload['revision'], 2);
+      expect(payload['revision'], 1);
       expect(payload['occasion'], 'office'); // office stays office
       expect(payload['source_policy'], 'wardrobe'); // wardrobe stays wardrobe
       expect(payload['style_direction'], 'Composed Authority');
