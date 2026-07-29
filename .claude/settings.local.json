@@ -35,7 +35,8 @@
       "Bash(git -C \"C:/Users/USER/Downloads/cloudbackend-main \\(19\\)/cloudbackend-main\" branch --show-current)",
       "Bash(git -C \"C:/Users/USER/Downloads/cloudbackend-main \\(19\\)/cloudbackend-main\" remote -v)",
       "Bash(git -C \"C:/tmp/AHVI-frontend-clean\" remote -v)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "mcp__Claude_Code_Remote__send_later"
     ]
   }
 }
