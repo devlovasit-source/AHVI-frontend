@@ -42,6 +42,11 @@ class AppwriteService extends ChangeNotifier {
   List<Map<String, dynamic>> get cachedWardrobeItems =>
       List.unmodifiable(_wardrobeCache ?? const <Map<String, dynamic>>[]);
 
+  // Called on every auth scope change (logout, login, registration).
+  // BackendService wires this to clearTodayWorkoutCache() so the workout
+  // session cache is never shared across users or after logout.
+  void Function()? onSessionCacheInvalidated;
+
   // Optional write-through to offline cache.
   void Function(List<Map<String, dynamic>>)? _onWardrobeFetched;
   void Function(String occasion, List<Document>)? _onSavedBoardsFetched;
@@ -150,6 +155,7 @@ class AppwriteService extends ChangeNotifier {
     _cachedUser = null;
     _cachedUserProfileData = null;
     invalidateWardrobeCache(accountScopeChanged: true);
+    onSessionCacheInvalidated?.call();
   }
 
   Future<void> _deleteExistingSessionsForAuthSwitch() async {

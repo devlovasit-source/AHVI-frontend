@@ -153,7 +153,12 @@ class BackendService {
            locationContextService ??
            LocationContextService(
              appwriteService: appwriteService ?? AppwriteService(),
-           );
+           ) {
+    // Invalidate workout session cache whenever auth scope changes (logout,
+    // login, registration). AppwriteService.clearUserCache() fires this slot
+    // on all those paths, so the cache is never shared across users.
+    _appwriteService.onSessionCacheInvalidated = clearTodayWorkoutCache;
+  }
 
   Future<Map<String, dynamic>> _locationContext(String userId) async {
     return _locationContextService.getLocationContext(
@@ -1561,14 +1566,39 @@ class BackendService {
   // cached for the app session, and concurrent callers share ONE in-flight
   // request. A failed / non-2xx request is never cached, so an explicit user
   // retry can try again — but nothing retries automatically.
+  //
+  // Cache is scoped by '$userId:$localDate'. A null key is used when the user
+  // cannot be resolved (unauthenticated / test paths) and provides the same
+  // unscoped behaviour as the pre-isolation implementation.
+  String? _todayWorkoutCacheKey;
   Map<String, dynamic>? _todayWorkoutCache;
+  String? _todayWorkoutInflightKey;
   Future<Map<String, dynamic>>? _todayWorkoutInFlight;
 
-  /// Clears the cached today-workout result. Call only from an explicit user
-  /// retry action; never on a rebuild or an automatic path.
+  /// Clears all today-workout session state: cache, timestamp, and any
+  /// in-flight request. Called on logout, user switch, and explicit retry.
+  /// Wired to AppwriteService.onSessionCacheInvalidated in the constructor
+  /// so auth-scope changes always clear it without a circular dependency.
   void clearTodayWorkoutCache() {
     _todayWorkoutCache = null;
+    _todayWorkoutCacheKey = null;
+    _todayWorkoutInFlight = null;
+    _todayWorkoutInflightKey = null;
   }
+
+  String _localDate() =>
+      debugLocalDateProvider?.call() ??
+      DateTime.now().toLocal().toIso8601String().substring(0, 10);
+
+  /// Test seam: override the local date string ('yyyy-MM-dd') used for cache
+  /// keying so tests can simulate a day boundary without sleeping.
+  @visibleForTesting
+  String Function()? debugLocalDateProvider;
+
+  /// Test seam: override the user ID resolver used for cache keying so tests
+  /// can exercise user-isolation logic without a real Appwrite session.
+  @visibleForTesting
+  Future<String> Function()? debugCurrentUserIdProvider;
 
   /// Test seam: when set, replaces the real network fetch so the coordination
   /// logic (cache / single-flight / no-auto-retry) can be exercised in unit
@@ -1576,35 +1606,74 @@ class BackendService {
   @visibleForTesting
   Future<Map<String, dynamic>> Function()? debugTodayWorkoutFetcher;
 
-  Future<Map<String, dynamic>> getTodayWorkout({bool forceRefresh = false}) {
+  Future<Map<String, dynamic>> getTodayWorkout({
+    bool forceRefresh = false,
+  }) async {
+    // Resolve the cache key for this call: '$userId:$localDate'.
+    //
+    // Production fast-path: reads the in-memory cached user ID synchronously
+    // so the coordination logic (cache check, in-flight join) is still
+    // reachable without an await — preserving the existing behaviour that
+    // concurrent callers can share an in-flight within the same event-loop
+    // frame.
+    //
+    // Test seam (debugCurrentUserIdProvider): async path used only when
+    // user-isolation scenarios need to switch identities between calls.
+    //
+    // Falls back to null key (legacy unkeyed) when no user is available.
+    String? key;
+    if (debugCurrentUserIdProvider != null) {
+      try {
+        key = '${await debugCurrentUserIdProvider!()}:${_localDate()}';
+      } catch (_) {}
+    } else {
+      final syncId = _appwriteService.currentUserId;
+      if (syncId != null && syncId.isNotEmpty) {
+        key = '$syncId:${_localDate()}';
+      }
+    }
+
     if (forceRefresh) {
       _todayWorkoutCache = null;
+      _todayWorkoutCacheKey = null;
+      _todayWorkoutInFlight = null;
+      _todayWorkoutInflightKey = null;
     }
-    final cached = _todayWorkoutCache;
-    if (cached != null) {
+
+    // Cache hit: same user+date (null==null for unkeyed paths).
+    if (_todayWorkoutCache != null && _todayWorkoutCacheKey == key) {
       debugPrint('AHVI_WORKOUT_TODAY_SKIPPED reason=cached');
-      return Future<Map<String, dynamic>>.value(cached);
+      return _todayWorkoutCache!;
     }
-    final inFlight = _todayWorkoutInFlight;
-    if (inFlight != null) {
+
+    // In-flight deduplication: only join a request for the same scope.
+    final existing = _todayWorkoutInFlight;
+    if (existing != null && _todayWorkoutInflightKey == key) {
       debugPrint('AHVI_WORKOUT_TODAY_SKIPPED reason=already_loading');
-      return inFlight;
+      return existing;
     }
-    final fetch = debugTodayWorkoutFetcher ?? _fetchTodayWorkout;
-    final future = fetch();
+
+    final fetcher = debugTodayWorkoutFetcher ?? _fetchTodayWorkout;
+    final future = fetcher();
     _todayWorkoutInFlight = future;
+    _todayWorkoutInflightKey = key;
+
     return future
         .then((result) {
-          // Cache only a real (non-empty) result so home + fitness reuse one
-          // session result. Empty / failed results stay uncached, so an explicit
-          // user retry can try again without any automatic retry loop.
-          if (result.isNotEmpty) {
+          // Cache only non-empty results, and only if still the active scope.
+          // Stale in-flight completions (after logout / user switch) are
+          // rejected by the key mismatch so they never pollute the new scope.
+          if (result.isNotEmpty && _todayWorkoutInflightKey == key) {
             _todayWorkoutCache = result;
+            _todayWorkoutCacheKey = key;
           }
           return result;
         })
         .whenComplete(() {
-          _todayWorkoutInFlight = null;
+          if (_todayWorkoutInflightKey == key) {
+            _todayWorkoutInFlight = null;
+            _todayWorkoutInflightKey = null;
+          }
         });
   }
 
