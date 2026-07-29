@@ -16,7 +16,6 @@ import 'package:myapp/services/backend_service.dart';
 import 'package:myapp/widgets/ahvi_chat_prompt_bar.dart';
 import 'package:myapp/widgets/ahvi_home_text.dart';
 import 'package:myapp/theme/theme_tokens.dart';
-import 'package:myapp/util/safe_text.dart';
 import 'package:myapp/feature/chat/widgets/blocks/ahvi_block_renderer.dart'
     show
     VisualInspirationCard,
@@ -506,19 +505,6 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
       'Wardrobe detox tips',
     ],
   ),
-  'prepare': AhviModuleConfig(
-    moduleContext: 'prepare',
-    subtitle: 'Planning Assistant',
-    hintTextKey: 'daily_wear_chat_hint',
-    greetingKey: 'intent_prepare_s1',
-    quickPrompts: (ctx) => [
-      AppLocalizations.t(ctx, 'intent_prepare_s1'),
-      AppLocalizations.t(ctx, 'intent_prepare_s2'),
-      AppLocalizations.t(ctx, 'intent_prepare_s3'),
-      'Plan outfits for an event',
-      'Create a weather-ready checklist',
-    ],
-  ),
 };
 
 AhviModuleConfig _configFor(String moduleContext) =>
@@ -813,7 +799,9 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     final userMessages = _messages.where((m) => m.isUser).toList();
     if (userMessages.isEmpty) return;
     final rawText = userMessages.first.text ?? '';
-    final title = truncateSafeText(rawText, 40, suffix: '…');
+    final title = rawText.length > 40
+        ? '${rawText.substring(0, 40)}…'
+        : rawText;
     final existingIdx = _history.indexWhere((s) => s.id == _currentSessionId);
     final session = _ChatSession(
       id: _currentSessionId!,
@@ -1332,14 +1320,14 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
               },
             }
           : widget.contextData;
-      final response = styleModules.contains(widget.moduleContext) &&
-              !isPlanPackRequest
+      final response =
+      styleModules.contains(widget.moduleContext) || isPlanPackRequest
           ? await backend.sendChatQuery(
         query,
         '',
         List<Map<String, String>>.from(_chatHistory),
         _runningMemory,
-        moduleContext: styleModuleContext,
+        moduleContext: isPlanPackRequest ? 'chat' : styleModuleContext,
         styleAction: isClosestStyleAction ? 'show_closest_option' : null,
         action: isClosestStyleAction
             ? 'show_closest_option'
@@ -1377,10 +1365,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
         closest: isClosestStyleAction,
       )
           : await backend.sendModuleChat(
-        domain: canonicalModuleChatDomain(
-          widget.moduleContext,
-          plannerRequest: isPlanPackRequest,
-        ),
+        domain: widget.moduleContext,
         message: query,
         chatHistory: List<Map<String, String>>.from(_chatHistory),
         context: moduleContextData,

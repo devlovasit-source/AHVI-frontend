@@ -1,8 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:myapp/app_localizations.dart';
-import 'package:myapp/models/home_today_summary.dart';
-import 'package:myapp/services/appwrite_service.dart';
-import 'package:myapp/services/backend_service.dart';
+import 'app_localizations.dart'; // adjust path as needed
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HomeCardSummaryProvider
@@ -11,167 +9,30 @@ import 'package:myapp/services/backend_service.dart';
 // Single provider for ALL five home-card routine summaries:
 //   wear · move · eat · care (skincare) · medicine
 //
-// Backend summary (GET /api/home/today-summary) is the base state; local
-// completion events (markWearDone, updateSkincare, updateFromMeds) augment
-// the currently displayed card for the same user/date.
+// Previously split across three files:
+//   • home_card_summary_provider.dart  → wear / move / eat / care strings
+//   • skincare_state_provider.dart     → live skincare progress
+//   • medicine_state_provider.dart     → live medication adherence
 //
-// Registration in main.dart:
-//   ChangeNotifierProxyProvider2<AppwriteService, BackendService,
-//       HomeCardSummaryProvider>(
-//     create: (_) => HomeCardSummaryProvider(),
-//     update: (_, appwrite, backend, p) => p!..configure(backend, appwrite),
-//   )
+// Now consolidated here so your MultiProvider only needs ONE registration:
+//
+//   ChangeNotifierProvider(create: (_) => HomeCardSummaryProvider()),
+//
+// Migration notes
+// ───────────────
+// • SkincareScreen   — replace `context.read<SkincareStateProvider>().update(...)`
+//                      with   `context.read<HomeCardSummaryProvider>().updateSkincare(...)`
+//
+// • MediTrackScreen  — replace `context.read<MedicineStateProvider>().updateFromMeds(...)`
+//                      with   `context.read<HomeCardSummaryProvider>().updateFromMeds(...)`
+//
+// • home_optimized.dart — remove the two extra imports and the two extra
+//   `context.watch<>()` calls; `context.watch<HomeCardSummaryProvider>()`
+//   already causes the routine cards row to repaint for ALL five cards.
+//
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class HomeCardSummaryProvider extends ChangeNotifier {
-  // ─── Backend-backed state ────────────────────────────────────────────────────
-
-  BackendService? _backend;
-  AppwriteService? _appwrite;
-
-  bool _isLoading = false;
-  Object? _error;
-  HomeTodaySummary? _summary;
-  String? _summaryCacheKey; // '$userId:$localDate' for last successful fetch
-  String? _summaryInflightKey;
-  Future<void>? _summaryInFlight;
-  int _generation = 0; // incremented on reset; guards stale-in-flight writes
-
-  bool get isLoading => _isLoading;
-  Object? get error => _error;
-  HomeTodaySummary? get summary => _summary;
-
-  // ── Test seams ───────────────────────────────────────────────────────────────
-
-  @visibleForTesting
-  String? Function()? debugCurrentUserIdProvider;
-
-  @visibleForTesting
-  String Function()? debugLocalDateProvider;
-
-  @visibleForTesting
-  Future<HomeTodaySummary> Function()? debugSummaryFetcher;
-
-  /// Generation counter — increments on every [reset]. Exposed for tests that
-  /// assert a session invalidation fired exactly once (no duplicate listener).
-  @visibleForTesting
-  int get debugGeneration => _generation;
-
-  // ── Wiring ───────────────────────────────────────────────────────────────────
-
-  /// Called by ChangeNotifierProxyProvider2 whenever AppwriteService or
-  /// BackendService is updated. Safe to call multiple times.
-  void configure(BackendService backend, AppwriteService appwrite) {
-    // Idempotent: always detach from the previously-wired AppwriteService (the
-    // same one on a rebuild, or an old instance when dependencies change)
-    // before attaching, so the listener is registered exactly once.
-    if (_appwrite != null) {
-      _appwrite!.removeSessionInvalidationListener(_onSessionInvalidated);
-    }
-    _backend = backend;
-    _appwrite = appwrite;
-    appwrite.addSessionInvalidationListener(_onSessionInvalidated);
-  }
-
-  @override
-  void dispose() {
-    // Detach from the session-invalidation broadcast so a disposed provider is
-    // never called back (which would notifyListeners() after dispose).
-    _appwrite?.removeSessionInvalidationListener(_onSessionInvalidated);
-    _appwrite = null;
-    super.dispose();
-  }
-
-  String _localDate() =>
-      debugLocalDateProvider?.call() ??
-      DateTime.now().toLocal().toIso8601String().substring(0, 10);
-
-  String? _resolveUserId() {
-    if (debugCurrentUserIdProvider != null) return debugCurrentUserIdProvider!();
-    return _appwrite?.currentUserId;
-  }
-
-  String? _cacheKey() {
-    final id = _resolveUserId();
-    return (id != null && id.isNotEmpty) ? '$id:${_localDate()}' : null;
-  }
-
-  // ─── Public API ──────────────────────────────────────────────────────────────
-
-  /// Fetches the today-summary from the backend. Returns immediately on cache
-  /// hit or in-flight join; fetches once per user+date. Fire-and-forget safe.
-  ///
-  /// [forceRefresh] clears the cache entry so the next fetch runs even if the
-  /// user+date key matches, while retaining the last successful summary for
-  /// stale display during the reload. Does NOT clear [summary].
-  Future<void> refresh({bool forceRefresh = false}) {
-    final backend = _backend;
-    // debugSummaryFetcher is the test seam — allow refresh without a real
-    // backend when it is set so unit tests don't need a wired BackendService.
-    if (backend == null && debugSummaryFetcher == null) return Future.value();
-
-    final key = _cacheKey();
-
-    if (forceRefresh) {
-      // Invalidate cache entry without wiping the visible summary — callers
-      // see stale data while the reload is in progress.
-      _summaryCacheKey = null;
-    }
-
-    // Cache hit: same user+date
-    if (_summary != null && _summaryCacheKey == key) return Future.value();
-
-    // Single-flight: join existing in-flight for same scope
-    if (_summaryInFlight != null && _summaryInflightKey == key) {
-      return _summaryInFlight!;
-    }
-
-    final gen = ++_generation;
-    if (!_isLoading) {
-      _isLoading = true;
-      notifyListeners();
-    }
-    final future = _doFetch(backend, key, gen);
-    _summaryInFlight = future;
-    _summaryInflightKey = key;
-    return future;
-  }
-
-  Future<void> _doFetch(BackendService? backend, String? key, int gen) async {
-    try {
-      final fetcher = debugSummaryFetcher ?? backend!.getHomeTodaySummary;
-      final result = await fetcher();
-      if (_generation != gen) {
-        debugPrint('home.summary.stale_ignored');
-        return;
-      }
-      _summary = result;
-      _summaryCacheKey = key;
-      _error = null;
-    } catch (e) {
-      if (_generation != gen) {
-        debugPrint('home.summary.stale_ignored');
-        return;
-      }
-      debugPrint('home.summary.failed err=${e.runtimeType}');
-      _error = e;
-      // Retain last successful summary for same user/date — only clear across
-      // users or dates (handled by reset()).
-    } finally {
-      if (_generation == gen) {
-        _isLoading = false;
-        _summaryInFlight = null;
-        _summaryInflightKey = null;
-        notifyListeners();
-      }
-    }
-  }
-
-  void _onSessionInvalidated() {
-    debugPrint('home.summary.reset');
-    reset();
-  }
-
   // ─────────────────────────────────────────────────────────────────────────
   // 1.  WEAR / MOVE / EAT / CARE  (translation-key–based summary strings)
   // ─────────────────────────────────────────────────────────────────────────
@@ -184,6 +45,7 @@ class HomeCardSummaryProvider extends ChangeNotifier {
   static const String _careDefaultKey = 'home_card_care_default';
 
   /// Gender-aware neutral fallback KEY for the "Wear" line.
+  /// Never a specific gendered look unless the backend supplies a real one.
   static String wearFallbackKeyFor(String? gender) {
     switch ((gender ?? '').trim().toLowerCase()) {
       case 'male':
@@ -206,18 +68,27 @@ class HomeCardSummaryProvider extends ChangeNotifier {
   String _eat  = _eatDefaultKey;
   String _care = _careDefaultKey;
 
+  // True once a real (backend/dynamic) wear summary has been set, so the
+  // gender fallback never overrides genuine data.
   bool _wearFromBackend = false;
+
+  // ── Raw stored values (key or backend literal) ───────────────────────────
 
   String get wear => _wear;
   String get move => _move;
   String get eat  => _eat;
   String get care => _care;
 
+  // ── Resolved display text for the current locale ─────────────────────────
+
   String wearFor(BuildContext context) => context.tr(_wear);
   String moveFor(BuildContext context) => context.tr(_move);
   String eatFor(BuildContext context)  => context.tr(_eat);
   String careFor(BuildContext context) => context.tr(_care);
 
+  // ── Mutators ──────────────────────────────────────────────────────────────
+
+  /// Apply the gender-aware fallback ONLY while no real summary has arrived.
   void applyGenderFallback(String? gender) {
     if (_wearFromBackend) return;
     final next = wearFallbackKeyFor(gender);
@@ -227,10 +98,10 @@ class HomeCardSummaryProvider extends ChangeNotifier {
   }
 
   bool _setIfUseful(
-    String current,
-    String value,
-    void Function(String) assign,
-  ) {
+      String current,
+      String value,
+      void Function(String) assign,
+      ) {
     final cleaned = value.trim();
     if (cleaned.isEmpty || cleaned == current) return false;
     assign(cleaned);
@@ -248,8 +119,14 @@ class HomeCardSummaryProvider extends ChangeNotifier {
   void setCare(String value) => _setIfUseful(_care, value, (c) => _care = c);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 1b.  WEAR — DAILY COMPLETION STATE
+  // 1b.  WEAR — DAILY COMPLETION STATE  (drives the Home "Wear" bubble/card)
   // ─────────────────────────────────────────────────────────────────────────
+  //
+  // Separate from the `_wear` summary string above (which is a fallback
+  // gender-based greeting key). This tracks whether the user has actually
+  // picked/confirmed an outfit TODAY in DailyWearScreen — call markWearDone()
+  // from _DailyWearScreenState._wearOutfit() every time the user taps
+  // "Wear this".
 
   bool   _wearDone       = false;
   String _wearOutfitName = '';
@@ -257,60 +134,15 @@ class HomeCardSummaryProvider extends ChangeNotifier {
   bool   get isWearDone     => _wearDone;
   String get wearOutfitName => _wearOutfitName;
 
-  // ── Backend card display contract ────────────────────────────────────────
-  //
-  // subtitle/description  = backend headline
-  // supporting/status copy = backend context
-  //
-  // The backend `status` field (machine values: ready, due_now, unavailable)
-  // is internal-only and is NEVER read here — it must not reach the UI.
-  //
-  // available == true  → headline / context (null → caller uses local state)
-  // available == false → supplied headline/context, else neutral copy. An
-  //   explicitly-unavailable card is shown honestly; it is never replaced with
-  //   personalised local fallback text. Local completion state augments only a
-  //   present, available (same-user/date) card via absence of a backend value.
+  /// One-liner subtitle shown on the Home "Wear" card once an outfit is picked.
+  String get wearHomeSubtitle =>
+      _wearOutfitName.isNotEmpty ? _wearOutfitName : '';
 
-  static const String _kUnavailableSubtitle = 'Not available today';
-  static const String _kUnavailableStatus = '—';
+  /// Short status label shown next to the check/clock icon on the Wear card.
+  String get wearHomeStatus => _wearDone ? 'Done' : 'Pick outfit';
 
-  /// Subtitle from a backend card per the display contract, or null when the
-  /// caller should fall through to local state (no card, or available card
-  /// with no headline).
-  String? _backendSubtitle(HomeTodayCard? bc) {
-    if (bc == null) return null;
-    if (bc.available) return bc.headline.isNotEmpty ? bc.headline : null;
-    if (bc.headline.isNotEmpty) return bc.headline;
-    if (bc.context.isNotEmpty) return bc.context;
-    return _kUnavailableSubtitle;
-  }
-
-  /// Supporting/status copy from a backend card per the display contract, or
-  /// null when the caller should fall through to local state. The machine
-  /// `status` field is deliberately never read.
-  String? _backendStatus(HomeTodayCard? bc) {
-    if (bc == null) return null;
-    if (bc.available) return bc.context.isNotEmpty ? bc.context : null;
-    if (bc.context.isNotEmpty) return bc.context;
-    return _kUnavailableStatus;
-  }
-
-  // ── Backend-backed display getters (Wear) ────────────────────────────────
-
-  /// One-liner subtitle for the Home "Wear" card (backend headline preferred).
-  String get wearHomeSubtitle {
-    final b = _backendSubtitle(_summary?.wear);
-    if (b != null) return b;
-    return _wearOutfitName.isNotEmpty ? _wearOutfitName : '';
-  }
-
-  /// Short status label for the Wear card (backend context preferred).
-  String get wearHomeStatus {
-    final b = _backendStatus(_summary?.wear);
-    if (b != null) return b;
-    return _wearDone ? 'Done' : 'Pick outfit';
-  }
-
+  /// Push wear completion from DailyWearScreen whenever the user confirms
+  /// today's outfit (or un-confirms it, e.g. picking a different one).
   void markWearDone({required bool done, String outfitName = ''}) {
     final changed = _wearDone != done || _wearOutfitName != outfitName;
     _wearDone = done;
@@ -318,32 +150,16 @@ class HomeCardSummaryProvider extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
-  // ── Backend-backed display getters (Move) ────────────────────────────────
-
-  /// One-liner subtitle for the Home "Move" card from the backend summary.
-  /// Returns empty string only when there is no backend move card, so home.dart
-  /// falls through to the existing fitness-signal logic; an explicitly
-  /// unavailable card yields honest neutral copy instead.
-  String get moveHomeSubtitle => _backendSubtitle(_summary?.move) ?? '';
-
-  /// Short status label for the Move card (backend context preferred).
-  String get moveHomeStatus => _backendStatus(_summary?.move) ?? '';
-
-  // ── Backend-backed display getters (Eat) ─────────────────────────────────
-
-  /// One-liner subtitle for the Home "Eat" card from the backend summary.
-  String get eatHomeSubtitle => _backendSubtitle(_summary?.eat) ?? '';
-
-  /// Short status label for the Eat card (backend context preferred).
-  String get eatHomeStatus => _backendStatus(_summary?.eat) ?? '';
-
   // ─────────────────────────────────────────────────────────────────────────
   // 2.  SKINCARE  (formerly SkincareStateProvider)
   // ─────────────────────────────────────────────────────────────────────────
+  //
+  // Call updateSkincare() from _SkincareScreenState._pushToHome() after
+  // every mutation (markStep, loadProfile, setRoutine, toggleConcern).
 
   bool         _isNight        = false;
   int          _completedSteps = 0;
-  int          _totalSteps     = 5;
+  int          _totalSteps     = 5; // default; updated when routine loads
   String       _skinType       = '';
   List<String> _concerns       = const [];
 
@@ -359,12 +175,10 @@ class HomeCardSummaryProvider extends ChangeNotifier {
   bool get isSkincareDone =>
       _completedSteps >= _totalSteps && _totalSteps > 0;
 
-  // ── Backend-backed display getters (Care) ────────────────────────────────
+  // ── Derived labels for the home "Care" card ──────────────────────────────
 
+  /// One-liner subtitle shown on the "Care" routine card.
   String get skincareHomeSubtitle {
-    final b = _backendSubtitle(_summary?.care);
-    if (b != null) return b;
-    // Local fallback — only when there is no backend care card at all.
     if (isSkincareDone) {
       return _isNight ? 'Night routine done ✓' : 'Morning glow done ✓';
     }
@@ -378,10 +192,8 @@ class HomeCardSummaryProvider extends ChangeNotifier {
     return 'Care routine';
   }
 
+  /// Short status label shown next to the check/clock icon.
   String get skincareHomeStatus {
-    final b = _backendStatus(_summary?.care);
-    if (b != null) return b;
-    // Local fallback
     if (isSkincareDone) return 'Done';
     if (_completedSteps > 0) {
       return '${(skincareProgressPct * 100).round()}%';
@@ -391,6 +203,9 @@ class HomeCardSummaryProvider extends ChangeNotifier {
     return 'Later';
   }
 
+  // ── Mutator (called by SkincareScreen) ───────────────────────────────────
+
+  /// Push a full skincare state snapshot after any mutation in SkincareScreen.
   void updateSkincare({
     required bool isNight,
     required int completedSteps,
@@ -409,14 +224,19 @@ class HomeCardSummaryProvider extends ChangeNotifier {
   // ─────────────────────────────────────────────────────────────────────────
   // 3.  MEDICINE  (formerly MedicineStateProvider)
   // ─────────────────────────────────────────────────────────────────────────
+  //
+  // Call updateFromMeds() from _MediTrackScreenState._pushToHome() after
+  // _fetchData() and after every _markTaken() / deleteMed().
 
-  int _totalMeds   = 0;
-  int _takenToday  = 0;
-  int _pendingToday = 0;
+  int    _totalMeds   = 0;
+  int    _takenToday  = 0;
+  int    _pendingToday = 0;
+  String _nextMedName = '';
 
-  int get totalMeds    => _totalMeds;
-  int get takenToday   => _takenToday;
-  int get pendingToday => _pendingToday;
+  int    get totalMeds    => _totalMeds;
+  int    get takenToday   => _takenToday;
+  int    get pendingToday => _pendingToday;
+  String get nextMedName  => _nextMedName;
 
   double get medicineAdherence =>
       _totalMeds == 0 ? 0.0 : _takenToday / _totalMeds;
@@ -425,23 +245,23 @@ class HomeCardSummaryProvider extends ChangeNotifier {
 
   bool get isMedicineDone => allMedsTaken;
 
-  // ── Backend-backed display getters (Medicine) ────────────────────────────
-  // Medicine text must come from backend safe fields only.
-  // Never infer or display medicine name, dose, diagnosis, or prescription data.
+  // ── Derived labels for the home "Medicine" card ──────────────────────────
 
+  /// One-liner subtitle shown on the "Medicine" routine card.
   String get medicineHomeSubtitle {
-    final b = _backendSubtitle(_summary?.medicine);
-    if (b != null) return b;
-    // Local fallback — count-only; never the medicine name.
     if (_totalMeds == 0) return 'No meds today';
     if (allMedsTaken) return 'All meds taken ✓';
+    if (_nextMedName.isNotEmpty) {
+      final name = _nextMedName.length > 14
+          ? '${_nextMedName.substring(0, 12)}…'
+          : _nextMedName;
+      return 'Next: $name';
+    }
     return '$_takenToday/$_totalMeds taken';
   }
 
+  /// Short status label shown next to the check/clock icon.
   String get medicineHomeStatus {
-    final b = _backendStatus(_summary?.medicine);
-    if (b != null) return b;
-    // Local fallback
     if (_totalMeds == 0) return 'None';
     if (allMedsTaken) return 'Done';
     if (_pendingToday > 0) {
@@ -451,15 +271,21 @@ class HomeCardSummaryProvider extends ChangeNotifier {
     return 'Upcoming';
   }
 
+  // ── Mutator (called by MediTrackScreen) ──────────────────────────────────
+
   /// Push a full medication snapshot after any load or mutation.
-  /// Only meds with reminder == true count toward the badge.
+  ///
+  /// [meds] is the raw list from _MediTrackScreenState.meds.
+  /// Only meds with reminder == true are counted toward the badge.
   void updateFromMeds(List<Map<String, dynamic>> meds) {
-    final reminded = meds.where((m) => m['reminder'] == true).toList();
-    _totalMeds    = reminded.length;
-    _takenToday   = reminded.where((m) => m['taken'] == true).length;
-    _pendingToday = _totalMeds - _takenToday;
-    // NOTE: _nextMedName intentionally removed — never display medication
-    // names on the Home card (medicine privacy requirement).
+    final reminded    = meds.where((m) => m['reminder'] == true).toList();
+    _totalMeds        = reminded.length;
+    _takenToday       = reminded.where((m) => m['taken'] == true).length;
+    _pendingToday     = _totalMeds - _takenToday;
+    final pending     = reminded.where((m) => m['taken'] != true).toList();
+    _nextMedName      = pending.isNotEmpty
+        ? (pending.first['name'] ?? '').toString()
+        : '';
     notifyListeners();
   }
 
@@ -467,41 +293,31 @@ class HomeCardSummaryProvider extends ChangeNotifier {
   // 4.  FULL RESET
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Resets all five card summaries to defaults. Called on sign-out and
-  /// user switching (via onSessionInvalidated).
+  /// Resets all five card summaries to their defaults (call on sign-out).
   void reset() {
-    _generation++; // invalidate any in-flight fetch
-
-    // Backend state
-    _summary = null;
-    _summaryCacheKey = null;
-    _summaryInFlight = null;
-    _summaryInflightKey = null;
-    _isLoading = false;
-    _error = null;
-
-    // Wear / Move / Eat / Care strings
+    // ── Wear / Move / Eat / Care strings ─────────────────────────────────
     _wear          = _wearDefaultKey;
     _wearFromBackend = false;
     _move          = _moveDefaultKey;
     _eat           = _eatDefaultKey;
     _care          = _careDefaultKey;
 
-    // Wear daily completion
+    // ── Wear daily completion ────────────────────────────────────────────
     _wearDone       = false;
     _wearOutfitName = '';
 
-    // Skincare
+    // ── Skincare ─────────────────────────────────────────────────────────
     _isNight        = false;
     _completedSteps = 0;
     _totalSteps     = 5;
     _skinType       = '';
     _concerns       = const [];
 
-    // Medicine (count-only; no medicine names stored)
-    _totalMeds    = 0;
-    _takenToday   = 0;
-    _pendingToday = 0;
+    // ── Medicine ─────────────────────────────────────────────────────────
+    _totalMeds      = 0;
+    _takenToday     = 0;
+    _pendingToday   = 0;
+    _nextMedName    = '';
 
     notifyListeners();
   }
