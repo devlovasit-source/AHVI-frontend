@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:myapp/config/env.dart';
 import 'package:myapp/models/calendar_event_record.dart';
+import 'package:myapp/models/home_today_summary.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/location_context_service.dart';
 import 'package:myapp/util/safe_text.dart';
@@ -157,7 +158,7 @@ class BackendService {
     // Invalidate workout session cache whenever auth scope changes (logout,
     // login, registration). AppwriteService.clearUserCache() fires this slot
     // on all those paths, so the cache is never shared across users.
-    _appwriteService.onSessionCacheInvalidated = clearTodayWorkoutCache;
+    _appwriteService.addSessionInvalidationListener(clearTodayWorkoutCache);
   }
 
   Future<Map<String, dynamic>> _locationContext(String userId) async {
@@ -1710,6 +1711,50 @@ class BackendService {
     } catch (e) {
       debugPrint('AHVI_WORKOUT_TODAY_STATUS status=error content_type=');
       return <String, dynamic>{};
+    }
+  }
+
+  /// Test seam: when set, replaces the real /api/home/today-summary fetch.
+  @visibleForTesting
+  Future<HomeTodaySummary> Function()? debugHomeSummaryFetcher;
+
+  Future<HomeTodaySummary> getHomeTodaySummary() async {
+    debugPrint('home.summary.requested');
+    final root = baseUrl.replaceAll(RegExp(r'/+$'), '');
+    try {
+      final userId = await _currentUserId();
+      final location = await _locationContext(userId);
+      final uri = Uri.parse('$root/api/home/today-summary').replace(
+        queryParameters: {'location_context': jsonEncode(location)},
+      );
+      final headers = await _authHeaders();
+      final response = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final raw = await compute(_parseJsonMap, response.body);
+        final summary = HomeTodaySummary.fromMap(raw);
+        final cards = [
+          summary.wear,
+          summary.move,
+          summary.eat,
+          summary.care,
+          summary.medicine,
+        ];
+        final allAvailable = cards.every((c) => c.available);
+        if (!allAvailable) debugPrint('home.summary.partial');
+        debugPrint('home.summary.loaded date=${summary.date}');
+        return summary;
+      }
+      debugPrint('home.summary.failed status=${response.statusCode}');
+      throw BackendRequestException(
+        'home_today_summary: HTTP ${response.statusCode}',
+      );
+    } catch (e) {
+      if (e is! BackendRequestException) {
+        debugPrint('home.summary.failed err=${e.runtimeType}');
+      }
+      rethrow;
     }
   }
 

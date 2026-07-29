@@ -447,6 +447,11 @@ class _Screen4State extends State<Screen4>
             // behavior so the Wear bubble + card status update immediately.
             _fetchWardrobeSignal();
             _preloadHomeImages();
+            // NOTE: home-summary refresh is intentionally NOT scheduled here.
+            // The single guarded initial fetch runs once in initState; resume
+            // and explicit refreshes cover the rest. Firing an unguarded
+            // delayed refresh on every dependency change is redundant with the
+            // provider's own user+date cache guard.
           }
         });
       }
@@ -938,6 +943,25 @@ class _Screen4State extends State<Screen4>
     } catch (_) {}
   }
 
+  /// Triggers a home-summary refresh via the provider. The provider's own
+  /// single-flight and user+date cache guard prevent duplicate requests.
+  void _refreshHomeSummary() {
+    try {
+      Provider.of<HomeCardSummaryProvider>(context, listen: false).refresh();
+    } catch (_) {}
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // On resume (e.g. returning from background on a new day), refresh the
+    // home summary. The provider's cache key (user+date) ensures a fetch only
+    // when the date has actually changed since the last successful load.
+    if (state == AppLifecycleState.resumed && mounted) {
+      _refreshHomeSummary();
+    }
+  }
+
   /// Slow path — fetches today's workout from BackendService and updates the
   /// signal with richer data (streak, type, water).
   Future<void> _syncFitnessFromBackend() async {
@@ -1345,6 +1369,10 @@ class _Screen4State extends State<Screen4>
       _fetchCalendarSignal();
       _fetchWardrobeSignal();
       _syncFitnessSignal();
+      // Single guarded initial home-summary fetch. initState runs once per
+      // mount and the provider's user+date cache guard dedupes; resume
+      // (didChangeAppLifecycleState) and explicit refreshes cover the rest.
+      _refreshHomeSummary();
     });
 
     // 🔧 FIX: Home tab active glow — first frame లో animate చేయి
@@ -7345,6 +7373,15 @@ class _Screen4State extends State<Screen4>
 
   // ─── MOVE / WORKOUT ───
   String _getWorkoutDescription() {
+    try {
+      final sub = Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).moveHomeSubtitle;
+      if (sub.isNotEmpty) {
+        return sub.length > 20 ? '${sub.substring(0, 17)}...' : sub;
+      }
+    } catch (_) {}
     final workoutLabel = _workoutLabel;
     if (workoutLabel.isNotEmpty && workoutLabel != 'workout_mobility') {
       String displayLabel = workoutLabel.startsWith('workout_')
@@ -7358,7 +7395,13 @@ class _Screen4State extends State<Screen4>
   }
 
   String _getWorkoutStatus() {
-    // status_streak / status_start లేవు → existing keys వాడు
+    try {
+      final st = Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).moveHomeStatus;
+      if (st.isNotEmpty) return st;
+    } catch (_) {}
     return _fitnessSignal.hasActiveStreak
         ? AppLocalizations.t(context, 'status_in_progress')
         : AppLocalizations.t(context, 'status_in_progress');
@@ -7371,18 +7414,29 @@ class _Screen4State extends State<Screen4>
 
   // ─── EAT / MEAL PLAN ───
   String _getMealDescription() {
+    try {
+      final sub = Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).eatHomeSubtitle;
+      if (sub.isNotEmpty) {
+        return sub.length > 20 ? '${sub.substring(0, 17)}...' : sub;
+      }
+    } catch (_) {}
     if (_fitnessSignal.calorieGoalMet) {
       return AppLocalizations.t(context, 'home_card_eat_default');
     }
-    return _fitnessSignal.waterGlassesToday > 0
-        ? AppLocalizations.t(
-            context,
-            'eat_meal_prep',
-          ) // hydrating → meal prep fallback
-        : AppLocalizations.t(context, 'eat_meal_prep');
+    return AppLocalizations.t(context, 'eat_meal_prep');
   }
 
   String _getMealStatus() {
+    try {
+      final st = Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).eatHomeStatus;
+      if (st.isNotEmpty) return st;
+    } catch (_) {}
     return _fitnessSignal.calorieGoalMet
         ? AppLocalizations.t(context, 'status_done')
         : AppLocalizations.t(context, 'status_in_progress');

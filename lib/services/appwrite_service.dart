@@ -42,10 +42,16 @@ class AppwriteService extends ChangeNotifier {
   List<Map<String, dynamic>> get cachedWardrobeItems =>
       List.unmodifiable(_wardrobeCache ?? const <Map<String, dynamic>>[]);
 
-  // Called on every auth scope change (logout, login, registration).
-  // BackendService wires this to clearTodayWorkoutCache() so the workout
-  // session cache is never shared across users or after logout.
-  void Function()? onSessionCacheInvalidated;
+  // Observers notified on every auth scope change (logout, login, registration).
+  // Multiple consumers (BackendService, HomeCardSummaryProvider, …) may register
+  // independently via addSessionInvalidationListener.
+  final List<VoidCallback> _sessionListeners = [];
+
+  void addSessionInvalidationListener(VoidCallback cb) =>
+      _sessionListeners.add(cb);
+
+  void removeSessionInvalidationListener(VoidCallback cb) =>
+      _sessionListeners.remove(cb);
 
   // Optional write-through to offline cache.
   void Function(List<Map<String, dynamic>>)? _onWardrobeFetched;
@@ -155,7 +161,16 @@ class AppwriteService extends ChangeNotifier {
     _cachedUser = null;
     _cachedUserProfileData = null;
     invalidateWardrobeCache(accountScopeChanged: true);
-    onSessionCacheInvalidated?.call();
+    // Iterate a snapshot so a listener that (de)registers during dispatch can't
+    // mutate the list mid-loop. Isolate each callback so one throwing observer
+    // cannot stop the rest — every consumer's cache must still be cleared.
+    for (final cb in List<VoidCallback>.from(_sessionListeners)) {
+      try {
+        cb();
+      } catch (e) {
+        debugPrint('session.invalidation.listener_error err=${e.runtimeType}');
+      }
+    }
   }
 
   Future<void> _deleteExistingSessionsForAuthSwitch() async {
