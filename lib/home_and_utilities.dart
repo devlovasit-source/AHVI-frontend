@@ -18,7 +18,16 @@ import 'package:myapp/theme/theme_tokens.dart';
 //  • Custom styled header (matching boards.dart)
 // ─────────────────────────────────────────────
 class HomeUtilitiesScreen extends StatefulWidget {
-  const HomeUtilitiesScreen({super.key});
+  final Widget? mediChild;
+  final Widget? billsChild;
+  final Widget? contactsChild;
+
+  const HomeUtilitiesScreen({
+    super.key,
+    this.mediChild,
+    this.billsChild,
+    this.contactsChild,
+  });
 
   @override
   State<HomeUtilitiesScreen> createState() => _HomeUtilitiesScreenState();
@@ -38,6 +47,7 @@ class _HomeUtilitiesScreenState extends State<HomeUtilitiesScreen>
   @override
   void initState() {
     super.initState();
+    debugPrint('AHVI_MEDI_NAV source=boards_home_utilities_initial_tab');
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
@@ -121,10 +131,17 @@ class _HomeUtilitiesScreenState extends State<HomeUtilitiesScreen>
           Expanded(
             child: IndexedStack(
               index: _tabController.index,
-              children: const [
-                RepaintBoundary(child: medi_tracker.MediTrackScreen()),
-                RepaintBoundary(child: bills.BillsScreen()),
-                RepaintBoundary(child: contacts.ContactsScreen()),
+              children: [
+                RepaintBoundary(
+                  child:
+                      widget.mediChild ?? const medi_tracker.MediTrackScreen(),
+                ),
+                RepaintBoundary(
+                  child: widget.billsChild ?? const bills.BillsScreen(),
+                ),
+                RepaintBoundary(
+                  child: widget.contactsChild ?? const contacts.ContactsScreen(),
+                ),
               ],
             ),
           ),
@@ -166,7 +183,11 @@ class _HomeUtilitiesScreenState extends State<HomeUtilitiesScreen>
             text: TextSpan(
               children: [
                 TextSpan(
-                  text: AppLocalizations.t(context, 'home_title_bold'),
+                  text: medi_tracker.sanitizeMediSurfaceText(
+                    AppLocalizations.t(context, 'home_title_bold'),
+                    surface: 'home_utilities',
+                    field: 'route_header_bold',
+                  ),
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 22,
@@ -176,7 +197,11 @@ class _HomeUtilitiesScreenState extends State<HomeUtilitiesScreen>
                   ),
                 ),
                 TextSpan(
-                  text: AppLocalizations.t(context, 'home_title_light'),
+                  text: medi_tracker.sanitizeMediSurfaceText(
+                    AppLocalizations.t(context, 'home_title_light'),
+                    surface: 'home_utilities',
+                    field: 'route_header_light',
+                  ),
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 22,
@@ -239,9 +264,27 @@ class _HomeUtilitiesScreenState extends State<HomeUtilitiesScreen>
             fontSize: 13,
           ),
           tabs: [
-            Tab(text: AppLocalizations.t(context, 'home_tab_medi')),
-            Tab(text: AppLocalizations.t(context, 'home_tab_bills')),
-            Tab(text: AppLocalizations.t(context, 'home_tab_contacts')),
+            Tab(
+              text: medi_tracker.sanitizeMediSurfaceText(
+                AppLocalizations.t(context, 'home_tab_medi'),
+                surface: 'home_utilities',
+                field: 'medi_tab',
+              ),
+            ),
+            Tab(
+              text: medi_tracker.sanitizeMediSurfaceText(
+                AppLocalizations.t(context, 'home_tab_bills'),
+                surface: 'home_utilities',
+                field: 'bills_tab',
+              ),
+            ),
+            Tab(
+              text: medi_tracker.sanitizeMediSurfaceText(
+                AppLocalizations.t(context, 'home_tab_contacts'),
+                surface: 'home_utilities',
+                field: 'contacts_tab',
+              ),
+            ),
           ],
         ),
       ),

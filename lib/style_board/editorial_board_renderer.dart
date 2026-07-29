@@ -20,11 +20,12 @@ class EditorialBoardCanvas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        color: colors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(14),
       ),
       clipBehavior: Clip.antiAlias,
       child: LayoutBuilder(
@@ -70,10 +71,7 @@ class EditorialBoardCanvas extends StatelessWidget {
                         DecoratedBox(
                           decoration: BoxDecoration(
                             border: locked
-                                ? Border.all(
-                                    color: const Color(0xFF8A6A78),
-                                    width: 1.5,
-                                  )
+                                ? Border.all(color: colors.primary, width: 1.5)
                                 : null,
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -143,21 +141,24 @@ class EditorialBoardCanvas extends StatelessWidget {
 class _LockedPill extends StatelessWidget {
   const _LockedPill();
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-    decoration: BoxDecoration(
-      color: const Color(0xDD8A6A78),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: const Text(
-      'Locked',
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: 9,
-        fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: colors.primary,
+        borderRadius: BorderRadius.circular(8),
       ),
-    ),
-  );
+      child: Text(
+        'Locked',
+        style: TextStyle(
+          color: colors.onPrimary,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
 }
 
 /// Premium board headline + summary above the collage.

@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:appwrite/models.dart' as appwrite_models;
 
 import 'package:myapp/widgets/offline_image.dart';
+import 'package:myapp/util/wardrobe_image_resolver.dart';
 import 'saved_board_images.dart';
+import 'saved_board_persistence.dart';
 import 'board_renderer.dart';
 import 'editorial_board_renderer.dart';
 
@@ -23,14 +25,16 @@ class SavedBoardThumb extends StatelessWidget {
 
   Map<String, dynamic> get _data {
     if (source is appwrite_models.Document) {
-      return Map<String, dynamic>.from(
-        (source as appwrite_models.Document).data,
+      return expandSavedBoardData(
+        Map<String, dynamic>.from((source as appwrite_models.Document).data),
       );
     }
     if (source is Map) {
       final data = (source as Map)['data'];
-      if (data is Map) return Map<String, dynamic>.from(data);
-      return Map<String, dynamic>.from(source as Map);
+      if (data is Map) {
+        return expandSavedBoardData(Map<String, dynamic>.from(data));
+      }
+      return expandSavedBoardData(Map<String, dynamic>.from(source as Map));
     }
     return const {};
   }
@@ -49,19 +53,37 @@ class SavedBoardThumb extends StatelessWidget {
   );
 
   List<Map<String, dynamic>> _hydrateItems() {
+    final savedItems = _savedBoardItems(_data);
+    if (savedItems.isNotEmpty) {
+      return savedItems
+          .map(
+            (item) => resolveStyleBoardItemImage(
+              item,
+              wardrobeById,
+              surface: 'style_board_saved',
+            ),
+          )
+          .toList(growable: false);
+    }
+
     final raw = _data['itemIds'] ?? _data['item_ids'] ?? const [];
     final out = <Map<String, dynamic>>[];
     if (raw is Iterable) {
       for (final id in raw) {
         final key = id.toString();
         final item = wardrobeById[key];
-        if (item != null) out.add(item);
+        if (item != null) {
+          out.add(
+            resolveStyleBoardItemImage(
+              item,
+              wardrobeById,
+              surface: 'style_board_saved',
+            ),
+          );
+        }
       }
     }
     if (out.isNotEmpty) return out;
-
-    final savedItems = _savedBoardItems(_data);
-    if (savedItems.isNotEmpty) return savedItems;
 
     final images = extractSavedBoardImages(_data);
     if (images.length < 2) return const [];
@@ -111,19 +133,18 @@ class SavedBoardThumb extends StatelessWidget {
     if (snakePayload is Map) addItems(snakePayload['items']);
     final camelPayload = payload(data['boardPayload']);
     if (camelPayload is Map) addItems(camelPayload['items']);
-    return out.where((item) {
-      final url =
-          (item['imageUrl'] ??
-                  item['image_url'] ??
-                  item['masked_url'] ??
-                  item['maskedUrl'] ??
-                  item['url'] ??
-                  item['thumbnailUrl'])
-              ?.toString()
-              .trim() ??
-          '';
-      return url.isNotEmpty;
-    }).toList();
+    return out
+        .where(
+          (item) =>
+              resolveWardrobeImage(
+                item,
+                surface: 'style_board_saved',
+                itemId: (item['item_id'] ?? item['id'] ?? item[r'$id'] ?? '')
+                    .toString(),
+              ).url !=
+              null,
+        )
+        .toList();
   }
 
   @override
@@ -136,6 +157,7 @@ class SavedBoardThumb extends StatelessWidget {
     if (items.length >= 2) {
       final occasion = (data['title'] ?? data['occasion'] ?? '').toString();
       final boardMap = <String, dynamic>{
+        ...data,
         'title': occasion.isEmpty ? 'Saved Look' : occasion,
         'occasion': occasion,
         'items': items,

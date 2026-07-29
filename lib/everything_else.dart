@@ -4,7 +4,7 @@ import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/style_board/saved_board_card.dart';
-import 'package:myapp/style_board/saved_board_images.dart';
+import 'package:myapp/style_board/saved_board_persistence.dart';
 
 // ── Data model ───────────────────────────────────────────────────────────────
 class LookItem {
@@ -96,12 +96,22 @@ class FilterPillData {
 class _SavedBoardEntry {
   final dynamic source;
   final String filter;
-  const _SavedBoardEntry({required this.source, required this.filter});
+  final bool isFavourite;
+  const _SavedBoardEntry({
+    required this.source,
+    required this.filter,
+    required this.isFavourite,
+  });
 }
 
 // ── Main Screen ──────────────────────────────────────────────────────────────
 class EverythingElseScreen extends StatefulWidget {
-  const EverythingElseScreen({super.key});
+  final String initialFilter;
+
+  const EverythingElseScreen({
+    super.key,
+    this.initialFilter = 'everything_else',
+  });
 
   @override
   State<EverythingElseScreen> createState() => _EverythingElseScreenState();
@@ -115,107 +125,60 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
   Color get _text => _t.textPrimary;
 
   bool _isLoading = true;
-  String _activeFilter = 'all';
+  late String _activeFilter;
   String? _toastMessage;
 
   List<_SavedBoardEntry> _boards = [];
-  List<LookItem> _looks = [];
   Map<String, Map<String, dynamic>> _wardrobeById = const {};
   List<FilterPillData> _filters = [];
-
-  final List<String> _excludedMainCategories = [
-    'gym',
-    'office',
-    'party',
-    'daily wear',
-    'home',
-  ];
 
   @override
   void initState() {
     super.initState();
+    _activeFilter = widget.initialFilter;
     _fetchDynamicLooks();
   }
 
   Future<void> _fetchDynamicLooks() async {
     try {
       final appwrite = Provider.of<AppwriteService>(context, listen: false);
-      final primaryDocs = await appwrite.getSavedBoardsByOccasion(
-        'Everything Else',
-      );
       final allDocs = await appwrite.getAllSavedBoards();
       final wardrobe = await appwrite.getWardrobeItems();
-      final docs = [
-        ...primaryDocs,
-        ...allDocs.where((doc) {
-          final data = doc.data;
-          final boardCategory = (data['boardCategory'] ?? '').toString();
-          final hasCategory =
-              (data['boardCategory'] ?? data['boardCategoryLabel'] ?? '')
-                  .toString()
-                  .trim()
-                  .isNotEmpty;
-          final occasion = (data['occasion'] ?? '').toString().toLowerCase();
-          return boardCategory == 'custom' ||
-              (!hasCategory && !_excludedMainCategories.contains(occasion));
-        }),
-      ];
-
-      final Set<String> uniqueCategories = {};
+      final seenIds = <String>{};
       final List<_SavedBoardEntry> loadedBoards = [];
-      final List<LookItem> loadedLooks = [];
 
-      for (var doc in docs) {
-        final outfitImages = extractSavedBoardImages(
+      for (var doc in allDocs) {
+        if (!seenIds.add(doc.$id)) continue;
+        final data = expandSavedBoardData(
           Map<String, dynamic>.from(doc.data),
         );
-        final occasion =
-            doc.data['boardCategoryLabel']?.toString() ??
-                doc.data['occasion']?.toString() ??
-                'Everything Else';
-        if (_excludedMainCategories.contains(occasion.toLowerCase())) continue;
-
-        uniqueCategories.add(occasion);
-        loadedBoards.add(
-          _SavedBoardEntry(source: doc, filter: occasion.toLowerCase()),
+        final bucket = canonicalSavedBoardBucket(
+          data['bucket'] ?? data['occasion'],
         );
-
-        final styleIndex =
-            occasion.hashCode % (LookBadgeStyle.values.length - 1);
-        final dynamicBadge = LookBadgeStyle.values[styleIndex];
-        final dynamicBg = LookBgStyle.values[styleIndex];
-
-        loadedLooks.add(
-          LookItem(
-            id: doc.$id,
-            title: (doc.data['title'] ?? occasion).toString(),
-            description:
-            (doc.data['outfitDescription'] ??
-                'Style board generated for $occasion')
-                .toString(),
-            emoji: '✨',
-            category: occasion,
-            filter: occasion.toLowerCase(),
-            imageUrl: outfitImages.isNotEmpty ? outfitImages.first : null,
-            outfitImages: outfitImages,
-            badge: dynamicBadge,
-            bg: dynamicBg,
+        final favourite = data['is_favourite'] == true;
+        loadedBoards.add(
+          _SavedBoardEntry(
+            source: doc,
+            filter: bucket,
+            isFavourite: favourite,
           ),
         );
+
       }
 
-      // Build dynamic filter pills with localized "All" label
-      final List<FilterPillData> dynamicFilters = [
+      final dynamicFilters = <FilterPillData>[
         FilterPillData(context.tr('wardrobe_all'), 'all'),
+        const FilterPillData('Party Looks', 'party_looks'),
+        const FilterPillData('Office Fits', 'office_fits'),
+        const FilterPillData('Vacation', 'vacation'),
+        const FilterPillData('Occasion', 'occasion'),
+        const FilterPillData('Everything Else', 'everything_else'),
+        const FilterPillData('Favourites', 'favourites'),
       ];
-      for (var cat in uniqueCategories) {
-        dynamicFilters.add(FilterPillData(cat, cat.toLowerCase()));
-      }
 
       if (mounted) {
         setState(() {
           _boards = loadedBoards;
-          _looks = loadedLooks;
           _wardrobeById = _buildIdMap(wardrobe);
           _filters = dynamicFilters;
           _isLoading = false;
@@ -229,22 +192,11 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
 
   List<_SavedBoardEntry> get _filtered => _activeFilter == 'all'
       ? _boards
+      : _activeFilter == 'favourites'
+      ? _boards.where((board) => board.isFavourite).toList()
       : _boards.where((board) => board.filter == _activeFilter).toList();
 
   void _setFilter(String f) => setState(() => _activeFilter = f);
-
-  Future<void> _deleteLook(String id) async {
-    setState(
-          () => _boards.removeWhere((board) => _boardId(board.source) == id),
-    );
-    try {
-      final appwrite = Provider.of<AppwriteService>(context, listen: false);
-      await appwrite.deleteSavedBoard(id);
-      _showToast(context.tr('wardrobe_remove'));
-    } catch (e) {
-      _showToast(context.tr('error'));
-    }
-  }
 
   void _showToast(String msg) {
     setState(() => _toastMessage = msg);
@@ -271,17 +223,6 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
       }
     }
     return byId;
-  }
-
-  String _boardId(dynamic board) {
-    try {
-      final value = board.$id;
-      if (value != null) return value.toString();
-    } catch (_) {}
-    if (board is Map) {
-      return (board[r'$id'] ?? board['id'] ?? '').toString();
-    }
-    return '';
   }
 
   @override

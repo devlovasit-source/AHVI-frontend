@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:myapp/models/calendar_event_record.dart';
 import 'package:myapp/navigation/ahvi_back_navigation.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter/services.dart';
@@ -29,7 +30,6 @@ import 'package:myapp/skincare.dart';
 import 'package:myapp/home_card_summary_provider.dart';
 // skincare & medicine state now merged into HomeCardSummaryProvider
 import 'package:myapp/medi_tracker.dart';
-import 'package:http/http.dart' as http;
 
 /// ═══════════════════════════════════════════════════════════════════════════
 /// 🎯 AHVI HOME SCREEN - COMPLETE LOCALIZATION
@@ -103,43 +103,16 @@ import 'package:http/http.dart' as http;
 // 🆕 WEATHER SERVICE - Open Meteo API Integration
 // ═══════════════════════════════════════════════════════════════════════════
 class _WeatherService {
-  static const String openMeteoUrl = 'https://api.open-meteo.com/v1/forecast';
-
-  /// Fetch temperature from Open Meteo API (Hyderabad default)
-  static Future<Map<String, dynamic>> fetchWeather({
-    double latitude = 17.3850,
-    double longitude = 78.4867,
-  }) async {
-    try {
-      final uri = Uri.parse(openMeteoUrl).replace(
-        queryParameters: {
-          'latitude': latitude.toString(),
-          'longitude': longitude.toString(),
-          'current': 'temperature_2m,weather_code,is_day',
-          'temperature_unit': 'celsius',
-          'timezone': 'auto',
-        },
-      );
-
-      final response = await http.get(uri).timeout(const Duration(seconds: 8));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final current = data['current'] ?? {};
-        final rawIsDay = current['is_day'];
-        return {
-          'temperature': current['temperature_2m'] ?? 28.0,
-          'weather_code': current['weather_code'] ?? 0,
-          // Open-Meteo returns is_day as an int (1/0), not a bool — normalize it.
-          'is_day': rawIsDay is bool ? rawIsDay : (rawIsDay == 1 || rawIsDay == null),
-          'success': true,
-        };
-      }
-      return {'success': false, 'temperature': 28.0};
-    } catch (e) {
-      debugPrint('weather_api_error: $e');
-      return {'success': false, 'temperature': 28.0};
-    }
+  static Future<Map<String, dynamic>> fetchWeather() async {
+    final weather = await BackendService().getCurrentWeather();
+    final raw = weather['raw'] as Map? ?? const {};
+    return {
+      'temperature': weather['temperature_c'] ?? weather['temperature'],
+      'weather_code': raw['code'],
+      'is_day': weather['time_of_day'] != 'night',
+      'success': weather['status'] == 'available',
+      'reason': weather['reason'],
+    };
   }
 
   /// Map weather code to description - returns localization key
@@ -148,7 +121,8 @@ class _WeatherService {
     if (code == 1 || code == 2) return 'weather_partly_cloudy';
     if (code == 3) return 'weather_overcast';
     if ([45, 48].contains(code)) return 'weather_foggy';
-    if ([51, 53, 55, 61, 63, 65, 80, 81, 82].contains(code)) return 'weather_rainy';
+    if ([51, 53, 55, 61, 63, 65, 80, 81, 82].contains(code))
+      return 'weather_rainy';
     if ([71, 73, 75, 77, 85, 86].contains(code)) return 'weather_snowy';
     if ([80, 81, 82].contains(code)) return 'weather_showers';
     if (code == 95 || code == 96 || code == 99) return 'weather_thunderstorm';
@@ -198,7 +172,9 @@ const _homeNavItems = <({IconData icon, String label})>[
 /// exactly the 480–640dp bucket. Both call sites now read from here, so the
 /// logo is guaranteed to share the same left edge as everything below it on
 /// every screen size.
-({double horizontalPad, double maxContentWidth}) _responsiveGutter(double screenW) {
+({double horizontalPad, double maxContentWidth}) _responsiveGutter(
+  double screenW,
+) {
   if (screenW < 340) {
     // Very small phones (iPhone SE) - 280-340dp
     return (horizontalPad: 8.0, maxContentWidth: screenW - 16.0);
@@ -215,7 +191,10 @@ const _homeNavItems = <({IconData icon, String label})>[
     // Tablets and large devices (iPad, foldables) - 640+dp — content is
     // centered at a fixed max width, so the gutter grows to fill the rest.
     const maxContentWidth = 620.0;
-    return (horizontalPad: (screenW - maxContentWidth) / 2, maxContentWidth: maxContentWidth);
+    return (
+      horizontalPad: (screenW - maxContentWidth) / 2,
+      maxContentWidth: maxContentWidth,
+    );
   }
 }
 
@@ -431,7 +410,8 @@ class Screen4 extends StatefulWidget {
   State<Screen4> createState() => _Screen4State();
 }
 
-class _Screen4State extends State<Screen4> with TickerProviderStateMixin, WidgetsBindingObserver {
+class _Screen4State extends State<Screen4>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   AppThemeTokens get _t => context.themeTokens;
 
   // 🔧 FIX: Palette switch అయినప్పుడు full rebuild trigger చేయడానికి
@@ -467,11 +447,17 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
             // behavior so the Wear bubble + card status update immediately.
             _fetchWardrobeSignal();
             _preloadHomeImages();
+            // NOTE: home-summary refresh is intentionally NOT scheduled here.
+            // The single guarded initial fetch runs once in initState; resume
+            // and explicit refreshes cover the rest. Firing an unguarded
+            // delayed refresh on every dependency change is redundant with the
+            // provider's own user+date cache guard.
           }
         });
       }
     });
   }
+
   Color get _bgPrimary => _t.backgroundPrimary;
   Color get _bgSecondary => _t.backgroundSecondary;
   Color get _surface => _t.phoneShellInner;
@@ -536,8 +522,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   late List<AnimationController> _navRiseCtrls;
 
   final ValueNotifier<_ClockState> _clockState = ValueNotifier<_ClockState>((
-  greeting: 'greeting_morning',
-  date: '',
+    greeting: 'greeting_morning',
+    date: '',
   ));
   Timer? _clockTimer;
 
@@ -607,15 +593,14 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     const lon = 78.486;
     final uri = Uri.parse(
       'https://api.open-meteo.com/v1/forecast'
-          '?latitude=$lat&longitude=$lon'
-          '&current=temperature_2m,weather_code'
-          '&timezone=auto',
+      '?latitude=$lat&longitude=$lon'
+      '&current=temperature_2m,weather_code'
+      '&timezone=auto',
     );
 
     HttpClient? client;
     try {
-      client = HttpClient()
-        ..connectionTimeout = const Duration(seconds: 8);
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
       final req = await client.getUrl(uri).timeout(const Duration(seconds: 8));
       final res = await req.close().timeout(const Duration(seconds: 8));
 
@@ -627,7 +612,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
           final temp = (current['temperature_2m'] as num?)?.toDouble();
           // API migrated `weathercode` → `weather_code`; accept either key
           // so older/newer response shapes both work.
-          final code = (current['weather_code'] as num?)?.toInt() ??
+          final code =
+              (current['weather_code'] as num?)?.toInt() ??
               (current['weathercode'] as num?)?.toInt() ??
               0;
           final condition = _wmoCodeToCondition(code);
@@ -663,7 +649,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     if (code == 0) return _WeatherCondition.clear;
     if (code <= 3) return _WeatherCondition.cloudy;
     if (code >= 51 && code <= 82) return _WeatherCondition.rainy;
-    if (code >= 85) return _WeatherCondition.rainy; // snow/sleet → treat as rainy
+    if (code >= 85)
+      return _WeatherCondition.rainy; // snow/sleet → treat as rainy
     return _WeatherCondition.unknown;
   }
 
@@ -687,45 +674,56 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   Future<void> _fetchCalendarSignal() async {
     try {
       final backend = Provider.of<BackendService>(context, listen: false);
-      final raw = await backend.getTodayCalendarEvents().timeout(
-        const Duration(seconds: 8),
-        onTimeout: () => [],
-      );
+      final raw = await backend
+          .getTodayCalendarEvents(surface: CalendarListSurface.homeToday)
+          .timeout(const Duration(seconds: 8), onTimeout: () => []);
 
-      final events = raw.map<_CalendarEvent>((e) {
-        // Parse start_time — ISO-8601 string from the backend.
-        DateTime startsAt;
-        try {
-          startsAt = DateTime.parse(e['start_time']?.toString() ?? '');
-        } catch (_) {
-          startsAt = DateTime.now().add(const Duration(hours: 8));
-        }
-
+      final events = <_CalendarEvent>[];
+      for (final event in raw) {
+        final record = CalendarEventRecord.tryParse(
+          event,
+          onSkipped: (eventId, field) => debugPrint(
+            'AHVI_CALENDAR_PARSE_SKIPPED event_id=$eventId field=$field',
+          ),
+        );
+        if (record == null) continue;
         // Map backend `type` field to our internal enum.
-        final rawType = (e['type'] ?? e['event_type'] ?? '').toString().toLowerCase();
+        final rawType = record.type.toLowerCase();
         final _EventType type;
-        if (rawType.contains('meet') || rawType.contains('work') || rawType.contains('call')) {
+        if (rawType.contains('meet') ||
+            rawType.contains('work') ||
+            rawType.contains('call')) {
           type = _EventType.meeting;
-        } else if (rawType.contains('travel') || rawType.contains('flight') || rawType.contains('trip')) {
+        } else if (rawType.contains('travel') ||
+            rawType.contains('flight') ||
+            rawType.contains('trip')) {
           type = _EventType.travel;
-        } else if (rawType.contains('dinner') || rawType.contains('lunch') || rawType.contains('brunch')) {
+        } else if (rawType.contains('dinner') ||
+            rawType.contains('lunch') ||
+            rawType.contains('brunch')) {
           type = _EventType.dinner;
-        } else if (rawType.contains('workout') || rawType.contains('gym') || rawType.contains('fitness')) {
+        } else if (rawType.contains('workout') ||
+            rawType.contains('gym') ||
+            rawType.contains('fitness')) {
           type = _EventType.workout;
-        } else if (rawType.contains('party') || rawType.contains('wedding') ||
-            rawType.contains('occasion') || rawType.contains('event') ||
+        } else if (rawType.contains('party') ||
+            rawType.contains('wedding') ||
+            rawType.contains('occasion') ||
+            rawType.contains('event') ||
             rawType.contains('celebrat')) {
           type = _EventType.occasion;
         } else {
           type = _EventType.other;
         }
 
-        return _CalendarEvent(
-          title: e['title']?.toString() ?? e['summary']?.toString() ?? AppLocalizations.t(context, 'event_default_title'),
-          startsAt: startsAt,
-          type: type,
+        events.add(
+          _CalendarEvent(
+            title: record.title,
+            startsAt: record.startTime,
+            type: type,
+          ),
         );
-      }).toList();
+      }
 
       // Sort chronologically so nextMeeting / nextOccasion pick the soonest.
       events.sort((a, b) => a.startsAt.compareTo(b.startsAt));
@@ -740,6 +738,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       debugPrint('📅 Calendar fetch error: $e');
       // Leave _calendarEvents unchanged — app continues normally
     }
+  }
+
+  void _onCalendarRefresh() {
+    if (mounted) _fetchCalendarSignal();
   }
 
   // ── Wardrobe ───────────────────────────────────────────────────────────────
@@ -776,13 +778,20 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
       if (wornItems.isNotEmpty) {
         wornItems.sort((a, b) {
-          final aDate = _parseDate(a['wornAt'] ?? a['last_worn'] ?? a['worn_at']);
-          final bDate = _parseDate(b['wornAt'] ?? b['last_worn'] ?? b['worn_at']);
+          final aDate = _parseDate(
+            a['wornAt'] ?? a['last_worn'] ?? a['worn_at'],
+          );
+          final bDate = _parseDate(
+            b['wornAt'] ?? b['last_worn'] ?? b['worn_at'],
+          );
           return bDate.compareTo(aDate); // most recent first
         });
         lastWornItemName = wornItems.first['name']?.toString() ?? '';
         final lastDate = _parseDate(
-            wornItems.first['wornAt'] ?? wornItems.first['last_worn'] ?? wornItems.first['worn_at']);
+          wornItems.first['wornAt'] ??
+              wornItems.first['last_worn'] ??
+              wornItems.first['worn_at'],
+        );
         daysSinceLastWorn = DateTime.now().difference(lastDate).inDays;
       } else {
         // Nothing worn yet — treat all as fresh.
@@ -810,14 +819,16 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
               tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
             }
           } else if (occ is String && occ.isNotEmpty) {
-            tagCounts[occ.toLowerCase()] = (tagCounts[occ.toLowerCase()] ?? 0) + 1;
+            tagCounts[occ.toLowerCase()] =
+                (tagCounts[occ.toLowerCase()] ?? 0) + 1;
           }
         }
         if (tagCounts.isNotEmpty) {
-          favoriteStyle = (tagCounts.entries.toList()
-            ..sort((a, b) => b.value.compareTo(a.value)))
-              .first
-              .key;
+          favoriteStyle =
+              (tagCounts.entries.toList()
+                    ..sort((a, b) => b.value.compareTo(a.value)))
+                  .first
+                  .key;
         }
       }
 
@@ -864,21 +875,28 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   /// Fast path — parses HomeCardSummaryProvider strings for immediate display.
   void _syncFitnessFromProvider() {
     try {
-      final summary = Provider.of<HomeCardSummaryProvider>(context, listen: false);
+      final summary = Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      );
       final moveText = summary.move.toLowerCase();
-      final eatText  = summary.eat.toLowerCase();
+      final eatText = summary.eat.toLowerCase();
 
       // Streak: "3-day streak", "Day 5", "5 days"
       int streak = 0;
       final streakMatch = RegExp(r'(\d+)[- ]?day').firstMatch(moveText);
-      if (streakMatch != null) streak = int.tryParse(streakMatch.group(1) ?? '') ?? 0;
+      if (streakMatch != null)
+        streak = int.tryParse(streakMatch.group(1) ?? '') ?? 0;
 
       // Calorie goal: "1,840 / 2,000 kcal" or "1840/2000"
       bool calorieGoalMet = false;
-      final calMatch = RegExp(r'(\d[\d,]+)\s*/\s*(\d[\d,]+)').firstMatch(eatText);
+      final calMatch = RegExp(
+        r'(\d[\d,]+)\s*/\s*(\d[\d,]+)',
+      ).firstMatch(eatText);
       if (calMatch != null) {
-        final consumed = int.tryParse(calMatch.group(1)!.replaceAll(',', '')) ?? 0;
-        final goal    = int.tryParse(calMatch.group(2)!.replaceAll(',', '')) ?? 1;
+        final consumed =
+            int.tryParse(calMatch.group(1)!.replaceAll(',', '')) ?? 0;
+        final goal = int.tryParse(calMatch.group(2)!.replaceAll(',', '')) ?? 1;
         calorieGoalMet = consumed >= goal;
       }
 
@@ -925,6 +943,25 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     } catch (_) {}
   }
 
+  /// Triggers a home-summary refresh via the provider. The provider's own
+  /// single-flight and user+date cache guard prevent duplicate requests.
+  void _refreshHomeSummary() {
+    try {
+      Provider.of<HomeCardSummaryProvider>(context, listen: false).refresh();
+    } catch (_) {}
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // On resume (e.g. returning from background on a new day), refresh the
+    // home summary. The provider's cache key (user+date) ensures a fetch only
+    // when the date has actually changed since the last successful load.
+    if (state == AppLifecycleState.resumed && mounted) {
+      _refreshHomeSummary();
+    }
+  }
+
   /// Slow path — fetches today's workout from BackendService and updates the
   /// signal with richer data (streak, type, water).
   Future<void> _syncFitnessFromBackend() async {
@@ -937,32 +974,42 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       // Backend response shape (from the API):
       //   { workout: { id, type, name, duration, streak, status, ... },
       //     nutrition: { calories_consumed, calories_goal, water_glasses, ... } }
-      final workout   = data['workout']   as Map<String, dynamic>? ?? {};
+      final workout = data['workout'] as Map<String, dynamic>? ?? {};
       final nutrition = data['nutrition'] as Map<String, dynamic>? ?? {};
 
       // Streak
-      final streak = (workout['streak'] as num?)?.toInt() ??
-          (data['streak']   as num?)?.toInt() ??
+      final streak =
+          (workout['streak'] as num?)?.toInt() ??
+          (data['streak'] as num?)?.toInt() ??
           _fitnessSignal.workoutStreakDays;
 
       // Workout label
-      final workoutName = workout['name']?.toString() ??
+      final workoutName =
+          workout['name']?.toString() ??
           workout['type']?.toString() ??
-          data['workout_type']?.toString() ?? '';
+          data['workout_type']?.toString() ??
+          '';
       final nextWorkout = workoutName.isNotEmpty
           ? _extractWorkoutLabel(workoutName.toLowerCase())
           : _fitnessSignal.nextWorkoutLabel;
 
       // Calorie goal
-      final consumed = (nutrition['calories_consumed'] as num?)?.toInt() ??
-          (data['calories_consumed']     as num?)?.toInt() ?? 0;
-      final goal     = (nutrition['calories_goal']    as num?)?.toInt() ??
-          (data['calories_goal']         as num?)?.toInt() ?? 0;
-      final calorieGoalMet = goal > 0 ? consumed >= goal : _fitnessSignal.calorieGoalMet;
+      final consumed =
+          (nutrition['calories_consumed'] as num?)?.toInt() ??
+          (data['calories_consumed'] as num?)?.toInt() ??
+          0;
+      final goal =
+          (nutrition['calories_goal'] as num?)?.toInt() ??
+          (data['calories_goal'] as num?)?.toInt() ??
+          0;
+      final calorieGoalMet = goal > 0
+          ? consumed >= goal
+          : _fitnessSignal.calorieGoalMet;
 
       // Water glasses
-      final water = (nutrition['water_glasses'] as num?)?.toInt() ??
-          (data['water_glasses']       as num?)?.toInt() ??
+      final water =
+          (nutrition['water_glasses'] as num?)?.toInt() ??
+          (data['water_glasses'] as num?)?.toInt() ??
           _fitnessSignal.waterGlassesToday;
 
       // Step goal
@@ -993,7 +1040,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       final weather = await _WeatherService.fetchWeather();
       final temp = (weather['temperature'] as num?)?.toDouble() ?? 28.0;
       final rawIsDay = weather['is_day'];
-      final isDay = rawIsDay is bool ? rawIsDay : (rawIsDay == null ? true : rawIsDay == 1);
+      final isDay = rawIsDay is bool
+          ? rawIsDay
+          : (rawIsDay == null ? true : rawIsDay == 1);
       final description = _WeatherService.getWeatherDescription(
         weather['weather_code'] as int? ?? 0,
         isDay: isDay,
@@ -1024,23 +1073,31 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   /// Extracts a workout localization key from a free-text string.
   /// Returns key that should be localized with AppLocalizations.t(context, key)
   static String _extractWorkoutLabel(String text) {
-    if (text.contains('leg'))    return 'workout_leg_day';
-    if (text.contains('chest'))  return 'workout_chest_day';
-    if (text.contains('back'))   return 'workout_back_day';
-    if (text.contains('arm') || text.contains('bicep') || text.contains('tricep')) return 'workout_arm_day';
-    if (text.contains('cardio') || text.contains('run') || text.contains('jog'))   return 'workout_cardio';
-    if (text.contains('yoga'))   return 'workout_yoga';
-    if (text.contains('hiit'))   return 'workout_hiit';
-    if (text.contains('full body') || text.contains('fullbody')) return 'workout_full_body';
-    if (text.contains('stretch') || text.contains('mobility'))  return 'workout_mobility';
-    if (text.contains('rest'))   return '';
+    if (text.contains('leg')) return 'workout_leg_day';
+    if (text.contains('chest')) return 'workout_chest_day';
+    if (text.contains('back')) return 'workout_back_day';
+    if (text.contains('arm') ||
+        text.contains('bicep') ||
+        text.contains('tricep'))
+      return 'workout_arm_day';
+    if (text.contains('cardio') || text.contains('run') || text.contains('jog'))
+      return 'workout_cardio';
+    if (text.contains('yoga')) return 'workout_yoga';
+    if (text.contains('hiit')) return 'workout_hiit';
+    if (text.contains('full body') || text.contains('fullbody'))
+      return 'workout_full_body';
+    if (text.contains('stretch') || text.contains('mobility'))
+      return 'workout_mobility';
+    if (text.contains('rest')) return '';
     return '';
   }
 
   /// 🆕 Get workout label from fitness signal or default
   String get _workoutLabel {
     final fit = _fitnessSignal;
-    return fit.nextWorkoutLabel.isNotEmpty ? fit.nextWorkoutLabel : AppLocalizations.t(context, 'chip_mobility_default');
+    return fit.nextWorkoutLabel.isNotEmpty
+        ? fit.nextWorkoutLabel
+        : AppLocalizations.t(context, 'chip_mobility_default');
   }
 
   /// Public method called by external code to inject a calendar event
@@ -1054,6 +1111,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       _invalidateSuggestionCache();
     });
   }
+
   final Map<String, List<bool>> _prepareExactOutfitSavedByTitle = {};
   final Map<String, bool> _prepareExactSavedByTitle = {};
   final Map<String, String> _boardIdByLabel = const {
@@ -1067,7 +1125,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   _OverlayState _overlayState = _OverlayState.idle;
   String? _activeIntent;
   String _chatPlaceholderKey = 'ask_me'; // ✅ JSON key: "ask_me"
-  String get _chatPlaceholder => AppLocalizations.t(context, _chatPlaceholderKey);
+  String get _chatPlaceholder =>
+      AppLocalizations.t(context, _chatPlaceholderKey);
   bool _homeCollapsed = false;
   late AnimationController _homeCollapseCtrl;
   late AnimationController _overlayFadeCtrl;
@@ -1102,7 +1161,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     required String boardId,
     required String title,
     required List<
-        ({String name, String emoji, Color color, List<String> items})
+      ({String name, String emoji, Color color, List<String> items})
     >
     sections,
     required List<List<String>> itemsState,
@@ -1159,20 +1218,20 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   List<({String label, String desc})> _getRoutineItems() {
     return [
       (
-      label: AppLocalizations.t(context, 'routine_wear'),
-      desc: AppLocalizations.t(context, 'routine_wear_desc'),
+        label: AppLocalizations.t(context, 'routine_wear'),
+        desc: AppLocalizations.t(context, 'routine_wear_desc'),
       ),
       (
-      label: AppLocalizations.t(context, 'routine_move'),
-      desc: AppLocalizations.t(context, 'routine_move_desc'),
+        label: AppLocalizations.t(context, 'routine_move'),
+        desc: AppLocalizations.t(context, 'routine_move_desc'),
       ),
       (
-      label: AppLocalizations.t(context, 'routine_eat'),
-      desc: AppLocalizations.t(context, 'routine_eat_desc'),
+        label: AppLocalizations.t(context, 'routine_eat'),
+        desc: AppLocalizations.t(context, 'routine_eat_desc'),
       ),
       (
-      label: AppLocalizations.t(context, 'routine_care'),
-      desc: AppLocalizations.t(context, 'routine_care_desc'),
+        label: AppLocalizations.t(context, 'routine_care'),
+        desc: AppLocalizations.t(context, 'routine_care_desc'),
       ),
     ];
   }
@@ -1180,8 +1239,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   /// Get CTA button labels
   ({String gymOutfit, String planWorkout}) _getCtaLabels() {
     return (
-    gymOutfit: AppLocalizations.t(context, 'cta_gym_outfit'),
-    planWorkout: AppLocalizations.t(context, 'cta_plan_workout'),
+      gymOutfit: AppLocalizations.t(context, 'cta_gym_outfit'),
+      planWorkout: AppLocalizations.t(context, 'cta_plan_workout'),
     );
   }
 
@@ -1193,6 +1252,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   @override
   void initState() {
     super.initState();
+    CalendarRefreshSignal.generation.addListener(_onCalendarRefresh);
     _initSpeech();
     // Keyboard height track చేయడానికి FocusNode listener
     _chatFocusNode.addListener(_onChatFocusChange);
@@ -1201,10 +1261,16 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // 🆕 Keep the routine progress tracker and routine cards scrolling
     // together — dragging either one moves the other by the same offset.
     _routineCardsScrollCtrl.addListener(
-          () => _syncRoutineScroll(_routineCardsScrollCtrl, _routineProgressScrollCtrl),
+      () => _syncRoutineScroll(
+        _routineCardsScrollCtrl,
+        _routineProgressScrollCtrl,
+      ),
     );
     _routineProgressScrollCtrl.addListener(
-          () => _syncRoutineScroll(_routineProgressScrollCtrl, _routineCardsScrollCtrl),
+      () => _syncRoutineScroll(
+        _routineProgressScrollCtrl,
+        _routineCardsScrollCtrl,
+      ),
     );
 
     _aurora1Ctrl = AnimationController(
@@ -1240,7 +1306,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
     _heartPopCtrls = List.generate(
       4,
-          (_) => AnimationController(
+      (_) => AnimationController(
         vsync: this,
         duration: const Duration(milliseconds: 380),
       ),
@@ -1258,7 +1324,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
     _navRiseCtrls = List.generate(
       5,
-          (i) => AnimationController(
+      (i) => AnimationController(
         vsync: this,
         duration: const Duration(milliseconds: 280),
         value: i == 0 ? 1.0 : 0.0,
@@ -1289,7 +1355,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
         _updateClock();
         _clockTimer = Timer.periodic(
           const Duration(seconds: 15),
-              (_) => _updateClock(),
+          (_) => _updateClock(),
         );
       }
     });
@@ -1303,6 +1369,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       _fetchCalendarSignal();
       _fetchWardrobeSignal();
       _syncFitnessSignal();
+      // Single guarded initial home-summary fetch. initState runs once per
+      // mount and the provider's user+date cache guard dedupes; resume
+      // (didChangeAppLifecycleState) and explicit refreshes cover the rest.
+      _refreshHomeSummary();
     });
 
     // 🔧 FIX: Home tab active glow — first frame లో animate చేయి
@@ -1349,7 +1419,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
   Future<void> _fetchUserProfile() async {
     final appwrite = Provider.of<AppwriteService>(context, listen: false);
-    final profileCtrl = Provider.of<profile.ProfileController>(context, listen: false);
+    final profileCtrl = Provider.of<profile.ProfileController>(
+      context,
+      listen: false,
+    );
     final user = await appwrite.getCurrentUser();
 
     if (user != null && mounted) {
@@ -1411,10 +1484,28 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   void _updateClock() {
     if (!mounted) return;
     final now = DateTime.now();
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayNames = [
+      'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+    ];
     const monthNames = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     // 🆕 Greeting key — translated in _buildGreetingBlock()
     String greetingKey;
@@ -1428,8 +1519,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       greetingKey = 'greeting_night';
     }
     _clockState.value = (
-    greeting: greetingKey,
-    date: '${dayNames[now.weekday % 7]}, ${now.day} ${monthNames[now.month - 1]}',
+      greeting: greetingKey,
+      date:
+          '${dayNames[now.weekday % 7]}, ${now.day} ${monthNames[now.month - 1]}',
     );
     // Invalidate suggestion cache — hour/weekday may have changed
     _invalidateSuggestionCache();
@@ -1516,6 +1608,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   }
 
   void dispose() {
+    CalendarRefreshSignal.generation.removeListener(_onCalendarRefresh);
     _chatFocusNode.removeListener(_onChatFocusChange);
     WidgetsBinding.instance.removeObserver(this);
     _keyboardHeight.dispose();
@@ -1569,12 +1662,21 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     if (idx == 0) {
       // Home tab — already here, just ensure active
       if (_activeNavIdx != 0) {
-        _navRiseCtrls[_activeNavIdx].animateTo(0.0, curve: const Cubic(0.4, 0.0, 0.2, 1.0));
-        _navRiseCtrls[0].animateTo(1.0, curve: const Cubic(0.34, 1.56, 0.64, 1.0));
+        _navRiseCtrls[_activeNavIdx].animateTo(
+          0.0,
+          curve: const Cubic(0.4, 0.0, 0.2, 1.0),
+        );
+        _navRiseCtrls[0].animateTo(
+          1.0,
+          curve: const Cubic(0.34, 1.56, 0.64, 1.0),
+        );
         setState(() => _activeNavIdx = 0);
       } else {
         // 🔧 FIX: Already on home tab — rise animation ensure చేయి
-        _navRiseCtrls[0].animateTo(1.0, curve: const Cubic(0.34, 1.56, 0.64, 1.0));
+        _navRiseCtrls[0].animateTo(
+          1.0,
+          curve: const Cubic(0.34, 1.56, 0.64, 1.0),
+        );
       }
       if (widget.onShellNavTap != null) widget.onShellNavTap!(0);
       return;
@@ -1582,8 +1684,14 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
     // Highlight the tapped tab immediately before navigating
     void _activateTab(int i) {
-      _navRiseCtrls[_activeNavIdx].animateTo(0.0, curve: const Cubic(0.4, 0.0, 0.2, 1.0));
-      _navRiseCtrls[i].animateTo(1.0, curve: const Cubic(0.34, 1.56, 0.64, 1.0));
+      _navRiseCtrls[_activeNavIdx].animateTo(
+        0.0,
+        curve: const Cubic(0.4, 0.0, 0.2, 1.0),
+      );
+      _navRiseCtrls[i].animateTo(
+        1.0,
+        curve: const Cubic(0.34, 1.56, 0.64, 1.0),
+      );
       setState(() => _activeNavIdx = i);
     }
 
@@ -1594,8 +1702,14 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     }
     if (idx == 2) {
       // 🔧 FIX: Shell కి delegate చేసే ముందు local tab highlight చేయి
-      _navRiseCtrls[_activeNavIdx].animateTo(0.0, curve: const Cubic(0.4, 0.0, 0.2, 1.0));
-      _navRiseCtrls[2].animateTo(1.0, curve: const Cubic(0.34, 1.56, 0.64, 1.0));
+      _navRiseCtrls[_activeNavIdx].animateTo(
+        0.0,
+        curve: const Cubic(0.4, 0.0, 0.2, 1.0),
+      );
+      _navRiseCtrls[2].animateTo(
+        1.0,
+        curve: const Cubic(0.34, 1.56, 0.64, 1.0),
+      );
       setState(() => _activeNavIdx = 2);
       if (widget.onShellNavTap != null) {
         widget.onShellNavTap!(2);
@@ -1606,8 +1720,14 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     }
     if (idx == 3) {
       // 🔧 FIX: Shell కి delegate చేసే ముందు local tab highlight చేయి
-      _navRiseCtrls[_activeNavIdx].animateTo(0.0, curve: const Cubic(0.4, 0.0, 0.2, 1.0));
-      _navRiseCtrls[3].animateTo(1.0, curve: const Cubic(0.34, 1.56, 0.64, 1.0));
+      _navRiseCtrls[_activeNavIdx].animateTo(
+        0.0,
+        curve: const Cubic(0.4, 0.0, 0.2, 1.0),
+      );
+      _navRiseCtrls[3].animateTo(
+        1.0,
+        curve: const Cubic(0.34, 1.56, 0.64, 1.0),
+      );
       setState(() => _activeNavIdx = 3);
       if (widget.onShellNavTap != null) {
         widget.onShellNavTap!(3);
@@ -1622,8 +1742,14 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     }
     if (idx == _activeNavIdx) return;
 
-    _navRiseCtrls[_activeNavIdx].animateTo(0.0, curve: const Cubic(0.4, 0.0, 0.2, 1.0));
-    _navRiseCtrls[idx].animateTo(1.0, curve: const Cubic(0.34, 1.56, 0.64, 1.0));
+    _navRiseCtrls[_activeNavIdx].animateTo(
+      0.0,
+      curve: const Cubic(0.4, 0.0, 0.2, 1.0),
+    );
+    _navRiseCtrls[idx].animateTo(
+      1.0,
+      curve: const Cubic(0.34, 1.56, 0.64, 1.0),
+    );
     setState(() => _activeNavIdx = idx);
   }
 
@@ -1645,46 +1771,48 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
   void _openNavScreen(Widget page) {
     HapticFeedback.lightImpact();
-    Navigator.of(context).push(
-      PageRouteBuilder<void>(
-        transitionDuration: const Duration(milliseconds: 350),
-        reverseTransitionDuration: const Duration(milliseconds: 350),
-        pageBuilder: (context, animation, secondary) => page,
-        transitionsBuilder: (context, animation, secondary, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: const Cubic(0.22, 1.0, 0.36, 1.0),
+    Navigator.of(context)
+        .push(
+          PageRouteBuilder<void>(
+            transitionDuration: const Duration(milliseconds: 350),
+            reverseTransitionDuration: const Duration(milliseconds: 350),
+            pageBuilder: (context, animation, secondary) => page,
+            transitionsBuilder: (context, animation, secondary, child) {
+              final curved = CurvedAnimation(
+                parent: animation,
+                curve: const Cubic(0.22, 1.0, 0.36, 1.0),
+              );
+              return FadeTransition(
+                opacity: curved,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.04, 0),
+                    end: Offset.zero,
+                  ).animate(curved),
+                  child: child,
+                ),
+              );
+            },
+          ),
+        )
+        .then((_) {
+          // Back వచ్చినప్పుడు Home tab active గా reset చేయి
+          if (!mounted) return;
+          final prevIdx = _activeNavIdx;
+          if (prevIdx != 0) {
+            _navRiseCtrls[prevIdx].animateTo(
+              0.0,
+              curve: const Cubic(0.4, 0.0, 0.2, 1.0),
+            );
+          }
+          _navRiseCtrls[0].animateTo(
+            1.0,
+            curve: const Cubic(0.34, 1.56, 0.64, 1.0),
           );
-          return FadeTransition(
-            opacity: curved,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0.04, 0),
-                end: Offset.zero,
-              ).animate(curved),
-              child: child,
-            ),
-          );
-        },
-      ),
-    ).then((_) {
-      // Back వచ్చినప్పుడు Home tab active గా reset చేయి
-      if (!mounted) return;
-      final prevIdx = _activeNavIdx;
-      if (prevIdx != 0) {
-        _navRiseCtrls[prevIdx].animateTo(
-          0.0,
-          curve: const Cubic(0.4, 0.0, 0.2, 1.0),
-        );
-      }
-      _navRiseCtrls[0].animateTo(
-        1.0,
-        curve: const Cubic(0.34, 1.56, 0.64, 1.0),
-      );
-      setState(() => _activeNavIdx = 0);
-      // 🔧 FIX: Shell కి కూడా Home index తెలియజేయి — nav bar తిరిగి కనపడుతుంది
-      if (widget.onShellNavTap != null) widget.onShellNavTap!(0);
-    });
+          setState(() => _activeNavIdx = 0);
+          // 🔧 FIX: Shell కి కూడా Home index తెలియజేయి — nav bar తిరిగి కనపడుతుంది
+          if (widget.onShellNavTap != null) widget.onShellNavTap!(0);
+        });
   }
 
   void _openModuleChat(String moduleKey) {
@@ -1700,11 +1828,13 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
         break;
       case 'organize':
         module = 'organize';
-        initialPrompt = null; // Organise module — wardrobe/outfit organisation chat
+        initialPrompt =
+            null; // Organise module — wardrobe/outfit organisation chat
         break;
       case 'plan':
         module = 'prepare';
-        initialPrompt = null; // Plan/Prepare module — event & trip planning chat
+        initialPrompt =
+            null; // Plan/Prepare module — event & trip planning chat
         break;
       default:
         module = moduleKey;
@@ -1756,13 +1886,13 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   void _closeSeeAll() {
     _seeAllCtrl
         .animateTo(
-      0.0,
-      duration: const Duration(milliseconds: 300),
-      curve: const Cubic(0.4, 0.0, 1.0, 1.0),
-    )
+          0.0,
+          duration: const Duration(milliseconds: 300),
+          curve: const Cubic(0.4, 0.0, 1.0, 1.0),
+        )
         .then((_) {
-      if (mounted) setState(() => _seeAllOpen = false);
-    });
+          if (mounted) setState(() => _seeAllOpen = false);
+        });
   }
 
   void _toggleLike(int cardIdx) {
@@ -1879,7 +2009,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
         if (aiText.length > 1500) {
           aiText =
-          '${aiText.substring(0, 1500)}... \n\n[Text truncated to prevent UI crash]';
+              '${aiText.substring(0, 1500)}... \n\n[Text truncated to prevent UI crash]';
         }
 
         if (apiResult.containsKey('chips') &&
@@ -1962,10 +2092,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
   void _setPlaceholder(String intent) {
     // 🆕 Key store చేస్తున్నాం — getter లో translate అవుతుంది
-    setState(
-          () => _chatPlaceholderKey =
-      'placeholder_$intent',
-    );
+    setState(() => _chatPlaceholderKey = 'placeholder_$intent');
   }
 
   void _handlePrepareChipSend(String query) {
@@ -2010,7 +2137,11 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     return AhviTransientBackScope(
       hasTransientUi: _hasTransientUi,
       onDismissTransientUi: _handleBackNavigation,
-      child: Scaffold(backgroundColor: _bgPrimary, resizeToAvoidBottomInset: false, body: _buildPhoneScreen()),
+      child: Scaffold(
+        backgroundColor: _bgPrimary,
+        resizeToAvoidBottomInset: false,
+        body: _buildPhoneScreen(),
+      ),
     );
   }
 
@@ -2109,8 +2240,11 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                   // Prompt Bar gap is now 1px tighter than before.
                   final double navBarTotalH = 86.0;
                   final double screenHFull = MediaQuery.of(context).size.height;
-                  final double promptExtraLift =
-                  screenHFull >= 760 ? 8.0 : screenHFull >= 680 ? 6.0 : 0.0;
+                  final double promptExtraLift = screenHFull >= 760
+                      ? 8.0
+                      : screenHFull >= 680
+                      ? 6.0
+                      : 0.0;
                   // ✅ FIX 2: breathingGap reduced from 6→4 (saves 2px between
                   // Prep & Plan card and Prompt Bar).
                   // ✅ FIX 4: tightened by another 3px (4→1 → 0) — Prep & Plan ↔
@@ -2125,15 +2259,28 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
                   // 🔧 FIX: Responsive bottom reserve for small screens
                   final bottomReserved = screenW < 340
-                      ? (safeBottom + 72.0)  // Reduced for tiny phones
+                      ? (safeBottom + 72.0) // Reduced for tiny phones
                       : screenW < 380
-                      ? (safeBottom + navBarTotalH + promptBarH + promptExtraLift + breathingGap - 3.0)
-                      : (safeBottom + navBarTotalH + promptBarH + promptExtraLift + breathingGap - 1.0);
+                      ? (safeBottom +
+                            navBarTotalH +
+                            promptBarH +
+                            promptExtraLift +
+                            breathingGap -
+                            3.0)
+                      : (safeBottom +
+                            navBarTotalH +
+                            promptBarH +
+                            promptExtraLift +
+                            breathingGap -
+                            1.0);
 
                   return SizedBox(
                     height: constraints.maxHeight,
                     child: Padding(
-                      padding: EdgeInsets.only(left: horizontalPad, right: horizontalPad),
+                      padding: EdgeInsets.only(
+                        left: horizontalPad,
+                        right: horizontalPad,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         // Must be max so Expanded can fill remaining height.
@@ -2168,7 +2315,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                   // ── PREP & PLAN: Reduced by ~17px vs previous formula ──
                                   // The saved height flows to Routine cards (flex 38 vs 35)
                                   // which eliminates the 1px bottom overflow on all screens.
-                                  final prepH = (availableH * 0.22).clamp(95.0, 120.0);
+                                  final prepH = (availableH * 0.22).clamp(
+                                    95.0,
+                                    120.0,
+                                  );
 
                                   // ── HERO + ROUTINE: guaranteed-minimum allocation ───────
                                   // Strategy: routine cards always get at least routineMinH
@@ -2179,24 +2329,34 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                   // split applies unchanged — minimum floors only kick in
                                   // on compact devices where the math would shrink cards.
                                   const routineMinH = 118.0;
-                                  const heroMinH    = 160.0;
-                                  final flexibleH = availableH - prepH - (cardSpacing * 2);
+                                  const heroMinH = 160.0;
+                                  final flexibleH =
+                                      availableH - prepH - (cardSpacing * 2);
                                   final naturalHeroH = math.max(
                                     0.0,
-                                    (flexibleH - recoveredSpaceForRoutine) * 0.62,
+                                    (flexibleH - recoveredSpaceForRoutine) *
+                                        0.62,
                                   );
                                   final naturalRoutineH = math.max(
                                     0.0,
-                                    flexibleH - naturalHeroH - recoveredSpaceForRoutine,
+                                    flexibleH -
+                                        naturalHeroH -
+                                        recoveredSpaceForRoutine,
                                   );
                                   // If the natural split gives routine less than its minimum,
                                   // pin routine at its min and give hero the rest (floored).
                                   final heroH = naturalRoutineH < routineMinH
-                                      ? math.max(heroMinH, flexibleH - routineMinH - recoveredSpaceForRoutine)
+                                      ? math.max(
+                                          heroMinH,
+                                          flexibleH -
+                                              routineMinH -
+                                              recoveredSpaceForRoutine,
+                                        )
                                       : naturalHeroH;
 
                                   return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.max,
                                     children: [
                                       // ── HERO / STYLE CARD ──────────────────────────────
@@ -2205,7 +2365,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                         width: double.infinity,
                                         child: ValueListenableBuilder<int>(
                                           valueListenable: _cardContextVersion,
-                                          builder: (context, _, __) => _buildHeroCard(),
+                                          builder: (context, _, __) =>
+                                              _buildHeroCard(),
                                         ),
                                       ),
                                       SizedBox(height: cardSpacing),
@@ -2228,7 +2389,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                         child: ValueListenableBuilder<int>(
                                           valueListenable: _cardContextVersion,
                                           builder: (context, _, __) =>
-                                              _buildPrepPlanCard(screenH: screenH),
+                                              _buildPrepPlanCard(
+                                                screenH: screenH,
+                                              ),
                                         ),
                                       ),
                                     ],
@@ -2249,15 +2412,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
           // ── Fixed AHVI Logo — Chat screen లాగే Positioned గా ఉంది ──
           // top: 0, SafeArea(bottom: false) తో — Chat _ChatLogoHeader తో
           // exact match అవుతుంది: status bar + topPad + logoFontSize + botPad
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _buildFixedLogoBar(),
-          ),
+          Positioned(top: 0, left: 0, right: 0, child: _buildFixedLogoBar()),
 
           if (_overlayState != _OverlayState.idle) _buildAiOverlay(),
-
 
           if (_activeIntent == 'prepare' &&
               (_overlayState == _OverlayState.suggestions ||
@@ -2265,7 +2422,12 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
             Builder(
               builder: (context) {
                 final keyboardH = MediaQuery.of(context).viewInsets.bottom;
-                final chipsBottom = keyboardH > 0 ? keyboardH + 60 : (MediaQuery.of(context).size.height * 0.23).clamp(160.0, 210.0);
+                final chipsBottom = keyboardH > 0
+                    ? keyboardH + 60
+                    : (MediaQuery.of(context).size.height * 0.23).clamp(
+                        160.0,
+                        210.0,
+                      );
                 return Positioned(
                   left: 0,
                   right: 0,
@@ -2300,8 +2462,11 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
               // resting spot when the screen has room to spare — the 4px
               // gap above the nav bar is always preserved as a floor, this
               // only ever adds MORE breathing room on taller devices.
-              final double promptExtraLift =
-              screenHPrompt >= 760 ? 8.0 : screenHPrompt >= 680 ? 6.0 : 0.0;
+              final double promptExtraLift = screenHPrompt >= 760
+                  ? 8.0
+                  : screenHPrompt >= 680
+                  ? 6.0
+                  : 0.0;
               final promptBottom = kbH > 0
                   ? kbH + promptKeyboardGap
                   : navBarTotalH + promptExtraLift;
@@ -2313,9 +2478,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                 // call showOnScreen / scroll-to-visible when the TextField gets
                 // focus — that was causing the whole page to jump to the top.
                 child: MediaQuery(
-                  data: MediaQuery.of(ctx).copyWith(
-                    viewInsets: EdgeInsets.zero,
-                  ),
+                  data: MediaQuery.of(
+                    ctx,
+                  ).copyWith(viewInsets: EdgeInsets.zero),
                   child: _buildChatWrap(),
                 ),
               );
@@ -2325,10 +2490,17 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
           // Only show nav bar when NOT inside a Shell (Shell has its own nav bar)
           // 🔧 FIX: Keyboard open అయినా nav bar same position లో ఉండాలి — hide చేయకూడదు
           if (widget.onShellNavTap == null)
-            Builder(builder: (ctx) {
-              final safeB = MediaQuery.paddingOf(ctx).bottom;
-              return Positioned(left: 16, right: 16, bottom: safeB + 6, child: _buildBottomNav());
-            }),
+            Builder(
+              builder: (ctx) {
+                final safeB = MediaQuery.paddingOf(ctx).bottom;
+                return Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: safeB + 6,
+                  child: _buildBottomNav(),
+                );
+              },
+            ),
 
           if (_seeAllOpen) _buildSeeAllPanel(),
 
@@ -2470,7 +2642,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildNotificationButton(),
-          SizedBox(width: screenW < 360 ? 8 : 10),  // 🔧 Reduce gap on tiny phones
+          SizedBox(
+            width: screenW < 360 ? 8 : 10,
+          ), // 🔧 Reduce gap on tiny phones
           _buildProfileAvatar(),
         ],
       ),
@@ -2494,8 +2668,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       child: Align(
         alignment: Alignment.center,
         child: SizedBox(
-          width: iconButtonSize,  // 🔧 FIXED: 48px on all screen sizes
-          height: iconButtonSize,  // 🔧 FIXED: 48px on all screen sizes
+          width: iconButtonSize, // 🔧 FIXED: 48px on all screen sizes
+          height: iconButtonSize, // 🔧 FIXED: 48px on all screen sizes
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -2519,7 +2693,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                 ),
                 child: Icon(
                   Icons.notifications_outlined,
-                  size: iconSize,  // 🔧 FIXED: 24px on all screen sizes
+                  size: iconSize, // 🔧 FIXED: 24px on all screen sizes
                   color: _textHeading,
                 ),
               ),
@@ -2529,8 +2703,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                   top: -2,
                   right: -2,
                   child: Container(
-                    width: 16,  // 🔧 FIXED: proportional to 40px button
-                    height: 16,  // 🔧 FIXED: proportional to 40px button
+                    width: 16, // 🔧 FIXED: proportional to 40px button
+                    height: 16, // 🔧 FIXED: proportional to 40px button
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
@@ -2540,7 +2714,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                       ),
                       border: Border.all(
                         color: _bgPrimary,
-                        width: 1.5,  // 🔧 FIXED: thinner border for smaller badge
+                        width:
+                            1.5, // 🔧 FIXED: thinner border for smaller badge
                       ),
                     ),
                     child: Center(
@@ -2548,7 +2723,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                         _unreadNotifCount > 9 ? '9+' : '$_unreadNotifCount',
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 8,  // 🔧 FIXED: proportional to 16px badge
+                          fontSize: 8, // 🔧 FIXED: proportional to 16px badge
                           fontWeight: FontWeight.w800,
                           height: 1,
                         ),
@@ -2575,42 +2750,46 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // real signed-in user's name (profile name, else the greeting name we
     // already fetched, else a generic default) so it's never someone else's
     // initial.
-    final String _fallbackName = profileState.name.isNotEmpty &&
-        profileState.name != 'New User'
+    final String _fallbackName =
+        profileState.name.isNotEmpty && profileState.name != 'New User'
         ? profileState.name
-        : (_userName.isNotEmpty ? _userName : AppLocalizations.t(context, 'default_user_name'));
+        : (_userName.isNotEmpty
+              ? _userName
+              : AppLocalizations.t(context, 'default_user_name'));
     final String _avatarInitial = _fallbackName[0].toUpperCase();
 
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
-        Navigator.of(context).push(
-          PageRouteBuilder<void>(
-            transitionDuration: const Duration(milliseconds: 350),
-            reverseTransitionDuration: const Duration(milliseconds: 350),
-            pageBuilder: (context, animation, secondary) =>
-            const profile.ProfileScreen(),
-            transitionsBuilder: (context, animation, secondary, child) {
-              final curved = CurvedAnimation(
-                parent: animation,
-                curve: const Cubic(0.22, 1.0, 0.36, 1.0),
-              );
-              return FadeTransition(
-                opacity: curved,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0.04, 0),
-                    end: Offset.zero,
-                  ).animate(curved),
-                  child: child,
-                ),
-              );
-            },
-          ),
-        ).then((_) {
-          // userName refresh కోసం మాత్రమే
-          if (mounted) _fetchUserProfile();
-        });
+        Navigator.of(context)
+            .push(
+              PageRouteBuilder<void>(
+                transitionDuration: const Duration(milliseconds: 350),
+                reverseTransitionDuration: const Duration(milliseconds: 350),
+                pageBuilder: (context, animation, secondary) =>
+                    const profile.ProfileScreen(),
+                transitionsBuilder: (context, animation, secondary, child) {
+                  final curved = CurvedAnimation(
+                    parent: animation,
+                    curve: const Cubic(0.22, 1.0, 0.36, 1.0),
+                  );
+                  return FadeTransition(
+                    opacity: curved,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0.04, 0),
+                        end: Offset.zero,
+                      ).animate(curved),
+                      child: child,
+                    ),
+                  );
+                },
+              ),
+            )
+            .then((_) {
+              // userName refresh కోసం మాత్రమే
+              if (mounted) _fetchUserProfile();
+            });
       },
       // ✅ FIX: Align gives its child loose constraints (rather than the tight
       // ones a parent Row/Header might otherwise impose), so this avatar is
@@ -2619,14 +2798,17 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       child: Align(
         alignment: Alignment.center,
         child: SizedBox(
-          width: avatarSize,  // 🔧 FIXED: 48px on all screen sizes
-          height: avatarSize,  // 🔧 FIXED: 48px on all screen sizes
+          width: avatarSize, // 🔧 FIXED: 48px on all screen sizes
+          height: avatarSize, // 🔧 FIXED: 48px on all screen sizes
           child: Container(
-            width: avatarSize,  // 🔧 FIXED: matches SizedBox size
-            height: avatarSize,  // 🔧 FIXED: matches SizedBox size
+            width: avatarSize, // 🔧 FIXED: matches SizedBox size
+            height: avatarSize, // 🔧 FIXED: matches SizedBox size
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withOpacity(0.88), width: 1.5),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.88),
+                width: 1.5,
+              ),
               boxShadow: [
                 BoxShadow(
                   color: _accent.withOpacity(0.22),
@@ -2639,37 +2821,38 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
             child: ClipOval(
               child: avatarPath != null && avatarPath.isNotEmpty
                   ? Image.file(
-                File(avatarPath),
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  color: _accent,
-                  child: const Icon(
-                    Icons.person_rounded,
-                    size: 20,  // 🔧 FIXED: proportional to 40px avatar
-                    color: Colors.white,
-                  ),
-                ),
-              )
+                      File(avatarPath),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: _accent,
+                        child: const Icon(
+                          Icons.person_rounded,
+                          size: 20, // 🔧 FIXED: proportional to 40px avatar
+                          color: Colors.white,
+                        ),
+                      ),
+                    )
                   : Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [_accent, _accentSecondary],
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    _avatarInitial,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,  // 🔧 FIXED: proportional to 40px avatar
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [_accent, _accentSecondary],
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          _avatarInitial,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize:
+                                16, // 🔧 FIXED: proportional to 40px avatar
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ),
             ),
           ),
         ),
@@ -2687,7 +2870,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
         ? (heightBasedSize * (screenW / 360.0)).clamp(16.0, 22.0)
         : (heightBasedSize * (screenW / 360.0)).clamp(18.0, 24.0);
     return Padding(
-      padding: EdgeInsets.zero, // Chips → Hero gap now fully controlled by `topSpacing` below
+      padding: EdgeInsets
+          .zero, // Chips → Hero gap now fully controlled by `topSpacing` below
       child: ValueListenableBuilder<_ClockState>(
         valueListenable: _clockState,
         builder: (context, clock, _) {
@@ -2695,7 +2879,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
           final greetingText = AppLocalizations.t(context, clock.greeting);
 
           // ProfileController నుండి name చదువు — onboarding లో enter చేసిన name వస్తుంది
-          final profileName = context.watch<profile.ProfileController>().state.name ?? '';
+          final profileName =
+              context.watch<profile.ProfileController>().state.name ?? '';
           final displayName = profileName.isNotEmpty
               ? profileName.split(' ').first
               : _userName;
@@ -2714,7 +2899,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                   letterSpacing: 0.1,
                 ),
               ),
-              const SizedBox(height: 0.0), // ✏️ Reduced from 4.0 — tightens date→greeting gap
+              const SizedBox(
+                height: 0.0,
+              ), // ✏️ Reduced from 4.0 — tightens date→greeting gap
               RichText(
                 text: TextSpan(
                   style: TextStyle(
@@ -2740,11 +2927,13 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                   ],
                 ),
                 textAlign: TextAlign.left,
-                softWrap: true,  // 🔧 NEW: Allows wrapping if needed
-                maxLines: 2,     // 🔧 NEW: Allow max 2 lines for long names
+                softWrap: true, // 🔧 NEW: Allows wrapping if needed
+                maxLines: 2, // 🔧 NEW: Allow max 2 lines for long names
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 6.0), // ✏️ Reduced from 12.0 → 6.0 (greeting→chips gap)
+              const SizedBox(
+                height: 6.0,
+              ), // ✏️ Reduced from 12.0 → 6.0 (greeting→chips gap)
               _buildContextInfoChips(),
             ],
           );
@@ -2767,13 +2956,13 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     final chipPadV = 4.0 * chipScale;
     final chipIconGap = 5.0 * chipScale;
     // 🔧 IMPROVED: Reduce gap on small screens to fit more items
-    final chipGap = screenW < 340
-        ? 6.0 * chipScale
-        : 8.0 * chipScale;
+    final chipGap = screenW < 340 ? 6.0 * chipScale : 8.0 * chipScale;
 
     // Derive labels from live signals
     final w = _weatherSignal;
-    final tempLabel = w.tempCelsius != null ? '${w.tempCelsius!.round()}°' : '--°';
+    final tempLabel = w.tempCelsius != null
+        ? '${w.tempCelsius!.round()}°'
+        : '--°';
     final weatherDesc = w.description.isNotEmpty ? w.description : 'clear';
 
     // Workout type chip label
@@ -2789,7 +2978,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     String calLabel = AppLocalizations.t(context, 'chip_no_meetings');
     if (meeting != null && meeting.isToday) {
       final hoursLeft = meeting.hoursUntil;
-      calLabel = hoursLeft > 0 ? '${meeting.title} in ${hoursLeft}h' : meeting.title;
+      calLabel = hoursLeft > 0
+          ? '${meeting.title} in ${hoursLeft}h'
+          : meeting.title;
     } else if (_calendarEvents.isNotEmpty) {
       calLabel = _calendarEvents.first.title;
     }
@@ -2818,11 +3009,12 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
             color: _surface.withOpacity(0.90),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: _border),
-            boxShadow: [
-              BoxShadow(color: _shadowLight, blurRadius: 6),
-            ],
+            boxShadow: [BoxShadow(color: _shadowLight, blurRadius: 6)],
           ),
-          padding: EdgeInsets.symmetric(horizontal: chipPadH, vertical: chipPadV),
+          padding: EdgeInsets.symmetric(
+            horizontal: chipPadH,
+            vertical: chipPadV,
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -2903,11 +3095,31 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     final chipHPad = screenW < 360 ? 10.0 : 14.0;
     // 🆕 Chips localized
     final chips = [
-      ('✦', AppLocalizations.t(context, 'chip_outfit_idea'), AppLocalizations.t(context, 'chip_prompt_outfit')),
-      ('◎', AppLocalizations.t(context, 'chip_daily_plan'), AppLocalizations.t(context, 'chip_prompt_daily_plan')),
-      ('⊹', AppLocalizations.t(context, 'chip_workout'), AppLocalizations.t(context, 'chip_prompt_workout')),
-      ('◈', AppLocalizations.t(context, 'chip_meal_plan'), AppLocalizations.t(context, 'chip_prompt_meal_plan')),
-      ('◷', AppLocalizations.t(context, 'chip_schedule'), AppLocalizations.t(context, 'chip_prompt_schedule')),
+      (
+        '✦',
+        AppLocalizations.t(context, 'chip_outfit_idea'),
+        AppLocalizations.t(context, 'chip_prompt_outfit'),
+      ),
+      (
+        '◎',
+        AppLocalizations.t(context, 'chip_daily_plan'),
+        AppLocalizations.t(context, 'chip_prompt_daily_plan'),
+      ),
+      (
+        '⊹',
+        AppLocalizations.t(context, 'chip_workout'),
+        AppLocalizations.t(context, 'chip_prompt_workout'),
+      ),
+      (
+        '◈',
+        AppLocalizations.t(context, 'chip_meal_plan'),
+        AppLocalizations.t(context, 'chip_prompt_meal_plan'),
+      ),
+      (
+        '◷',
+        AppLocalizations.t(context, 'chip_schedule'),
+        AppLocalizations.t(context, 'chip_prompt_schedule'),
+      ),
     ];
     return SizedBox(
       height: 36,
@@ -2928,10 +3140,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                 border: Border.all(color: _border),
                 boxShadow: [
                   BoxShadow(color: _shadowMedium, blurRadius: 8),
-                  BoxShadow(
-                    color: _accent.withOpacity(0.06),
-                    blurRadius: 8,
-                  ),
+                  BoxShadow(color: _accent.withOpacity(0.06), blurRadius: 8),
                 ],
               ),
               padding: EdgeInsets.symmetric(horizontal: chipHPad, vertical: 7),
@@ -2993,8 +3202,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   /// driven by upcoming occasions, weather, and time of day.
   /// 🆕 Now uses localization for hero titles
   ({String headline, String emoji}) _heroHeadlineContent(
-      _RecommendationContext ctx,
-      ) {
+    _RecommendationContext ctx,
+  ) {
     // 🆕 Get localized hero title for morning greeting
     final localizedHeroTitle = AppLocalizations.t(context, 'home_hero_title');
     final w = ctx.weather;
@@ -3002,22 +3211,41 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // 📅 Occasion takes top priority — overrides everything else.
     if (ctx.hasSoonOccasion) {
       final e = ctx.nextOccasion!;
-      return (headline: '${e.title} In ${e.hoursUntil}h — ${AppLocalizations.t(context, 'hero_occasion_suffix')}', emoji: '🎉');
+      return (
+        headline:
+            '${e.title} In ${e.hoursUntil}h — ${AppLocalizations.t(context, 'hero_occasion_suffix')}',
+        emoji: '🎉',
+      );
     }
     if (ctx.hasSoonMeeting) {
       final e = ctx.nextMeeting!;
-      return (headline: '${e.title} In ${e.hoursUntil}h — ${AppLocalizations.t(context, 'hero_meeting_suffix')}', emoji: '💼');
+      return (
+        headline:
+            '${e.title} In ${e.hoursUntil}h — ${AppLocalizations.t(context, 'hero_meeting_suffix')}',
+        emoji: '💼',
+      );
     }
 
     // 🌦️ Weather-driven
     if (w.isRainy) {
-      return (headline: AppLocalizations.t(context, 'hero_rainy'), emoji: '🌧️');
+      return (
+        headline: AppLocalizations.t(context, 'hero_rainy'),
+        emoji: '🌧️',
+      );
     }
     if (w.isCold && w.tempLabel.isNotEmpty) {
-      return (headline: '${w.tempLabel} ${AppLocalizations.t(context, 'hero_cold_suffix')}', emoji: '❄️');
+      return (
+        headline:
+            '${w.tempLabel} ${AppLocalizations.t(context, 'hero_cold_suffix')}',
+        emoji: '❄️',
+      );
     }
     if (w.isHot && w.tempLabel.isNotEmpty) {
-      return (headline: '${w.tempLabel} ${AppLocalizations.t(context, 'hero_hot_suffix')}', emoji: '☀️');
+      return (
+        headline:
+            '${w.tempLabel} ${AppLocalizations.t(context, 'hero_hot_suffix')}',
+        emoji: '☀️',
+      );
     }
 
     // 🕒 Time-of-day fallback
@@ -3026,10 +3254,16 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       return (headline: localizedHeroTitle, emoji: '');
     }
     if (ctx.isAfternoon) {
-      return (headline: AppLocalizations.t(context, 'hero_afternoon'), emoji: '🔥');
+      return (
+        headline: AppLocalizations.t(context, 'hero_afternoon'),
+        emoji: '🔥',
+      );
     }
     if (ctx.isEvening) {
-      return (headline: AppLocalizations.t(context, 'hero_evening'), emoji: '🌆');
+      return (
+        headline: AppLocalizations.t(context, 'hero_evening'),
+        emoji: '🌆',
+      );
     }
     return (headline: AppLocalizations.t(context, 'hero_night'), emoji: '🌙');
   }
@@ -3083,8 +3317,16 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
           // Responsive padding based on screen width
           // ✏️ Left/right padding reduced by 4px per spec (was 12/16/20).
-          final horPadding = screenW < 360 ? 8.0 : screenW < 640 ? 12.0 : 16.0;
-          final vertPadding = screenW < 360 ? 12.0 : screenW < 640 ? 14.0 : 16.0;
+          final horPadding = screenW < 360
+              ? 8.0
+              : screenW < 640
+              ? 12.0
+              : 16.0;
+          final vertPadding = screenW < 360
+              ? 12.0
+              : screenW < 640
+              ? 14.0
+              : 16.0;
           // 🆕 Text font sizes are now derived inside a LayoutBuilder around the
           // text panel itself (see the flex:55 Expanded below) so they scale
           // off the card's own available width/height instead of just the
@@ -3097,10 +3339,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28),
               color: cardBg,
-              border: Border.all(
-                color: _border.withOpacity(0.45),
-                width: 1,
-              ),
+              border: Border.all(color: _border.withOpacity(0.45), width: 1),
               boxShadow: [
                 BoxShadow(
                   color: _shadowStrong,
@@ -3141,7 +3380,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                     //
                     // 🆕 FIX: Extract dominant color from the image and use that
                     // to fill empty space, creating seamless blend with the outfit.
-                    child: _buildImageWithDominantColorBackground(genderedAssetPath),
+                    child: _buildImageWithDominantColorBackground(
+                      genderedAssetPath,
+                    ),
                   ),
                 ),
 
@@ -3168,11 +3409,26 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                         // 165dp is the panel width on a baseline 360dp phone
                         // (55% flex minus padding) — used as the 1.0 reference.
                         final sizeScale = (panelW / 165.0).clamp(0.72, 1.35);
-                        final titleFontSize = (16.0 * sizeScale).clamp(11.0, 20.0);
-                        final bulletLabelSize = (12.0 * sizeScale).clamp(9.5, 15.0);
-                        final bulletDescSize = (10.0 * sizeScale).clamp(8.0, 13.0);
-                        final bulletSpacing = (7.0 * sizeScale).clamp(5.0, 10.0);
-                        final ctaFontSize = (12.0 * sizeScale).clamp(10.0, 14.0);
+                        final titleFontSize = (16.0 * sizeScale).clamp(
+                          11.0,
+                          20.0,
+                        );
+                        final bulletLabelSize = (12.0 * sizeScale).clamp(
+                          9.5,
+                          15.0,
+                        );
+                        final bulletDescSize = (10.0 * sizeScale).clamp(
+                          8.0,
+                          13.0,
+                        );
+                        final bulletSpacing = (7.0 * sizeScale).clamp(
+                          5.0,
+                          10.0,
+                        );
+                        final ctaFontSize = (12.0 * sizeScale).clamp(
+                          10.0,
+                          14.0,
+                        );
                         final ctaIconSize = (11.0 * sizeScale).clamp(9.0, 13.0);
 
                         return Column(
@@ -3210,7 +3466,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                       icon: Icons.eco_outlined,
                                       color: const Color(0xFF6B9AD4),
                                       label: _workoutLabel,
-                                      desc: AppLocalizations.t(context, 'hero_card_bullet_wear'),
+                                      desc: AppLocalizations.t(
+                                        context,
+                                        'hero_card_bullet_wear',
+                                      ),
                                       labelFontSize: bulletLabelSize,
                                       descFontSize: bulletDescSize,
                                     ),
@@ -3220,10 +3479,15 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                       color: const Color(0xFF7BBFDA),
                                       // 🆕 FIX: Only show temperature, don't append translation key
                                       // Weather description is shown in the desc field below
-                                      label: w.tempCelsius != null && w.tempCelsius! > 0
+                                      label:
+                                          w.tempCelsius != null &&
+                                              w.tempCelsius! > 0
                                           ? '${w.tempCelsius!.toStringAsFixed(0)}°'
                                           : '28°',
-                                      desc: AppLocalizations.t(context, 'hero_card_bullet_weather'),
+                                      desc: AppLocalizations.t(
+                                        context,
+                                        'hero_card_bullet_weather',
+                                      ),
                                       labelFontSize: bulletLabelSize,
                                       descFontSize: bulletDescSize,
                                     ),
@@ -3231,8 +3495,12 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                     _buildStyleCardBullet(
                                       icon: Icons.favorite_border_rounded,
                                       color: const Color(0xFFD4A0C8),
-                                      label: 'You tend to love ${_wardrobeSignal.favoriteStyle}',
-                                      desc: AppLocalizations.t(context, 'hero_card_bullet_style'),
+                                      label:
+                                          'You tend to love ${_wardrobeSignal.favoriteStyle}',
+                                      desc: AppLocalizations.t(
+                                        context,
+                                        'hero_card_bullet_style',
+                                      ),
                                       labelFontSize: bulletLabelSize,
                                       descFontSize: bulletDescSize,
                                     ),
@@ -3240,13 +3508,20 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 8), // 🆕 More space before button
+                            const SizedBox(
+                              height: 8,
+                            ), // 🆕 More space before button
                             _AnimatedPressable(
                               liftY: -3.0,
                               scalePressed: 0.93,
-                              onTap: () => _openChatWithPrompt('Suggest an outfit for today.'),
+                              onTap: () => _openChatWithPrompt(
+                                'Suggest an outfit for today.',
+                              ),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
+                                ),
                                 decoration: BoxDecoration(
                                   // 🆕 ENHANCED: Stronger gradient for better visibility
                                   gradient: LinearGradient(
@@ -3273,7 +3548,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      AppLocalizations.t(context, 'cta_style_me'),
+                                      AppLocalizations.t(
+                                        context,
+                                        'cta_style_me',
+                                      ),
                                       style: TextStyle(
                                         color: _onAccent,
                                         fontSize: ctaFontSize,
@@ -3283,7 +3561,11 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                     ),
                                     const SizedBox(width: 4),
                                     // 🆕 Animated arrow for better UX
-                                    Icon(Icons.arrow_forward_rounded, color: _onAccent, size: ctaIconSize),
+                                    Icon(
+                                      Icons.arrow_forward_rounded,
+                                      color: _onAccent,
+                                      size: ctaIconSize,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -3335,7 +3617,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
               ).createShader(rect),
               child: Image.asset(
                 imagePath,
-                fit: BoxFit.contain, // ← Never crops — full outfit always visible
+                fit: BoxFit
+                    .contain, // ← Never crops — full outfit always visible
                 alignment: Alignment.center,
                 filterQuality: FilterQuality.high,
                 errorBuilder: (_, __, ___) => const SizedBox.shrink(),
@@ -3409,7 +3692,6 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     );
   }
 
-
   // ── Routine cards section: Wear / Move / Eat / Care / Medicine ───────────
 
   /// Mirrors [from]'s current scroll offset onto [to], guarded by a flag so
@@ -3454,77 +3736,86 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
     // 🆕 DYNAMIC DATA FROM PROVIDERS & SERVICES
     // Each routine syncs with real app data
-    final routines = <({
-    IconData icon,
-    Color color,
-    String label,
-    String desc,
-    String status,
-    bool done,
-    Widget page,
-    })>[
-      (
-      // 🔧 FIX: Icons.checkroom_outlined was rendering as the same running-
-      // figure glyph as the "Move" card below (icon font/tree-shaking
-      // mismatch). Icons.dry_cleaning_outlined is the same hanger icon
-      // already used (and confirmed working) for the Wardrobe nav tab.
-      icon: Icons.dry_cleaning_outlined,
-      color: const Color(0xFF6B8FD4),
-      label: AppLocalizations.t(context, 'routine_wear'),
-      // 🔄 DYNAMIC: From DailyWearScreen/Wardrobe
-      desc: _getDailyWearDescription(),
-      status: _getDailyWearStatus(),
-      done: _isDailyWearDone(),
-      page: DailyWearScreen(),
-      ),
-      (
-      icon: Icons.directions_run_rounded,
-      color: const Color(0xFF5BBF8A),
-      label: AppLocalizations.t(context, 'routine_move'),
-      // 🔄 DYNAMIC: From WorkoutStudioScreen/Fitness
-      desc: _getWorkoutDescription(),
-      status: _getWorkoutStatus(),
-      done: _isWorkoutDone(),
-      page: WorkoutStudioScreen(fromHome: true),
-      ),
-      (
-      icon: Icons.restaurant_outlined,
-      color: const Color(0xFFE8895A),
-      label: AppLocalizations.t(context, 'routine_eat'),
-      // 🔄 DYNAMIC: From MainScreen/Diet
-      desc: _getMealDescription(),
-      status: _getMealStatus(),
-      done: _isMealDone(),
-      page: MainScreen(fromHome: true),
-      ),
-      (
-      icon: Icons.spa_outlined,
-      color: const Color(0xFFB07FD4),
-      label: AppLocalizations.t(context, 'routine_care'),
-      // 🔄 DYNAMIC: From SkincareScreen
-      desc: _getSkincareDescription(),
-      status: _getSkincareStatus(),
-      done: _isSkincareDone(),
-      page: SkincareScreen(),
-      ),
-      (
-      icon: Icons.medication_outlined,
-      color: const Color(0xFFE88A8A),
-      label: AppLocalizations.t(context, 'routine_medicine'),
-      // 🔄 DYNAMIC: From MediTrackScreen
-      desc: _getMedicineDescription(),
-      status: _getMedicineStatus(),
-      done: _isMedicineDone(),
-      page: MediTrackScreen(fromHome: true),
-      ),
-    ];
+    final routines =
+        <
+          ({
+            IconData icon,
+            Color color,
+            String label,
+            String desc,
+            String status,
+            bool done,
+            Widget page,
+          })
+        >[
+          (
+            // 🔧 FIX: Icons.checkroom_outlined was rendering as the same running-
+            // figure glyph as the "Move" card below (icon font/tree-shaking
+            // mismatch). Icons.dry_cleaning_outlined is the same hanger icon
+            // already used (and confirmed working) for the Wardrobe nav tab.
+            icon: Icons.dry_cleaning_outlined,
+            color: const Color(0xFF6B8FD4),
+            label: AppLocalizations.t(context, 'routine_wear'),
+            // 🔄 DYNAMIC: From DailyWearScreen/Wardrobe
+            desc: _getDailyWearDescription(),
+            status: _getDailyWearStatus(),
+            done: _isDailyWearDone(),
+            page: DailyWearScreen(),
+          ),
+          (
+            icon: Icons.directions_run_rounded,
+            color: const Color(0xFF5BBF8A),
+            label: AppLocalizations.t(context, 'routine_move'),
+            // 🔄 DYNAMIC: From WorkoutStudioScreen/Fitness
+            desc: _getWorkoutDescription(),
+            status: _getWorkoutStatus(),
+            done: _isWorkoutDone(),
+            page: WorkoutStudioScreen(fromHome: true),
+          ),
+          (
+            icon: Icons.restaurant_outlined,
+            color: const Color(0xFFE8895A),
+            label: AppLocalizations.t(context, 'routine_eat'),
+            // 🔄 DYNAMIC: From MainScreen/Diet
+            desc: _getMealDescription(),
+            status: _getMealStatus(),
+            done: _isMealDone(),
+            page: MainScreen(fromHome: true),
+          ),
+          (
+            icon: Icons.spa_outlined,
+            color: const Color(0xFFB07FD4),
+            label: AppLocalizations.t(context, 'routine_care'),
+            // 🔄 DYNAMIC: From SkincareScreen
+            desc: _getSkincareDescription(),
+            status: _getSkincareStatus(),
+            done: _isSkincareDone(),
+            page: SkincareScreen(),
+          ),
+          (
+            icon: Icons.medication_outlined,
+            color: const Color(0xFFE88A8A),
+            label: AppLocalizations.t(context, 'routine_medicine'),
+            // 🔄 DYNAMIC: From MediTrackScreen
+            desc: _getMedicineDescription(),
+            status: _getMedicineStatus(),
+            done: _isMedicineDone(),
+            page: MediTrackScreen(fromHome: true),
+          ),
+        ];
 
     return Container(
       decoration: BoxDecoration(
         color: _surface,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: _border.withOpacity(0.50), width: 1),
-        boxShadow: [BoxShadow(color: _shadowLight, blurRadius: 12, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: _shadowLight,
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       // Fill the parent Expanded widget completely so cards stretch to use
       // the guaranteed routineMinH space allocated in the layout above.
@@ -3562,7 +3853,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
               return SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 controller: _routineProgressScrollCtrl,
-                padding: EdgeInsets.symmetric(horizontal: screenW < 360 ? 4 : 6, vertical: 0),
+                padding: EdgeInsets.symmetric(
+                  horizontal: screenW < 360 ? 4 : 6,
+                  vertical: 0,
+                ),
                 physics: const BouncingScrollPhysics(),
                 child: SizedBox(
                   width: totalWidth,
@@ -3574,7 +3868,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                       for (int i = 0; i < routines.length - 1; i++)
                         Positioned(
                           left: i * slot + cardWidth / 2,
-                          top: 10.25, // vertically centers a 1.5px line in a 22px-tall row
+                          top:
+                              10.25, // vertically centers a 1.5px line in a 22px-tall row
                           width: slot,
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 220),
@@ -3609,7 +3904,11 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                               ),
                             ),
                             child: routines[i].done
-                                ? Icon(Icons.check_rounded, size: 12, color: _onAccent)
+                                ? Icon(
+                                    Icons.check_rounded,
+                                    size: 12,
+                                    color: _onAccent,
+                                  )
                                 : null,
                           ),
                         ),
@@ -3619,7 +3918,6 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
               );
             },
           ),
-
 
           // ✏️ Gap between progress and routine items: 2px (near-touching, not touching)
           const SizedBox(height: 2),
@@ -3638,131 +3936,147 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                 // The parent Expanded now guarantees routineMinH=118px of space.
                 // Cards fill whatever they receive; the 90px floor is a
                 // last-resort guard in case constraints are unexpectedly tight.
-                final cardItemHeight = cardsConstraints.maxHeight.clamp(90.0, double.infinity);
+                final cardItemHeight = cardsConstraints.maxHeight.clamp(
+                  90.0,
+                  double.infinity,
+                );
                 return SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   controller: _routineCardsScrollCtrl,
-                  padding: EdgeInsets.symmetric(horizontal: screenW < 360 ? 4 : 6, vertical: 0),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: screenW < 360 ? 4 : 6,
+                    vertical: 0,
+                  ),
                   physics: const BouncingScrollPhysics(),
                   clipBehavior: Clip.antiAlias,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: List.generate(
-                      routines.length,
-                          (i) {
-                        final r = routines[i];
-                        return Padding(
-                          padding: EdgeInsets.only(right: cardGap),
-                          child: GestureDetector(
-                            onTap: () => Navigator.push(
+                    children: List.generate(routines.length, (i) {
+                      final r = routines[i];
+                      return Padding(
+                        padding: EdgeInsets.only(right: cardGap),
+                        child: GestureDetector(
+                          onTap: () {
+                            if (r.page is MediTrackScreen) {
+                              debugPrint('AHVI_MEDI_NAV source=home_routine');
+                            }
+                            Navigator.push(
                               context,
                               MaterialPageRoute(builder: (_) => r.page),
-                            ),
-                            child: SizedBox(
-                              width: cardWidth,
-                              height: cardItemHeight,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: _bgSecondary.withOpacity(0.7),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: r.done
-                                        ? _accent.withOpacity(0.25)
-                                        : _border.withOpacity(0.5),
-                                    width: 1,
+                            );
+                          },
+                          child: SizedBox(
+                            width: cardWidth,
+                            height: cardItemHeight,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: _bgSecondary.withOpacity(0.7),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: r.done
+                                      ? _accent.withOpacity(0.25)
+                                      : _border.withOpacity(0.5),
+                                  width: 1,
+                                ),
+                              ),
+                              // ✏️ Top inset trimmed by 5px so the card sits closer
+                              // to the tracker line above; other sides unchanged.
+                              padding: EdgeInsets.fromLTRB(
+                                cardPadding,
+                                cardPadding - 6,
+                                cardPadding,
+                                cardPadding,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.max,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  // Icon bubble
+                                  Container(
+                                    width: iconBubbleSize,
+                                    height: iconBubbleSize,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: r.color.withOpacity(0.15),
+                                    ),
+                                    child: Icon(
+                                      r.icon,
+                                      size: iconSize,
+                                      color: r.color,
+                                    ),
                                   ),
-                                ),
-                                // ✏️ Top inset trimmed by 5px so the card sits closer
-                                // to the tracker line above; other sides unchanged.
-                                padding: EdgeInsets.fromLTRB(
-                                  cardPadding,
-                                  cardPadding - 6,
-                                  cardPadding,
-                                  cardPadding,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.max,
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    // Icon bubble
-                                    Container(
-                                      width: iconBubbleSize,
-                                      height: iconBubbleSize,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: r.color.withOpacity(0.15),
-                                      ),
-                                      child: Icon(r.icon, size: iconSize, color: r.color),
+                                  SizedBox(height: cardPadding * 0.5),
+                                  // Label
+                                  Text(
+                                    r.label,
+                                    style: TextStyle(
+                                      color: _textHeading,
+                                      fontSize: labelFontSize,
+                                      fontWeight: FontWeight.w600,
                                     ),
-                                    SizedBox(height: cardPadding * 0.5),
-                                    // Label
-                                    Text(
-                                      r.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  SizedBox(height: cardPadding * 0.3),
+                                  // Description - responsive text filling available space
+                                  Expanded(
+                                    child: Text(
+                                      r.desc,
                                       style: TextStyle(
-                                        color: _textHeading,
-                                        fontSize: labelFontSize,
-                                        fontWeight: FontWeight.w600,
+                                        color: _textMuted,
+                                        fontSize: descFontSize,
+                                        fontWeight: FontWeight.w400,
+                                        height: 1.3,
                                       ),
-                                      maxLines: 1,
+                                      maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
+                                      softWrap: true,
                                     ),
-                                    SizedBox(height: cardPadding * 0.3),
-                                    // Description - responsive text filling available space
-                                    Expanded(
-                                      child: Text(
-                                        r.desc,
-                                        style: TextStyle(
-                                          color: _textMuted,
-                                          fontSize: descFontSize,
-                                          fontWeight: FontWeight.w400,
-                                          height: 1.3,
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        softWrap: true,
+                                  ),
+                                  SizedBox(height: cardPadding * 0.3),
+                                  // Status
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        r.done
+                                            ? Icons.check_circle_rounded
+                                            : Icons.access_time_rounded,
+                                        size: descFontSize - 0.5,
+                                        color: r.done ? _accent : _textMuted,
                                       ),
-                                    ),
-                                    SizedBox(height: cardPadding * 0.3),
-                                    // Status
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          r.done ? Icons.check_circle_rounded : Icons.access_time_rounded,
-                                          size: descFontSize - 0.5,
-                                          color: r.done ? _accent : _textMuted,
-                                        ),
-                                        SizedBox(width: screenW < 360 ? 1 : 2),
-                                        Flexible(
-                                          child: Text(
-                                            r.status,
-                                            style: TextStyle(
-                                              color: r.done ? _accent : _textMuted,
-                                              fontSize: statusFontSize,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                                      SizedBox(width: screenW < 360 ? 1 : 2),
+                                      Flexible(
+                                        child: Text(
+                                          r.status,
+                                          style: TextStyle(
+                                            color: r.done
+                                                ? _accent
+                                                : _textMuted,
+                                            fontSize: statusFontSize,
+                                            fontWeight: FontWeight.w500,
                                           ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      );
+                    }),
                   ),
                 );
               },
             ),
           ),
-
         ],
       ),
     );
@@ -3802,12 +4116,13 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       decoration: BoxDecoration(
         color: _surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: accentColor.withOpacity(0.18),
-          width: 1,
-        ),
+        border: Border.all(color: accentColor.withOpacity(0.18), width: 1),
         boxShadow: [
-          BoxShadow(color: _shadowLight, blurRadius: 16, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: _shadowLight,
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
           BoxShadow(color: accentColor.withOpacity(0.06), blurRadius: 12),
         ],
       ),
@@ -3825,7 +4140,12 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                 final colW = cc.maxWidth;
                 final hPad = colW < 90 ? 8.0 : 10.0;
                 return Padding(
-                  padding: EdgeInsets.only(left: hPad, right: 4, top: 7, bottom: 10),
+                  padding: EdgeInsets.only(
+                    left: hPad,
+                    right: 4,
+                    top: 7,
+                    bottom: 10,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3867,7 +4187,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                               // background, while staying visually secondary
                               // to the "Prep & Plan" title above it.
                               color: Color.lerp(_textMuted, _textHeading, 0.35),
-                              fontSize: 9.0, // 🔧 Reduced from 9.5 to fit better
+                              fontSize:
+                                  9.0, // 🔧 Reduced from 9.5 to fit better
                               fontWeight: FontWeight.w500,
                               height: 1.15, // 🔧 Reduced line height from 1.2
                             ),
@@ -3888,7 +4209,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                           initialPrompt: content.prompt,
                         ),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 5,
+                          ),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
@@ -3920,7 +4244,11 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                 ),
                               ),
                               const SizedBox(width: 1),
-                              Icon(Icons.arrow_forward_rounded, color: _onAccent, size: 8),
+                              Icon(
+                                Icons.arrow_forward_rounded,
+                                color: _onAccent,
+                                size: 8,
+                              ),
                             ],
                           ),
                         ),
@@ -4001,7 +4329,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                   // empty space (left, right, top, bottom) when image uses
                   // BoxFit.contain on different aspect ratios.
                   Container(
-                    color: const Color(0xFFE6ECFC),  // 🎨 Light blue to fill empty space
+                    color: const Color(
+                      0xFFE6ECFC,
+                    ), // 🎨 Light blue to fill empty space
                     // OPTIONAL: Uncomment for subtle visual depth
                     // decoration: BoxDecoration(
                     //   gradient: LinearGradient(
@@ -4036,7 +4366,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                       ).createShader(rect),
                       child: Image.asset(
                         genderedPrepPlanAsset,
-                        fit: BoxFit.contain, // ← Never crops — full image always visible
+                        fit: BoxFit
+                            .contain, // ← Never crops — full image always visible
                         alignment: Alignment.center,
                         errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                       ),
@@ -4069,20 +4400,24 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       final e = ctx.nextOccasion!;
       return _CardContent(
         title: AppLocalizations.t(context, 'style_occasion_title'),
-        subtitle: '${e.title} in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'style_occasion_subtitle')}',
+        subtitle:
+            '${e.title} in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'style_occasion_subtitle')}',
         cta: AppLocalizations.t(context, 'style_occasion_cta'),
         icon: Icons.celebration_outlined,
-        prompt: 'I have "${e.title}" in ${e.hoursUntil} hours. Create the perfect occasion outfit.',
+        prompt:
+            'I have "${e.title}" in ${e.hoursUntil} hours. Create the perfect occasion outfit.',
       );
     }
     if (ctx.hasSoonMeeting) {
       final e = ctx.nextMeeting!;
       return _CardContent(
         title: AppLocalizations.t(context, 'style_meeting_title'),
-        subtitle: '"${e.title}" in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'style_meeting_subtitle')}',
+        subtitle:
+            '"${e.title}" in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'style_meeting_subtitle')}',
         cta: AppLocalizations.t(context, 'style_meeting_cta'),
         icon: Icons.work_outline_rounded,
-        prompt: 'I have a meeting "${e.title}" in ${e.hoursUntil} hours. Suggest a sharp professional outfit.',
+        prompt:
+            'I have a meeting "${e.title}" in ${e.hoursUntil} hours. Suggest a sharp professional outfit.',
       );
     }
 
@@ -4099,7 +4434,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     if (w.isCold && w.tempLabel.isNotEmpty) {
       return _CardContent(
         title: AppLocalizations.t(context, 'style_cold_title'),
-        subtitle: '${w.tempLabel} ${AppLocalizations.t(context, 'style_cold_subtitle')}',
+        subtitle:
+            '${w.tempLabel} ${AppLocalizations.t(context, 'style_cold_subtitle')}',
         cta: AppLocalizations.t(context, 'style_cold_cta'),
         icon: Icons.ac_unit_outlined,
         prompt: 'It\'s ${w.tempLabel} today. Suggest a warm layered outfit.',
@@ -4108,7 +4444,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     if (w.isHot && w.tempLabel.isNotEmpty) {
       return _CardContent(
         title: AppLocalizations.t(context, 'style_hot_title'),
-        subtitle: '${w.tempLabel} ${AppLocalizations.t(context, 'style_hot_subtitle')}',
+        subtitle:
+            '${w.tempLabel} ${AppLocalizations.t(context, 'style_hot_subtitle')}',
         cta: AppLocalizations.t(context, 'style_hot_cta'),
         icon: Icons.wb_sunny_outlined,
         prompt: 'It\'s ${w.tempLabel} today. Suggest a cool breathable outfit.',
@@ -4118,20 +4455,24 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // 🏃 Fitness-driven
     if (fit.nextWorkoutLabel.isNotEmpty && ctx.isMorning) {
       return _CardContent(
-        title: '${fit.nextWorkoutLabel} ${AppLocalizations.t(context, 'style_gym_title_suffix')}',
+        title:
+            '${fit.nextWorkoutLabel} ${AppLocalizations.t(context, 'style_gym_title_suffix')}',
         subtitle: AppLocalizations.t(context, 'style_gym_subtitle'),
         cta: AppLocalizations.t(context, 'style_gym_cta'),
         icon: Icons.fitness_center_outlined,
-        prompt: 'Today is my ${fit.nextWorkoutLabel} day. Suggest a stylish gym outfit.',
+        prompt:
+            'Today is my ${fit.nextWorkoutLabel} day. Suggest a stylish gym outfit.',
       );
     }
     if (fit.hasActiveStreak && ctx.isMorning) {
       return _CardContent(
-        title: '${fit.workoutStreakDays}-${AppLocalizations.t(context, 'style_streak_title_suffix')}',
+        title:
+            '${fit.workoutStreakDays}-${AppLocalizations.t(context, 'style_streak_title_suffix')}',
         subtitle: AppLocalizations.t(context, 'style_streak_subtitle'),
         cta: AppLocalizations.t(context, 'style_streak_cta'),
         icon: Icons.local_fire_department_outlined,
-        prompt: 'I\'m on a ${fit.workoutStreakDays}-day fitness streak. Suggest a motivating outfit for today.',
+        prompt:
+            'I\'m on a ${fit.workoutStreakDays}-day fitness streak. Suggest a motivating outfit for today.',
       );
     }
 
@@ -4139,19 +4480,23 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     if (ward.hasUnwornItems && ward.unwornItems >= 3) {
       return _CardContent(
         title: AppLocalizations.t(context, 'style_wardrobe_title'),
-        subtitle: '${ward.unwornItems} ${AppLocalizations.t(context, 'style_wardrobe_subtitle')}',
+        subtitle:
+            '${ward.unwornItems} ${AppLocalizations.t(context, 'style_wardrobe_subtitle')}',
         cta: AppLocalizations.t(context, 'style_wardrobe_cta'),
         icon: Icons.dry_cleaning_outlined,
-        prompt: 'I have ${ward.unwornItems} clothing items I\'ve never worn. Build fresh outfits using them.',
+        prompt:
+            'I have ${ward.unwornItems} clothing items I\'ve never worn. Build fresh outfits using them.',
       );
     }
     if (ward.favoriteStyle.isNotEmpty) {
       return _CardContent(
-        title: '${ward.favoriteStyle.capitalize()} ${AppLocalizations.t(context, 'style_fav_title_suffix')}',
+        title:
+            '${ward.favoriteStyle.capitalize()} ${AppLocalizations.t(context, 'style_fav_title_suffix')}',
         subtitle: AppLocalizations.t(context, 'style_fav_subtitle'),
         cta: AppLocalizations.t(context, 'style_fav_cta'),
         icon: Icons.favorite_outline_rounded,
-        prompt: 'Show me new ${ward.favoriteStyle} fashion picks that match my style preferences.',
+        prompt:
+            'Show me new ${ward.favoriteStyle} fashion picks that match my style preferences.',
       );
     }
 
@@ -4210,7 +4555,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       subtitle: AppLocalizations.t(context, 'style_default_subtitle'),
       cta: AppLocalizations.t(context, 'style_default_cta'),
       icon: Icons.auto_awesome_rounded,
-      prompt: 'Surprise me with a complete outfit based on my style preferences.',
+      prompt:
+          'Surprise me with a complete outfit based on my style preferences.',
     );
   }
 
@@ -4226,22 +4572,29 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       final e = ctx.nextOccasion!;
       return _CardContent(
         title: AppLocalizations.t(context, 'prep_event_title'),
-        subtitle: '"${e.title}" in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'prep_event_subtitle')}',
+        subtitle:
+            '"${e.title}" in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'prep_event_subtitle')}',
         cta: AppLocalizations.t(context, 'prep_event_cta'),
         icon: Icons.checklist_rounded,
-        prompt: 'Create a complete prep checklist for my upcoming event: "${e.title}".',
+        prompt:
+            'Create a complete prep checklist for my upcoming event: "${e.title}".',
       );
     }
 
     // 📅 Travel today
-    if (ctx.upcomingEvents.any((e) => e.type == _EventType.travel && e.isToday)) {
-      final e = ctx.upcomingEvents.firstWhere((e) => e.type == _EventType.travel && e.isToday);
+    if (ctx.upcomingEvents.any(
+      (e) => e.type == _EventType.travel && e.isToday,
+    )) {
+      final e = ctx.upcomingEvents.firstWhere(
+        (e) => e.type == _EventType.travel && e.isToday,
+      );
       return _CardContent(
         title: AppLocalizations.t(context, 'prep_travel_title'),
         subtitle: AppLocalizations.t(context, 'prep_travel_subtitle'),
         cta: AppLocalizations.t(context, 'prep_travel_cta'),
         icon: Icons.flight_outlined,
-        prompt: 'Create a travel packing checklist and outfit plan for my trip today: "${e.title}".',
+        prompt:
+            'Create a travel packing checklist and outfit plan for my trip today: "${e.title}".',
       );
     }
 
@@ -4252,7 +4605,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
         subtitle: AppLocalizations.t(context, 'prep_sunday_subtitle'),
         cta: AppLocalizations.t(context, 'prep_sunday_cta'),
         icon: Icons.event_available_outlined,
-        prompt: 'Help me do a complete Sunday prep: weekly meal plan, outfit planning, and goal setting.',
+        prompt:
+            'Help me do a complete Sunday prep: weekly meal plan, outfit planning, and goal setting.',
       );
     }
 
@@ -4274,7 +4628,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
         subtitle: AppLocalizations.t(context, 'prep_meal_subtitle'),
         cta: AppLocalizations.t(context, 'prep_meal_cta'),
         icon: Icons.restaurant_outlined,
-        prompt: 'I haven\'t met my calorie goal today. Suggest healthy meals I can prepare now.',
+        prompt:
+            'I haven\'t met my calorie goal today. Suggest healthy meals I can prepare now.',
       );
     }
 
@@ -4287,7 +4642,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
         subtitle: AppLocalizations.t(context, 'prep_workout_subtitle'),
         cta: AppLocalizations.t(context, 'prep_workout_cta'),
         icon: Icons.fitness_center_outlined,
-        prompt: 'Plan my ${fit.nextWorkoutLabel} workout: exercises, sets, nutrition, and gear.',
+        prompt:
+            'Plan my ${fit.nextWorkoutLabel} workout: exercises, sets, nutrition, and gear.',
       );
     }
 
@@ -4384,24 +4740,24 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // 🆕 Picks localized
     final picks = [
       (
-      AppLocalizations.t(context, 'pick_minimal_chic'),
-      AppLocalizations.t(context, 'pick_minimal_chic_tag'),
-      'https://images.unsplash.com/photo-1594938298603-c8148c4b9c2b?w=220&h=260&fit=crop&crop=top&auto=format',
+        AppLocalizations.t(context, 'pick_minimal_chic'),
+        AppLocalizations.t(context, 'pick_minimal_chic_tag'),
+        'https://images.unsplash.com/photo-1594938298603-c8148c4b9c2b?w=220&h=260&fit=crop&crop=top&auto=format',
       ),
       (
-      AppLocalizations.t(context, 'pick_street_edit'),
-      AppLocalizations.t(context, 'pick_street_edit_tag'),
-      'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=220&h=260&fit=crop&crop=top&auto=format',
+        AppLocalizations.t(context, 'pick_street_edit'),
+        AppLocalizations.t(context, 'pick_street_edit_tag'),
+        'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=220&h=260&fit=crop&crop=top&auto=format',
       ),
       (
-      AppLocalizations.t(context, 'pick_office_look'),
-      AppLocalizations.t(context, 'pick_office_look_tag'),
-      'https://images.unsplash.com/photo-1591369822096-ffd140ec948f?w=220&h=260&fit=crop&crop=top&auto=format',
+        AppLocalizations.t(context, 'pick_office_look'),
+        AppLocalizations.t(context, 'pick_office_look_tag'),
+        'https://images.unsplash.com/photo-1591369822096-ffd140ec948f?w=220&h=260&fit=crop&crop=top&auto=format',
       ),
       (
-      AppLocalizations.t(context, 'pick_evening'),
-      AppLocalizations.t(context, 'pick_evening_tag'),
-      'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=220&h=260&fit=crop&crop=top&auto=format',
+        AppLocalizations.t(context, 'pick_evening'),
+        AppLocalizations.t(context, 'pick_evening_tag'),
+        'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=220&h=260&fit=crop&crop=top&auto=format',
       ),
     ];
     final screenW = MediaQuery.of(context).size.width;
@@ -4478,8 +4834,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                       fit: BoxFit.cover,
                       alignment: Alignment.topCenter,
                       cacheWidth:
-                      (112 * MediaQuery.of(context).devicePixelRatio)
-                          .round(),
+                          (112 * MediaQuery.of(context).devicePixelRatio)
+                              .round(),
                       filterQuality: FilterQuality.low,
                       errorBuilder: (_ctx, _err, _st) => Container(
                         color: _accent.withOpacity(0.1),
@@ -4551,17 +4907,12 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                 shape: BoxShape.circle,
                 color: liked ? _accent.withOpacity(0.20) : _shadowStrong,
                 border: liked
-                    ? Border.all(
-                  color: _accent.withOpacity(0.50),
-                  width: 1,
-                )
+                    ? Border.all(color: _accent.withOpacity(0.50), width: 1)
                     : null,
               ),
               child: Icon(
                 liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                color: liked
-                    ? _accentSecondary
-                    : _textHeading.withOpacity(0.7),
+                color: liked ? _accentSecondary : _textHeading.withOpacity(0.7),
                 size: 12,
               ),
             ),
@@ -4596,7 +4947,8 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       themeTokens: _t,
       onVisualSearch: () => _showComingSoon(),
       onFindSimilar: () => _showComingSoon(),
-      onAddToWardrobe: null, // uses showAddToWardrobeModal default in lens sheet
+      onAddToWardrobe:
+          null, // uses showAddToWardrobeModal default in lens sheet
     );
   }
 
@@ -4604,13 +4956,29 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   Widget _buildPlusMenu() {
     final safeBottom = MediaQuery.of(context).padding.bottom;
     // Position it just above the chat bar
-    final menuBottom = safeBottom + 86.0 + 60.0 + 8.0;  // 60px prompt bar height
+    final menuBottom = safeBottom + 86.0 + 60.0 + 8.0; // 60px prompt bar height
 
     final menuItems = [
-      (Icons.camera_alt_outlined,       AppLocalizations.t(context, 'plus_menu_camera'),   AppLocalizations.t(context, 'plus_menu_camera_sub')),
-      (Icons.photo_library_outlined,    AppLocalizations.t(context, 'plus_menu_gallery'),  AppLocalizations.t(context, 'plus_menu_gallery_sub')),
-      (Icons.insert_drive_file_outlined, AppLocalizations.t(context, 'plus_menu_files'),    AppLocalizations.t(context, 'plus_menu_files_sub')),
-      (Icons.browse_gallery_outlined,   AppLocalizations.t(context, 'plus_menu_browse'),   AppLocalizations.t(context, 'plus_menu_browse_sub')),
+      (
+        Icons.camera_alt_outlined,
+        AppLocalizations.t(context, 'plus_menu_camera'),
+        AppLocalizations.t(context, 'plus_menu_camera_sub'),
+      ),
+      (
+        Icons.photo_library_outlined,
+        AppLocalizations.t(context, 'plus_menu_gallery'),
+        AppLocalizations.t(context, 'plus_menu_gallery_sub'),
+      ),
+      (
+        Icons.insert_drive_file_outlined,
+        AppLocalizations.t(context, 'plus_menu_files'),
+        AppLocalizations.t(context, 'plus_menu_files_sub'),
+      ),
+      (
+        Icons.browse_gallery_outlined,
+        AppLocalizations.t(context, 'plus_menu_browse'),
+        AppLocalizations.t(context, 'plus_menu_browse_sub'),
+      ),
     ];
 
     return Positioned.fill(
@@ -4699,11 +5067,12 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     final screenH = MediaQuery.of(context).size.height;
     final screenW = MediaQuery.of(context).size.width;
     final isTablet = screenW >= 600;
-    const double pillH = 64.0;        // ✏️ Increased from 50.0 — taller nav bar, icons less cramped
-    const double maxBulge = 14.0;     // ✏️ Increased from 8.0
-    const double totalH = pillH + maxBulge + 0.0;  // totalH = 78px (was 58px)
-    const double iconContainerSize = 32.0;  // ✏️ Reduced from 36.0
-    const double iconSize = 16.0;     // ✏️ Reduced from 18.0
+    const double pillH =
+        64.0; // ✏️ Increased from 50.0 — taller nav bar, icons less cramped
+    const double maxBulge = 14.0; // ✏️ Increased from 8.0
+    const double totalH = pillH + maxBulge + 0.0; // totalH = 78px (was 58px)
+    const double iconContainerSize = 32.0; // ✏️ Reduced from 36.0
+    const double iconSize = 16.0; // ✏️ Reduced from 18.0
 
     // On tablet, constrain nav to a max width and center it
     final navMaxW = isTablet ? 480.0 : double.infinity;
@@ -4768,20 +5137,24 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                     height: iconContainerSize,
                                     decoration: active
                                         ? BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      gradient: _accentGradient2,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: _accent.withOpacity(0.45),
-                                          blurRadius: 16,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                        BoxShadow(
-                                          color: _accent.withOpacity(0.25),
-                                          blurRadius: 28,
-                                        ),
-                                      ],
-                                    )
+                                            shape: BoxShape.circle,
+                                            gradient: _accentGradient2,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: _accent.withOpacity(
+                                                  0.45,
+                                                ),
+                                                blurRadius: 16,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                              BoxShadow(
+                                                color: _accent.withOpacity(
+                                                  0.25,
+                                                ),
+                                                blurRadius: 28,
+                                              ),
+                                            ],
+                                          )
                                         : null,
                                     child: Icon(
                                       items[i].icon,
@@ -4803,7 +5176,12 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                       letterSpacing: -0.01,
                                     ),
                                     // 🆕 label localized
-                                    child: Text(AppLocalizations.t(context, navLabelKeys[i])),
+                                    child: Text(
+                                      AppLocalizations.t(
+                                        context,
+                                        navLabelKeys[i],
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -4921,7 +5299,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
             ),
             const SizedBox(height: 8),
             ..._overlaySuggestions.map(
-                  (q) => _AnimatedPressable(
+              (q) => _AnimatedPressable(
                 scalePressed: 0.97,
                 // 🆕 q ఇప్పుడు key — translate చేసి API కి పంపుతున్నాం
                 onTap: () => _handleQuery(
@@ -5037,9 +5415,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                     decoration: BoxDecoration(
                       color: _surface.withOpacity(0.90),
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: _accent.withOpacity(0.20),
-                      ),
+                      border: Border.all(color: _accent.withOpacity(0.20)),
                       boxShadow: [
                         BoxShadow(
                           color: _accent.withOpacity(0.10),
@@ -5085,7 +5461,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
         Align(
           alignment: Alignment.centerRight,
           child: Container(
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.72,
+            ),
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
             decoration: BoxDecoration(
@@ -5182,38 +5560,39 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                   children: _responseTags
                       .map(
                         (tag) => _AnimatedPressable(
-                      scalePressed: 0.96,
-                      liftY: -1.5,
-                      // 🆕 tag key translate చేసి submit చేస్తున్నాం
-                      onTap: () => _submitQuery(AppLocalizations.t(context, tag)),
-                      child: Container(
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width - 60,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 13,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _accent.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(100),
-                          border: Border.all(
-                            color: _accent.withOpacity(0.20),
+                          scalePressed: 0.96,
+                          liftY: -1.5,
+                          // 🆕 tag key translate చేసి submit చేస్తున్నాం
+                          onTap: () =>
+                              _submitQuery(AppLocalizations.t(context, tag)),
+                          child: Container(
+                            constraints: BoxConstraints(
+                              maxWidth: MediaQuery.of(context).size.width - 60,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 13,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _accent.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(100),
+                              border: Border.all(
+                                color: _accent.withOpacity(0.20),
+                              ),
+                            ),
+                            child: Text(
+                              AppLocalizations.t(context, tag), // 🆕 translated
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: _accent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ),
                         ),
-                        child: Text(
-                          AppLocalizations.t(context, tag), // 🆕 translated
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: _accent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
+                      )
                       .toList(),
                 ),
               ),
@@ -5229,8 +5608,14 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     final isDark = Theme.of(context).brightness == Brightness.dark;
     switch (resp.type) {
       case 'outfits':
-        final outfitCardW = (MediaQuery.of(context).size.width * 0.22).clamp(76.0, 96.0);
-        final outfitStripH = (MediaQuery.of(context).size.height * 0.185).clamp(138.0, 168.0);
+        final outfitCardW = (MediaQuery.of(context).size.width * 0.22).clamp(
+          76.0,
+          96.0,
+        );
+        final outfitStripH = (MediaQuery.of(context).size.height * 0.185).clamp(
+          138.0,
+          168.0,
+        );
         return SizedBox(
           height: outfitStripH,
           child: ListView.separated(
@@ -5257,11 +5642,14 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                         fit: BoxFit.cover,
                         width: double.infinity,
                         cacheWidth:
-                        (outfitCardW * MediaQuery.of(context).devicePixelRatio)
-                            .round(),
+                            (outfitCardW *
+                                    MediaQuery.of(context).devicePixelRatio)
+                                .round(),
                         cacheHeight:
-                        (outfitStripH * 0.62 * MediaQuery.of(context).devicePixelRatio)
-                            .round(),
+                            (outfitStripH *
+                                    0.62 *
+                                    MediaQuery.of(context).devicePixelRatio)
+                                .round(),
                         filterQuality: FilterQuality.low,
                         errorBuilder: (_ctx, _err, _st) =>
                             Container(color: _accent.withOpacity(0.1)),
@@ -5287,29 +5675,29 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                             children: o.tags
                                 .map(
                                   (t) => Container(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 70,
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                  vertical: 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _accent.withOpacity(0.10),
-                                  borderRadius: BorderRadius.circular(100),
-                                ),
-                                child: Text(
-                                  t,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: _textMuted,
-                                    fontSize: 8.5,
-                                    fontWeight: FontWeight.w500,
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 70,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5,
+                                      vertical: 1,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _accent.withOpacity(0.10),
+                                      borderRadius: BorderRadius.circular(100),
+                                    ),
+                                    child: Text(
+                                      t,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: _textMuted,
+                                        fontSize: 8.5,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            )
+                                )
                                 .toList(),
                           ),
                         ],
@@ -5416,7 +5804,9 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
             final aspectRatio = constraints.maxWidth < 360 ? 0.55 : 0.52;
 
             final rows = ((itemCount / crossAxisCount).ceil()).clamp(1, 6);
-            final cellWidth = (constraints.maxWidth - ((crossAxisCount - 1) * cellSpacing)) / crossAxisCount;
+            final cellWidth =
+                (constraints.maxWidth - ((crossAxisCount - 1) * cellSpacing)) /
+                crossAxisCount;
             final cellHeight = cellWidth / aspectRatio;
             final gridHeight = (rows * cellHeight) + ((rows - 1) * cellSpacing);
 
@@ -5464,7 +5854,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                         ),
                         Text(
                           d.label.split(' ').last,
-                          style: TextStyle(fontSize: dateLabelSize, color: _textMuted),
+                          style: TextStyle(
+                            fontSize: dateLabelSize,
+                            color: _textMuted,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 3),
@@ -5472,26 +5865,26 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                             .take(2)
                             .map(
                               (it) => Container(
-                            margin: const EdgeInsets.only(bottom: 2),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 2,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _accent.withOpacity(0.07),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Text(
-                              it,
-                              style: TextStyle(
-                                fontSize: itemTextSize,
-                                color: _textSub,
+                                margin: const EdgeInsets.only(bottom: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 2,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _accent.withOpacity(0.07),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: Text(
+                                  it,
+                                  style: TextStyle(
+                                    fontSize: itemTextSize,
+                                    color: _textSub,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
                             ),
-                          ),
-                        ),
                       ],
                     ),
                   );
@@ -5524,7 +5917,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                   ),
                   const SizedBox(height: 6),
                   ...s.items.map(
-                        (it) => Padding(
+                    (it) => Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Text(
                         it,
@@ -5555,40 +5948,40 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   Widget _buildPrepareExactChecklistCard(String title) {
     final sections = [
       (
-      name: AppLocalizations.t(context, 'checklist_section_documents'),
-      emoji: '📄',
-      color: _accentTertiary,
-      items: [
-        AppLocalizations.t(context, 'checklist_item_passport'),
-        AppLocalizations.t(context, 'checklist_item_boarding_pass'),
-        AppLocalizations.t(context, 'checklist_item_travel_insurance'),
-        AppLocalizations.t(context, 'checklist_item_hotel_confirmation'),
-        AppLocalizations.t(context, 'checklist_item_visa'),
-      ],
+        name: AppLocalizations.t(context, 'checklist_section_documents'),
+        emoji: '📄',
+        color: _accentTertiary,
+        items: [
+          AppLocalizations.t(context, 'checklist_item_passport'),
+          AppLocalizations.t(context, 'checklist_item_boarding_pass'),
+          AppLocalizations.t(context, 'checklist_item_travel_insurance'),
+          AppLocalizations.t(context, 'checklist_item_hotel_confirmation'),
+          AppLocalizations.t(context, 'checklist_item_visa'),
+        ],
       ),
       (
-      name: AppLocalizations.t(context, 'checklist_section_tech'),
-      emoji: '🔌',
-      color: _accentSecondary,
-      items: [
-        AppLocalizations.t(context, 'checklist_item_phone_charger'),
-        AppLocalizations.t(context, 'checklist_item_power_bank'),
-        AppLocalizations.t(context, 'checklist_item_headphones'),
-        AppLocalizations.t(context, 'checklist_item_laptop'),
-        AppLocalizations.t(context, 'checklist_item_adapter'),
-      ],
+        name: AppLocalizations.t(context, 'checklist_section_tech'),
+        emoji: '🔌',
+        color: _accentSecondary,
+        items: [
+          AppLocalizations.t(context, 'checklist_item_phone_charger'),
+          AppLocalizations.t(context, 'checklist_item_power_bank'),
+          AppLocalizations.t(context, 'checklist_item_headphones'),
+          AppLocalizations.t(context, 'checklist_item_laptop'),
+          AppLocalizations.t(context, 'checklist_item_adapter'),
+        ],
       ),
       (
-      name: AppLocalizations.t(context, 'checklist_section_comfort'),
-      emoji: '😴',
-      color: _accent,
-      items: [
-        AppLocalizations.t(context, 'checklist_item_neck_pillow'),
-        AppLocalizations.t(context, 'checklist_item_eye_mask'),
-        AppLocalizations.t(context, 'checklist_item_earplugs'),
-        AppLocalizations.t(context, 'checklist_item_jacket'),
-        AppLocalizations.t(context, 'checklist_item_compression_socks'),
-      ],
+        name: AppLocalizations.t(context, 'checklist_section_comfort'),
+        emoji: '😴',
+        color: _accent,
+        items: [
+          AppLocalizations.t(context, 'checklist_item_neck_pillow'),
+          AppLocalizations.t(context, 'checklist_item_eye_mask'),
+          AppLocalizations.t(context, 'checklist_item_earplugs'),
+          AppLocalizations.t(context, 'checklist_item_jacket'),
+          AppLocalizations.t(context, 'checklist_item_compression_socks'),
+        ],
       ),
     ];
     const sectionImages = [
@@ -5614,23 +6007,23 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
     final itemsState = _prepareExactItemsByTitle.putIfAbsent(
       title,
-          () => sections.map((s) => List<String>.from(s.items)).toList(),
+      () => sections.map((s) => List<String>.from(s.items)).toList(),
     );
     final addCtrls = _prepareExactAddControllersByTitle.putIfAbsent(
       title,
-          () => List.generate(sections.length, (_) => TextEditingController()),
+      () => List.generate(sections.length, (_) => TextEditingController()),
     );
     final checksState = _prepareExactChecksByTitle.putIfAbsent(
       title,
-          () => itemsState
+      () => itemsState
           .map(
             (items) => List<bool>.filled(items.length, false, growable: true),
-      )
+          )
           .toList(),
     );
     final outfitSaved = _prepareExactOutfitSavedByTitle.putIfAbsent(
       title,
-          () => List<bool>.filled(3, false, growable: true),
+      () => List<bool>.filled(3, false, growable: true),
     );
     final isListSaved = _prepareExactSavedByTitle[title] ?? false;
 
@@ -5653,11 +6046,11 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       builder: (context, checklistSetState) {
         final totalItems = itemsState.fold<int>(
           0,
-              (sum, items) => sum + items.length,
+          (sum, items) => sum + items.length,
         );
         final totalChecked = checksState.fold<int>(
           0,
-              (sum, items) => sum + items.where((v) => v).length,
+          (sum, items) => sum + items.where((v) => v).length,
         );
         final progress = totalItems == 0 ? 0.0 : totalChecked / totalItems;
 
@@ -5790,7 +6183,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                 return Padding(
                                   padding: EdgeInsets.only(
                                     right:
-                                    imgIdx == sectionImages[sIdx].length - 1
+                                        imgIdx == sectionImages[sIdx].length - 1
                                         ? 0
                                         : 8,
                                   ),
@@ -5805,15 +6198,16 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                       fit: BoxFit.cover,
                                       cacheWidth: 264,
                                       cacheHeight: 192,
-                                      errorBuilder: (_ctx, _err, _st) => Container(
-                                        color: _panel,
-                                        alignment: Alignment.center,
-                                        child: Icon(
-                                          Icons.image_outlined,
-                                          size: 16,
-                                          color: _textMuted,
-                                        ),
-                                      ),
+                                      errorBuilder: (_ctx, _err, _st) =>
+                                          Container(
+                                            color: _panel,
+                                            alignment: Alignment.center,
+                                            child: Icon(
+                                              Icons.image_outlined,
+                                              size: 16,
+                                              color: _textMuted,
+                                            ),
+                                          ),
                                     ),
                                   ),
                                 );
@@ -5825,7 +6219,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                             final done = checksState[sIdx][i];
                             return GestureDetector(
                               onTap: () => checklistSetState(
-                                    () => checksState[sIdx][i] = !done,
+                                () => checksState[sIdx][i] = !done,
                               ),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
@@ -5834,12 +6228,11 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                 decoration: BoxDecoration(
                                   border: i < itemsState[sIdx].length - 1
                                       ? Border(
-                                    bottom: BorderSide(
-                                      color: _border.withOpacity(0.85,
-                                      ),
-                                      width: 1,
-                                    ),
-                                  )
+                                          bottom: BorderSide(
+                                            color: _border.withOpacity(0.85),
+                                            width: 1,
+                                          ),
+                                        )
                                       : null,
                                 ),
                                 child: Row(
@@ -5861,10 +6254,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                       alignment: Alignment.center,
                                       child: done
                                           ? const Icon(
-                                        Icons.check,
-                                        size: 11,
-                                        color: Colors.white,
-                                      )
+                                              Icons.check,
+                                              size: 11,
+                                              color: Colors.white,
+                                            )
                                           : null,
                                     ),
                                     const SizedBox(width: 10),
@@ -5930,7 +6323,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                       color: _textHeading,
                                     ),
                                     decoration: InputDecoration(
-                                      hintText: AppLocalizations.t(context, 'checklist_add_item'),
+                                      hintText: AppLocalizations.t(
+                                        context,
+                                        'checklist_add_item',
+                                      ),
                                       hintStyle: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
@@ -6038,7 +6434,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                AppLocalizations.t(context, 'board_save_subtitle'),
+                                AppLocalizations.t(
+                                  context,
+                                  'board_save_subtitle',
+                                ),
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -6046,84 +6445,85 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                 ),
                               ),
                               const SizedBox(height: 16),
-                              ...boards.asMap().entries.map(
-                                    (entry) {
-                                  final i = entry.key;
-                                  final label = entry.value;
-                                  return GestureDetector(
-                                    onTap: () async {
-                                      final boardId = _boardIdByLabel[label];
-                                      if (boardId == null) {
-                                        Navigator.pop(context);
-                                        return;
-                                      }
+                              ...boards.asMap().entries.map((entry) {
+                                final i = entry.key;
+                                final label = entry.value;
+                                return GestureDetector(
+                                  onTap: () async {
+                                    final boardId = _boardIdByLabel[label];
+                                    if (boardId == null) {
                                       Navigator.pop(context);
-                                      await _savePrepareExactToBoard(
-                                        boardId: boardId,
-                                        title: title,
-                                        sections: sections,
-                                        itemsState: itemsState,
-                                        checksState: checksState,
-                                        outfitSaved: outfitSaved,
-                                      );
-                                      if (!mounted) return;
-                                      checklistSetState(
-                                            () => _prepareExactSavedByTitle[title] =
-                                        true,
-                                      );
-                                    },
-                                    child: Container(
-                                      margin: const EdgeInsets.only(bottom: 8),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 12,
+                                      return;
+                                    }
+                                    Navigator.pop(context);
+                                    await _savePrepareExactToBoard(
+                                      boardId: boardId,
+                                      title: title,
+                                      sections: sections,
+                                      itemsState: itemsState,
+                                      checksState: checksState,
+                                      outfitSaved: outfitSaved,
+                                    );
+                                    if (!mounted) return;
+                                    checklistSetState(
+                                      () => _prepareExactSavedByTitle[title] =
+                                          true,
+                                    );
+                                  },
+                                  child: Container(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _panel,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: _border,
+                                        width: 1.5,
                                       ),
-                                      decoration: BoxDecoration(
-                                        color: _panel,
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: _border,
-                                          width: 1.5,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            label,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w800,
+                                              color: _textHeading,
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
+                                        if (i == 3) // Vacation board (index 3)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: _accentSecondary,
+                                              borderRadius:
+                                                  BorderRadius.circular(99),
+                                            ),
                                             child: Text(
-                                              label,
+                                              AppLocalizations.t(
+                                                context,
+                                                'board_suggested_badge',
+                                              ),
                                               style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w800,
-                                                color: _textHeading,
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w900,
+                                                color: Colors.white,
                                               ),
                                             ),
                                           ),
-                                          if (i == 3) // Vacation board (index 3)
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 3,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: _accentSecondary,
-                                                borderRadius:
-                                                BorderRadius.circular(99),
-                                              ),
-                                              child: Text(
-                                                AppLocalizations.t(context, 'board_suggested_badge'),
-                                                style: TextStyle(
-                                                  fontSize: 9,
-                                                  fontWeight: FontWeight.w900,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
+                                      ],
                                     ),
-                                  );
-                                },
-                              ).toList(),
+                                  ),
+                                );
+                              }).toList(),
                             ],
                           ),
                         ),
@@ -6135,14 +6535,12 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       decoration: BoxDecoration(
                         gradient: isListSaved
-                            ? LinearGradient(
-                          colors: [_accent, _accentTertiary],
-                        )
+                            ? LinearGradient(colors: [_accent, _accentTertiary])
                             : LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [_accent, _accentTertiary],
-                        ),
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [_accent, _accentTertiary],
+                              ),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
@@ -6154,7 +6552,12 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            isListSaved ? AppLocalizations.t(context, 'checklist_saved') : AppLocalizations.t(context, 'checklist_save_to_board'),
+                            isListSaved
+                                ? AppLocalizations.t(context, 'checklist_saved')
+                                : AppLocalizations.t(
+                                    context,
+                                    'checklist_save_to_board',
+                                  ),
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
@@ -6196,10 +6599,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(24),
               ),
-              border: Border.all(
-                color: _accent.withOpacity(0.12),
-                width: 1,
-              ),
+              border: Border.all(color: _accent.withOpacity(0.12), width: 1),
               boxShadow: [
                 BoxShadow(
                   color: _accent.withOpacity(0.15),
@@ -6266,7 +6666,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                           ),
                           child: Center(
                             child: Text(
-                              AppLocalizations.t(context, 'pick_sheet_save_to_board'),
+                              AppLocalizations.t(
+                                context,
+                                'pick_sheet_save_to_board',
+                              ),
                               style: TextStyle(
                                 color: _accent,
                                 fontSize: 13,
@@ -6296,7 +6699,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                           ),
                           child: Center(
                             child: Text(
-                              AppLocalizations.t(context, 'pick_sheet_style_this'),
+                              AppLocalizations.t(
+                                context,
+                                'pick_sheet_style_this',
+                              ),
                               style: TextStyle(
                                 color: _onAccent,
                                 fontSize: 13,
@@ -6321,34 +6727,34 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
     // 🆕 seeAll picks localized
     final seeAllPicks = [
       (
-      AppLocalizations.t(context, 'pick_minimal_chic'),
-      AppLocalizations.t(context, 'pick_minimal_chic_tag'),
-      'https://images.unsplash.com/photo-1594938298603-c8148c4b9c2b?w=300&h=280&fit=crop&crop=top&auto=format',
+        AppLocalizations.t(context, 'pick_minimal_chic'),
+        AppLocalizations.t(context, 'pick_minimal_chic_tag'),
+        'https://images.unsplash.com/photo-1594938298603-c8148c4b9c2b?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
       (
-      AppLocalizations.t(context, 'pick_street_edit'),
-      AppLocalizations.t(context, 'pick_street_edit_tag'),
-      'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=300&h=280&fit=crop&crop=top&auto=format',
+        AppLocalizations.t(context, 'pick_street_edit'),
+        AppLocalizations.t(context, 'pick_street_edit_tag'),
+        'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
       (
-      AppLocalizations.t(context, 'pick_office_look'),
-      AppLocalizations.t(context, 'pick_office_look_tag'),
-      'https://images.unsplash.com/photo-1591369822096-ffd140ec948f?w=300&h=280&fit=crop&crop=top&auto=format',
+        AppLocalizations.t(context, 'pick_office_look'),
+        AppLocalizations.t(context, 'pick_office_look_tag'),
+        'https://images.unsplash.com/photo-1591369822096-ffd140ec948f?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
       (
-      AppLocalizations.t(context, 'pick_evening'),
-      AppLocalizations.t(context, 'pick_evening_tag'),
-      'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=300&h=280&fit=crop&crop=top&auto=format',
+        AppLocalizations.t(context, 'pick_evening'),
+        AppLocalizations.t(context, 'pick_evening_tag'),
+        'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
       (
-      AppLocalizations.t(context, 'pick_athleisure'),
-      AppLocalizations.t(context, 'pick_athleisure_tag'),
-      'https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=300&h=280&fit=crop&crop=top&auto=format',
+        AppLocalizations.t(context, 'pick_athleisure'),
+        AppLocalizations.t(context, 'pick_athleisure_tag'),
+        'https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
       (
-      AppLocalizations.t(context, 'pick_resort_wear'),
-      AppLocalizations.t(context, 'pick_resort_wear_tag'),
-      'https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=300&h=280&fit=crop&crop=top&auto=format',
+        AppLocalizations.t(context, 'pick_resort_wear'),
+        AppLocalizations.t(context, 'pick_resort_wear_tag'),
+        'https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
     ];
     return AnimatedBuilder(
@@ -6388,7 +6794,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          AppLocalizations.t(context, 'picks_section_title'), // 🆕
+                          AppLocalizations.t(
+                            context,
+                            'picks_section_title',
+                          ), // 🆕
                           style: TextStyle(
                             color: _textHeading,
                             fontSize: 24,
@@ -6403,12 +6812,12 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                   child: GridView.builder(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                     gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 0.75,
-                    ),
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 0.75,
+                        ),
                     itemCount: seeAllPicks.length,
                     itemBuilder: (context, i) {
                       return RepaintBoundary(
@@ -6418,7 +6827,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                             _closeSeeAll();
                             Future.delayed(
                               const Duration(milliseconds: 380),
-                                  () {
+                              () {
                                 if (mounted) {
                                   _openPickSheet(
                                     seeAllPicks[i].$1,
@@ -6444,19 +6853,20 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                     fit: BoxFit.cover,
                                     width: double.infinity,
                                     cacheWidth:
-                                    (240 *
-                                        MediaQuery.of(
-                                          context,
-                                        ).devicePixelRatio)
-                                        .round(),
+                                        (240 *
+                                                MediaQuery.of(
+                                                  context,
+                                                ).devicePixelRatio)
+                                            .round(),
                                     filterQuality: FilterQuality.low,
-                                    errorBuilder: (_ctx, _err, _st) => Container(
-                                      color: _accent.withOpacity(0.1),
-                                      child: Icon(
-                                        Icons.image,
-                                        color: _textMuted,
-                                      ),
-                                    ),
+                                    errorBuilder: (_ctx, _err, _st) =>
+                                        Container(
+                                          color: _accent.withOpacity(0.1),
+                                          child: Icon(
+                                            Icons.image,
+                                            color: _textMuted,
+                                          ),
+                                        ),
                                   ),
                                 ),
                                 Padding(
@@ -6468,7 +6878,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                   ),
                                   child: Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         seeAllPicks[i].$1,
@@ -6505,6 +6915,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       },
     );
   }
+
   // ── Notifications Panel ──────────────────────────────────────────────────
   Widget _buildNotificationPanel() {
     final screenH = MediaQuery.of(context).size.height;
@@ -6542,9 +6953,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                 duration: const Duration(milliseconds: 280),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                  child: Container(
-                    color: Colors.black.withOpacity(0.35),
-                  ),
+                  child: Container(color: Colors.black.withOpacity(0.35)),
                 ),
               ),
             ),
@@ -6620,9 +7029,13 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                               child: Row(
                                 children: [
                                   ShaderMask(
-                                    shaderCallback: (b) => _accentGradient.createShader(b),
+                                    shaderCallback: (b) =>
+                                        _accentGradient.createShader(b),
                                     child: Text(
-                                      AppLocalizations.t(context, 'notifications_title'),
+                                      AppLocalizations.t(
+                                        context,
+                                        'notifications_title',
+                                      ),
                                       style: TextStyle(
                                         color: _textHeading,
                                         fontSize: 18,
@@ -6633,14 +7046,17 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                                   ),
                                   const Spacer(),
                                   GestureDetector(
-                                    onTap: () => setState(() => _notifPanelOpen = false),
+                                    onTap: () =>
+                                        setState(() => _notifPanelOpen = false),
                                     child: Container(
                                       width: 30,
                                       height: 30,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         color: _bgSecondary,
-                                        border: Border.all(color: _border.withOpacity(0.5)),
+                                        border: Border.all(
+                                          color: _border.withOpacity(0.5),
+                                        ),
                                       ),
                                       child: Icon(
                                         Icons.close_rounded,
@@ -6653,143 +7069,191 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
                               ),
                             ),
 
-                            Divider(height: 1, thickness: 1, color: _border.withOpacity(0.4)),
+                            Divider(
+                              height: 1,
+                              thickness: 1,
+                              color: _border.withOpacity(0.4),
+                            ),
 
                             // List or empty state
                             Expanded(
                               child: notifications.isEmpty
                                   ? Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    width: 64,
-                                    height: 64,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: _accent.withOpacity(0.08),
-                                    ),
-                                    child: Icon(
-                                      Icons.notifications_none_rounded,
-                                      size: 30,
-                                      color: _accent.withOpacity(0.5),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Text(
-                                    AppLocalizations.t(context, 'notifications_empty_title'),
-                                    style: TextStyle(
-                                      color: _textHeading,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: -0.2,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    AppLocalizations.t(context, 'notifications_empty_subtitle'),
-                                    style: TextStyle(
-                                      color: _textMuted,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ],
-                              )
-                                  : ListView.separated(
-                                padding: EdgeInsets.only(top: 4, bottom: bottomPad + 16),
-                                itemCount: notifications.length,
-                                separatorBuilder: (_, __) => Divider(
-                                  height: 1,
-                                  thickness: 1,
-                                  indent: 66,
-                                  endIndent: 16,
-                                  color: _border.withOpacity(0.35),
-                                ),
-                                itemBuilder: (context, i) {
-                                  final n = notifications[i];
-                                  return _AnimatedPressable(
-                                    scalePressed: 0.98,
-                                    onTap: () => setState(() => _notifPanelOpen = false),
-                                    child: Container(
-                                      color: n.unread ? _accent.withOpacity(0.04) : Colors.transparent,
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                      child: Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Container(
-                                            width: 38,
-                                            height: 38,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: n.color.withOpacity(0.14),
-                                            ),
-                                            child: Icon(n.icon, size: 18, color: n.color),
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Container(
+                                          width: 64,
+                                          height: 64,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: _accent.withOpacity(0.08),
                                           ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                          child: Icon(
+                                            Icons.notifications_none_rounded,
+                                            size: 30,
+                                            color: _accent.withOpacity(0.5),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 14),
+                                        Text(
+                                          AppLocalizations.t(
+                                            context,
+                                            'notifications_empty_title',
+                                          ),
+                                          style: TextStyle(
+                                            color: _textHeading,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            letterSpacing: -0.2,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          AppLocalizations.t(
+                                            context,
+                                            'notifications_empty_subtitle',
+                                          ),
+                                          style: TextStyle(
+                                            color: _textMuted,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : ListView.separated(
+                                      padding: EdgeInsets.only(
+                                        top: 4,
+                                        bottom: bottomPad + 16,
+                                      ),
+                                      itemCount: notifications.length,
+                                      separatorBuilder: (_, __) => Divider(
+                                        height: 1,
+                                        thickness: 1,
+                                        indent: 66,
+                                        endIndent: 16,
+                                        color: _border.withOpacity(0.35),
+                                      ),
+                                      itemBuilder: (context, i) {
+                                        final n = notifications[i];
+                                        return _AnimatedPressable(
+                                          scalePressed: 0.98,
+                                          onTap: () => setState(
+                                            () => _notifPanelOpen = false,
+                                          ),
+                                          child: Container(
+                                            color: n.unread
+                                                ? _accent.withOpacity(0.04)
+                                                : Colors.transparent,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 12,
+                                            ),
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: Text(
-                                                        n.title,
-                                                        style: TextStyle(
-                                                          color: _textHeading,
-                                                          fontSize: 13,
-                                                          fontWeight: n.unread ? FontWeight.w700 : FontWeight.w600,
-                                                          letterSpacing: -0.1,
-                                                          height: 1.2,
-                                                        ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
+                                                Container(
+                                                  width: 38,
+                                                  height: 38,
+                                                  decoration: BoxDecoration(
+                                                    shape: BoxShape.circle,
+                                                    color: n.color.withOpacity(
+                                                      0.14,
                                                     ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      n.time,
-                                                      style: TextStyle(
-                                                        color: _textMuted,
-                                                        fontSize: 10,
-                                                        fontWeight: FontWeight.w400,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 3),
-                                                Text(
-                                                  n.body,
-                                                  style: TextStyle(
-                                                    color: _textMuted,
-                                                    fontSize: 11.5,
-                                                    fontWeight: FontWeight.w400,
-                                                    height: 1.35,
                                                   ),
-                                                  maxLines: 2,
-                                                  overflow: TextOverflow.ellipsis,
+                                                  child: Icon(
+                                                    n.icon,
+                                                    size: 18,
+                                                    color: n.color,
+                                                  ),
                                                 ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Row(
+                                                        children: [
+                                                          Expanded(
+                                                            child: Text(
+                                                              n.title,
+                                                              style: TextStyle(
+                                                                color:
+                                                                    _textHeading,
+                                                                fontSize: 13,
+                                                                fontWeight:
+                                                                    n.unread
+                                                                    ? FontWeight
+                                                                          .w700
+                                                                    : FontWeight
+                                                                          .w600,
+                                                                letterSpacing:
+                                                                    -0.1,
+                                                                height: 1.2,
+                                                              ),
+                                                              maxLines: 1,
+                                                              overflow:
+                                                                  TextOverflow
+                                                                      .ellipsis,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 6,
+                                                          ),
+                                                          Text(
+                                                            n.time,
+                                                            style: TextStyle(
+                                                              color: _textMuted,
+                                                              fontSize: 10,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w400,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      const SizedBox(height: 3),
+                                                      Text(
+                                                        n.body,
+                                                        style: TextStyle(
+                                                          color: _textMuted,
+                                                          fontSize: 11.5,
+                                                          fontWeight:
+                                                              FontWeight.w400,
+                                                          height: 1.35,
+                                                        ),
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                if (n.unread) ...[
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    width: 7,
+                                                    height: 7,
+                                                    margin:
+                                                        const EdgeInsets.only(
+                                                          top: 5,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      shape: BoxShape.circle,
+                                                      color: _accent,
+                                                    ),
+                                                  ),
+                                                ],
                                               ],
                                             ),
                                           ),
-                                          if (n.unread) ...[
-                                            const SizedBox(width: 8),
-                                            Container(
-                                              width: 7,
-                                              height: 7,
-                                              margin: const EdgeInsets.only(top: 5),
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: _accent,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
+                                        );
+                                      },
                                     ),
-                                  );
-                                },
-                              ),
                             ),
                           ],
                         ),
@@ -6804,6 +7268,7 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
       ),
     );
   }
+
   Widget _buildComingSoonToast() {
     final screenH = MediaQuery.of(context).size.height;
     return Positioned(
@@ -6866,8 +7331,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   // aren't available yet, so nothing breaks in the meantime.
   String _getDailyWearDescription() {
     try {
-      final subtitle = Provider.of<HomeCardSummaryProvider>(context, listen: false)
-          .wearHomeSubtitle;
+      final subtitle = Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).wearHomeSubtitle;
       if (subtitle.isNotEmpty) return subtitle;
     } catch (_) {}
     // Fallback: generic Wardrobe data (until DailyWearScreen wires the provider up)
@@ -6882,8 +7349,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
   String _getDailyWearStatus() {
     try {
-      return Provider.of<HomeCardSummaryProvider>(context, listen: false)
-          .wearHomeStatus;
+      return Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).wearHomeStatus;
     } catch (_) {
       return _wardrobeSignal.daysSinceLastWorn == 0
           ? AppLocalizations.t(context, 'status_done')
@@ -6893,8 +7362,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
   bool _isDailyWearDone() {
     try {
-      return Provider.of<HomeCardSummaryProvider>(context, listen: false)
-          .isWearDone;
+      return Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).isWearDone;
     } catch (_) {
       return _wardrobeSignal.daysSinceLastWorn == 0;
     }
@@ -6902,18 +7373,35 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
   // ─── MOVE / WORKOUT ───
   String _getWorkoutDescription() {
+    try {
+      final sub = Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).moveHomeSubtitle;
+      if (sub.isNotEmpty) {
+        return sub.length > 20 ? '${sub.substring(0, 17)}...' : sub;
+      }
+    } catch (_) {}
     final workoutLabel = _workoutLabel;
     if (workoutLabel.isNotEmpty && workoutLabel != 'workout_mobility') {
       String displayLabel = workoutLabel.startsWith('workout_')
           ? AppLocalizations.t(context, workoutLabel)
           : workoutLabel;
-      return displayLabel.length > 20 ? '${displayLabel.substring(0, 17)}...' : displayLabel;
+      return displayLabel.length > 20
+          ? '${displayLabel.substring(0, 17)}...'
+          : displayLabel;
     }
-    return AppLocalizations.t(context, 'routine_move_desc');  // "7-min stretch"
+    return AppLocalizations.t(context, 'routine_move_desc'); // "7-min stretch"
   }
 
   String _getWorkoutStatus() {
-    // status_streak / status_start లేవు → existing keys వాడు
+    try {
+      final st = Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).moveHomeStatus;
+      if (st.isNotEmpty) return st;
+    } catch (_) {}
     return _fitnessSignal.hasActiveStreak
         ? AppLocalizations.t(context, 'status_in_progress')
         : AppLocalizations.t(context, 'status_in_progress');
@@ -6926,15 +7414,29 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
   // ─── EAT / MEAL PLAN ───
   String _getMealDescription() {
+    try {
+      final sub = Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).eatHomeSubtitle;
+      if (sub.isNotEmpty) {
+        return sub.length > 20 ? '${sub.substring(0, 17)}...' : sub;
+      }
+    } catch (_) {}
     if (_fitnessSignal.calorieGoalMet) {
       return AppLocalizations.t(context, 'home_card_eat_default');
     }
-    return _fitnessSignal.waterGlassesToday > 0
-        ? AppLocalizations.t(context, 'eat_meal_prep')   // hydrating → meal prep fallback
-        : AppLocalizations.t(context, 'eat_meal_prep');
+    return AppLocalizations.t(context, 'eat_meal_prep');
   }
 
   String _getMealStatus() {
+    try {
+      final st = Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).eatHomeStatus;
+      if (st.isNotEmpty) return st;
+    } catch (_) {}
     return _fitnessSignal.calorieGoalMet
         ? AppLocalizations.t(context, 'status_done')
         : AppLocalizations.t(context, 'status_in_progress');
@@ -6947,11 +7449,14 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   // ─── CARE / SKINCARE ───
   String _getSkincareDescription() {
     try {
-      return Provider.of<HomeCardSummaryProvider>(context, listen: false)
-          .skincareHomeSubtitle;
+      return Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).skincareHomeSubtitle;
     } catch (_) {
       final hour = DateTime.now().hour;
-      if (hour >= 6 && hour < 12) return AppLocalizations.t(context, 'skin_morning_routine');
+      if (hour >= 6 && hour < 12)
+        return AppLocalizations.t(context, 'skin_morning_routine');
       if (hour >= 19) return AppLocalizations.t(context, 'skin_night_routine');
       return AppLocalizations.t(context, 'care_routine');
     }
@@ -6959,8 +7464,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
   String _getSkincareStatus() {
     try {
-      return Provider.of<HomeCardSummaryProvider>(context, listen: false)
-          .skincareHomeStatus;
+      return Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).skincareHomeStatus;
     } catch (_) {
       final hour = DateTime.now().hour;
       return (hour >= 6 && hour < 12) || hour >= 19
@@ -6971,8 +7478,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
   bool _isSkincareDone() {
     try {
-      return Provider.of<HomeCardSummaryProvider>(context, listen: false)
-          .isSkincareDone;
+      return Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).isSkincareDone;
     } catch (_) {
       return false;
     }
@@ -6981,8 +7490,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
   // ─── MEDICINE / HEALTH ───
   String _getMedicineDescription() {
     try {
-      return Provider.of<HomeCardSummaryProvider>(context, listen: false)
-          .medicineHomeSubtitle;
+      return Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).medicineHomeSubtitle;
     } catch (_) {
       return AppLocalizations.t(context, 'medi_take_medicines');
     }
@@ -6990,8 +7501,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
   String _getMedicineStatus() {
     try {
-      return Provider.of<HomeCardSummaryProvider>(context, listen: false)
-          .medicineHomeStatus;
+      return Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).medicineHomeStatus;
     } catch (_) {
       return AppLocalizations.t(context, 'status_in_progress');
     }
@@ -6999,8 +7512,10 @@ class _Screen4State extends State<Screen4> with TickerProviderStateMixin, Widget
 
   bool _isMedicineDone() {
     try {
-      return Provider.of<HomeCardSummaryProvider>(context, listen: false)
-          .isMedicineDone;
+      return Provider.of<HomeCardSummaryProvider>(
+        context,
+        listen: false,
+      ).isMedicineDone;
     } catch (_) {
       return false;
     }
@@ -7084,11 +7599,7 @@ class _PlusMenuItemState extends State<_PlusMenuItem> {
                           width: 1,
                         ),
                       ),
-                      child: Icon(
-                        widget.icon,
-                        color: widget.accent,
-                        size: 18,
-                      ),
+                      child: Icon(widget.icon, color: widget.accent, size: 18),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -7220,11 +7731,11 @@ class _NavPillPainter extends CustomPainter {
   @override
   bool shouldRepaint(_NavPillPainter old) =>
       old.activeIdx != activeIdx ||
-          old.bulgeT != bulgeT ||
-          old.fillColor != fillColor ||
-          old.shadowColor != shadowColor ||
-          old.glowColor != glowColor ||
-          old.borderColor != borderColor;
+      old.bulgeT != bulgeT ||
+      old.fillColor != fillColor ||
+      old.shadowColor != shadowColor ||
+      old.glowColor != glowColor ||
+      old.borderColor != borderColor;
 }
 
 enum _OverlayState { idle, suggestions, thinking, response }
@@ -7293,12 +7804,12 @@ class _WeekDay {
   final List<String> items;
   final bool done, isToday;
   const _WeekDay(
-      this.day,
-      this.label,
-      this.items, {
-        this.done = false,
-        this.isToday = false,
-      });
+    this.day,
+    this.label,
+    this.items, {
+    this.done = false,
+    this.isToday = false,
+  });
 }
 
 class _PlanSection {
@@ -7312,13 +7823,13 @@ class _PlanSection {
 // Runtime లో AppLocalizations.t() తో translate అవుతాయి
 const _intentConfig = {
   'style': _IntentConfig(
-    suggestions: [
-      'intent_style_s1',
-      'intent_style_s2',
-      'intent_style_s3',
-    ],
+    suggestions: ['intent_style_s1', 'intent_style_s2', 'intent_style_s3'],
     brandSub: 'intent_style_sub',
-    responseTags: ['intent_style_tag1', 'intent_style_tag2', 'intent_style_tag3'],
+    responseTags: [
+      'intent_style_tag1',
+      'intent_style_tag2',
+      'intent_style_tag3',
+    ],
   ),
   'organize': _IntentConfig(
     suggestions: [
@@ -7341,14 +7852,14 @@ const _intentConfig = {
       'intent_prepare_s3',
     ],
     brandSub: 'intent_prepare_sub',
-    responseTags: ['intent_prepare_tag1', 'intent_prepare_tag2', 'intent_prepare_tag3'],
+    responseTags: [
+      'intent_prepare_tag1',
+      'intent_prepare_tag2',
+      'intent_prepare_tag3',
+    ],
   ),
   'chat': _IntentConfig(
-    suggestions: [
-      'intent_chat_s1',
-      'intent_chat_s2',
-      'intent_chat_s3',
-    ],
+    suggestions: ['intent_chat_s1', 'intent_chat_s2', 'intent_chat_s3'],
     brandSub: 'intent_chat_sub',
     responseTags: ['intent_chat_tag1', 'intent_chat_tag2', 'intent_chat_tag3'],
   ),
@@ -7364,10 +7875,10 @@ class _GradientText extends StatelessWidget {
   final FontWeight fontWeight;
 
   const _GradientText(
-      this.text, {
-        required this.fontSize,
-        required this.fontWeight,
-      });
+    this.text, {
+    required this.fontSize,
+    required this.fontWeight,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -7555,10 +8066,10 @@ class _PrepareQuickChipState extends State<_PrepareQuickChip> {
           decoration: BoxDecoration(
             gradient: _active
                 ? LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [widget.accent, widget.accentSecondary],
-            )
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [widget.accent, widget.accentSecondary],
+                  )
                 : null,
             color: _active
                 ? null
@@ -7658,6 +8169,7 @@ class _RoutineItem extends StatefulWidget {
   final Color textHeading;
   final Color textMuted;
   final VoidCallback onTap;
+
   /// Responsive scale factor (1.0 = baseline 360dp phone). Derived from the
   /// hero card's own width so rows stay readable on small screens and don't
   /// look tiny/oversized on large ones.
@@ -7725,7 +8237,11 @@ class _RoutineItemState extends State<_RoutineItem> {
                       shape: BoxShape.circle,
                     ),
                     child: Center(
-                      child: Icon(widget.icon, size: iconSize, color: widget.color),
+                      child: Icon(
+                        widget.icon,
+                        size: iconSize,
+                        color: widget.color,
+                      ),
                     ),
                   ),
                 ),
@@ -7775,8 +8291,7 @@ class _RoutineItemState extends State<_RoutineItem> {
                     child: Icon(
                       Icons.chevron_right_rounded,
                       size: chevronSize,
-                      color:
-                      widget.color.withOpacity(isActive ? 0.90 : 0.50),
+                      color: widget.color.withOpacity(isActive ? 0.90 : 0.50),
                     ),
                   ),
                 ),

@@ -173,6 +173,36 @@ void main() {
     expect(modalScaffold.resizeToAvoidBottomInset, isFalse);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('prepare context uses Prep presentation instead of Style', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _testApp(
+        rootObserver: _RecordingNavigatorObserver(),
+        nestedObserver: _RecordingNavigatorObserver(),
+        launcher: Builder(
+          builder: (context) => ElevatedButton(
+            key: const ValueKey('open-chat'),
+            onPressed: () => showAhviStylistChatSheet(
+              context,
+              moduleContext: ' Prepare ',
+            ),
+            child: const Text('Open chat'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('open-chat')));
+    await tester.pumpAndSettle();
+
+    final dynamic chat = tester.widget(_chatFinder);
+    expect(chat.moduleContext, 'prepare');
+    expect(find.text('Plan outfits for an event'), findsOneWidget);
+    expect(find.text('Wardrobe detox tips'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Finder get _chatFinder => find.byWidgetPredicate(

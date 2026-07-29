@@ -31,10 +31,18 @@ const _privateWearAliases = {
 // suppressing it to the empty "Regenerate look" placeholder. Mirrors the
 // backend fix in services/wardrobe_suitability.py:is_private_wear_item.
 const _garmentIdentityFields = <String>[
-  'name', 'label', 'title', 'garment_type', 'type',
-  'category', 'sub_category', 'subcategory',
-  'normalizedCategory', 'normalized_category',
-  'normalizedSubCategory', 'normalized_sub_category',
+  'name',
+  'label',
+  'title',
+  'garment_type',
+  'type',
+  'category',
+  'sub_category',
+  'subcategory',
+  'normalizedCategory',
+  'normalized_category',
+  'normalizedSubCategory',
+  'normalized_sub_category',
   'style_role',
 ];
 
@@ -370,49 +378,13 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// Returns the first valid transparent-PNG URL for a board item, or empty string.
-/// Priority: board_image_url → transparent_image_url → cutout_url (if ready)
-///   → image_url if board_status == cutout_ready.
-/// Never falls back to normalized/original opaque product images.
-String _selectTransparentUrl(Map<String, dynamic> m, {required String name}) {
-  for (final key in const <String>[
-    'board_image_url',
-    'boardImageUrl',
-    'transparent_image_url',
-    'transparentImageUrl',
-  ]) {
-    final v = m[key]?.toString().trim() ?? '';
-    if (v.isNotEmpty) return v;
-  }
-  final cutoutStatus =
-      (m['cutout_status'] ?? m['cutoutStatus'] ?? '').toString().toLowerCase().trim();
-  final cutoutUrl = (m['cutout_url'] ?? m['cutoutUrl'] ?? '').toString().trim();
-  if (cutoutUrl.isNotEmpty && cutoutStatus == 'ready') return cutoutUrl;
-
-  final boardStatus =
-      (m['board_status'] ?? m['boardStatus'] ?? '').toString().toLowerCase().trim();
-  if (boardStatus == 'cutout_ready') {
-    final imageUrl = (m['image_url'] ?? m['imageUrl'] ?? '').toString().trim();
-    if (imageUrl.isNotEmpty) return imageUrl;
-  }
-
-  debugPrint(
-    'AHVI_BOARD_ASSET_SKIPPED_NON_TRANSPARENT '
-    'name=$name '
-    'attempted_url_fields=[board_image_url,transparent_image_url,cutout_url,image_url(board_status=cutout_ready)] '
-    'cutout_status=$cutoutStatus '
-    'board_status=$boardStatus '
-    'reason=no_transparent_png_available',
-  );
-  return '';
-}
-
 StyleBoardData boardDataFromMap(Map<String, dynamic> board) {
   if (_containsPrivateWear(board)) {
     return const StyleBoardData(
       title: 'Regenerate look',
       occasion: '',
-      whyItWorks: 'This look included a private-wear item, so AHVI suppressed it.',
+      whyItWorks:
+          'This look included a private-wear item, so AHVI suppressed it.',
       items: [],
     );
   }
@@ -421,28 +393,29 @@ StyleBoardData boardDataFromMap(Map<String, dynamic> board) {
   for (final r in rawItems) {
     if (r is! Map) continue;
     final m = Map<String, dynamic>.from(r);
-    final name =
-        (m['name'] ?? m['label'] ?? m['title'] ?? m['category'] ?? 'Item')
-            .toString();
-    final imageUrl = _selectTransparentUrl(m, name: name);
-    // Skip items with no transparent PNG — never fall back to opaque tiles.
-    if (imageUrl.isEmpty) continue;
-    final category =
-        (m['category'] ??
-                m['sub_category'] ??
-                m['subcategory'] ??
-                m['type'] ??
-                '')
-            .toString();
-    final id = (m[r'$id'] ?? m['id'] ?? m['item_id'] ?? name).toString();
+    final parsed = StyleBoardItem.fromJson(m);
+    if (parsed.imageUrl.isEmpty) continue;
+    if (parsed.role != BoardItemRole.unknown) {
+      items.add(parsed);
+      continue;
+    }
     items.add(
       StyleBoardItem(
-        id: id,
-        name: name,
-        imageUrl: imageUrl,
-        category: category,
-        role: BoardLayoutEngine.resolveRole(category, name: name),
-        raw: m,
+        id: parsed.id,
+        slot: parsed.slot,
+        boardRole: parsed.boardRole,
+        source: parsed.source,
+        accessoryType: parsed.accessoryType,
+        name: parsed.name,
+        imageUrl: parsed.imageUrl,
+        maskedUrl: parsed.maskedUrl,
+        boardImageUrl: parsed.boardImageUrl,
+        normalizedUrl: parsed.normalizedUrl,
+        category: parsed.category,
+        subCategory: parsed.subCategory,
+        role: BoardLayoutEngine.resolveRole(parsed.category, name: parsed.name),
+        position: parsed.position,
+        raw: parsed.raw,
       ),
     );
   }
@@ -454,6 +427,16 @@ StyleBoardData boardDataFromMap(Map<String, dynamic> board) {
       ? Map<String, dynamic>.from(board['style_metadata'] as Map)
       : const <String, dynamic>{};
   return StyleBoardData(
+    boardId: (board['board_id'] ?? board['boardId'] ?? '').toString(),
+    revision: board['revision'] is num
+        ? (board['revision'] as num).toInt()
+        : int.tryParse((board['revision'] ?? '').toString()) ?? 0,
+    scenario: (board['scenario'] ?? '').toString(),
+    sourcePolicy:
+        (board['source_policy'] ?? board['sourcePolicy'] ?? '').toString(),
+    allowWardrobeFallback:
+        board['allow_wardrobe_fallback'] == true ||
+        board['allowWardrobeFallback'] == true,
     title:
         (board['title'] ?? board['look_name'] ?? board['name'] ?? 'Styled Look')
             .toString(),

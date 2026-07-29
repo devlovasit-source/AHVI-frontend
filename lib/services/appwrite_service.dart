@@ -7,6 +7,7 @@ import 'package:appwrite/models.dart';
 import 'package:appwrite/enums.dart';
 import 'package:myapp/config/env.dart';
 import 'package:myapp/services/notification_service.dart';
+import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AppwriteService extends ChangeNotifier {
@@ -34,7 +35,23 @@ class AppwriteService extends ChangeNotifier {
   List<Map<String, dynamic>>? _wardrobeCache;
   DateTime? _wardrobeCacheAt;
   Future<List<Map<String, dynamic>>>? _wardrobeInflight;
+  int _wardrobeGeneration = 0;
+  int _wardrobeScopeGeneration = 0;
   static const Duration _wardrobeTtl = Duration(seconds: 60);
+
+  List<Map<String, dynamic>> get cachedWardrobeItems =>
+      List.unmodifiable(_wardrobeCache ?? const <Map<String, dynamic>>[]);
+
+  // Observers notified on every auth scope change (logout, login, registration).
+  // Multiple consumers (BackendService, HomeCardSummaryProvider, …) may register
+  // independently via addSessionInvalidationListener.
+  final List<VoidCallback> _sessionListeners = [];
+
+  void addSessionInvalidationListener(VoidCallback cb) =>
+      _sessionListeners.add(cb);
+
+  void removeSessionInvalidationListener(VoidCallback cb) =>
+      _sessionListeners.remove(cb);
 
   // Optional write-through to offline cache.
   void Function(List<Map<String, dynamic>>)? _onWardrobeFetched;
@@ -48,10 +65,15 @@ class AppwriteService extends ChangeNotifier {
     _onSavedBoardsFetched = onSavedBoards;
   }
 
-  void invalidateWardrobeCache() {
+  void invalidateWardrobeCache({bool accountScopeChanged = false}) {
+    _wardrobeGeneration++;
+    if (accountScopeChanged) {
+      _wardrobeScopeGeneration++;
+    }
     _wardrobeCache = null;
     _wardrobeCacheAt = null;
     _wardrobeInflight = null;
+    notifyListeners();
   }
 
   AppwriteService._internal() {
@@ -138,7 +160,17 @@ class AppwriteService extends ChangeNotifier {
   void clearUserCache() {
     _cachedUser = null;
     _cachedUserProfileData = null;
-    invalidateWardrobeCache();
+    invalidateWardrobeCache(accountScopeChanged: true);
+    // Iterate a snapshot so a listener that (de)registers during dispatch can't
+    // mutate the list mid-loop. Isolate each callback so one throwing observer
+    // cannot stop the rest — every consumer's cache must still be cleared.
+    for (final cb in List<VoidCallback>.from(_sessionListeners)) {
+      try {
+        cb();
+      } catch (e) {
+        debugPrint('session.invalidation.listener_error err=${e.runtimeType}');
+      }
+    }
   }
 
   Future<void> _deleteExistingSessionsForAuthSwitch() async {
@@ -272,7 +304,9 @@ class AppwriteService extends ChangeNotifier {
       // Normalize email
       final normalizedEmail = email.toLowerCase().trim();
 
-      debugPrint('🔐 Verifying OTP for: $normalizedEmail, code: ${otp.substring(0, 2)}***');
+      debugPrint(
+        '🔐 Verifying OTP for: $normalizedEmail, code: ${otp.substring(0, 2)}***',
+      );
 
       // ✅ Retrieve from persistent storage
       final prefs = await SharedPreferences.getInstance();
@@ -288,7 +322,9 @@ class AppwriteService extends ChangeNotifier {
 
       // Validate email consistency
       if (normalizedEmail != savedEmail) {
-        debugPrint("❌ Verify OTP error: email mismatch (got: $normalizedEmail, expected: $savedEmail)");
+        debugPrint(
+          "❌ Verify OTP error: email mismatch (got: $normalizedEmail, expected: $savedEmail)",
+        );
         await _clearOTPState();
         return false;
       }
@@ -298,7 +334,9 @@ class AppwriteService extends ChangeNotifier {
         DateTime.fromMillisecondsSinceEpoch(savedTimestamp),
       );
       if (otpAge > _otpTimeout) {
-        debugPrint("❌ Verify OTP error: OTP expired (${otpAge.inSeconds}s old, max ${_otpTimeout.inSeconds}s)");
+        debugPrint(
+          "❌ Verify OTP error: OTP expired (${otpAge.inSeconds}s old, max ${_otpTimeout.inSeconds}s)",
+        );
         await _clearOTPState();
         return false;
       }
@@ -404,10 +442,10 @@ class AppwriteService extends ChangeNotifier {
   // ================= EMAIL OTP LOGIN END (FIXED) ======================
 
   Future<User> registerEmailPassword(
-      String email,
-      String password,
-      String name,
-      ) async {
+    String email,
+    String password,
+    String name,
+  ) async {
     final cleanEmail = email.trim();
     final cleanName = name.trim();
     try {
@@ -558,10 +596,10 @@ class AppwriteService extends ChangeNotifier {
         ? user.email.toString().split('@').first
         : user.email.toString();
     final raw =
-    (user.name.toString().trim().isNotEmpty
-        ? user.name.toString()
-        : emailPrefix)
-        .toLowerCase();
+        (user.name.toString().trim().isNotEmpty
+                ? user.name.toString()
+                : emailPrefix)
+            .toLowerCase();
 
     final cleaned = raw
         .replaceAll(RegExp(r'[^a-z0-9_]+'), '_')
@@ -617,17 +655,17 @@ class AppwriteService extends ChangeNotifier {
 
     final done =
         profile?['onboarding1'] == true &&
-            profile?['onboarding2'] == true &&
-            profile?['onboarding3'] == true &&
-            gender.isNotEmpty;
+        profile?['onboarding2'] == true &&
+        profile?['onboarding3'] == true &&
+        gender.isNotEmpty;
 
     debugPrint(
       'AHVI_ONBOARDING_PROFILE '
-          'gender=${profile?['gender']} '
-          'onboarding1=${profile?['onboarding1']} '
-          'onboarding2=${profile?['onboarding2']} '
-          'onboarding3=${profile?['onboarding3']} '
-          'done=$done',
+      'gender=${profile?['gender']} '
+      'onboarding1=${profile?['onboarding1']} '
+      'onboarding2=${profile?['onboarding2']} '
+      'onboarding3=${profile?['onboarding3']} '
+      'done=$done',
     );
 
     return done;
@@ -659,7 +697,9 @@ class AppwriteService extends ChangeNotifier {
     final Map<String, dynamic> cleaned = Map<String, dynamic>.from(data);
 
     if (cleaned.containsKey('skinTone')) {
-      final sanitizedSkinTone = _sanitizeSkinToneForAppwrite(cleaned['skinTone']);
+      final sanitizedSkinTone = _sanitizeSkinToneForAppwrite(
+        cleaned['skinTone'],
+      );
       if (sanitizedSkinTone != null) {
         cleaned['skinTone'] = sanitizedSkinTone;
       } else {
@@ -720,7 +760,9 @@ class AppwriteService extends ChangeNotifier {
         retryWithSkinToneZero = true;
       }
 
-      if (!retryWithSkinToneZero && (fallback.isEmpty || fallback.length == cleaned.length)) rethrow;
+      if (!retryWithSkinToneZero &&
+          (fallback.isEmpty || fallback.length == cleaned.length))
+        rethrow;
 
       debugPrint(
         'AHVI_PROFILE_UPDATE_SCHEMA_RETRY error=${e.message} keys=${fallback.keys.toList()}',
@@ -761,7 +803,9 @@ class AppwriteService extends ChangeNotifier {
         retryWithSkinToneZero = true;
       }
 
-      if (!retryWithSkinToneZero && (fallback.isEmpty || fallback.length == cleaned.length)) rethrow;
+      if (!retryWithSkinToneZero &&
+          (fallback.isEmpty || fallback.length == cleaned.length))
+        rethrow;
 
       debugPrint(
         'AHVI_PROFILE_CREATE_SCHEMA_RETRY error=${e.message} keys=${fallback.keys.toList()}',
@@ -811,7 +855,7 @@ class AppwriteService extends ChangeNotifier {
         final delay = _initialRetryDelay * (retryCount + 1);
         debugPrint(
           'AHVI_PROFILE_UPDATE_RETRY attempt=${retryCount + 1} '
-              'delay=${delay.inMilliseconds}ms error=$e',
+          'delay=${delay.inMilliseconds}ms error=$e',
         );
         await Future.delayed(delay);
         return _updateProfileDocumentWithFallbackRetry(
@@ -859,7 +903,7 @@ class AppwriteService extends ChangeNotifier {
         final delay = _initialRetryDelay * (retryCount + 1);
         debugPrint(
           'AHVI_PROFILE_CREATE_RETRY attempt=${retryCount + 1} '
-              'delay=${delay.inMilliseconds}ms error=$e',
+          'delay=${delay.inMilliseconds}ms error=$e',
         );
         await Future.delayed(delay);
         return _createProfileDocumentWithFallbackRetry(
@@ -896,7 +940,7 @@ class AppwriteService extends ChangeNotifier {
       final updated = await _updateProfileDocumentWithFallbackRetry(
         usersCollectionId: usersCollectionId,
         documentId: user.$id,
-        payload: data,  // Don't add updatedAt - let Appwrite handle it
+        payload: data, // Don't add updatedAt - let Appwrite handle it
       );
 
       _cachedUserProfileData = Map<String, dynamic>.from(updated.data);
@@ -935,8 +979,8 @@ class AppwriteService extends ChangeNotifier {
       final displayName = user.name.toString().trim().isNotEmpty
           ? user.name.toString().trim()
           : (user.email.toString().contains('@')
-          ? user.email.toString().split('@').first
-          : user.email.toString());
+                ? user.email.toString().split('@').first
+                : user.email.toString());
 
       final createData = <String, dynamic>{
         'name': displayName,
@@ -1037,16 +1081,37 @@ class AppwriteService extends ChangeNotifier {
       if (inflight != null) return inflight;
     }
 
+    if (forceRefresh) {
+      _wardrobeGeneration++;
+    }
+
+    final generation = _wardrobeGeneration;
+    final scopeGeneration = _wardrobeScopeGeneration;
     final fetch = _fetchWardrobeItems();
     _wardrobeInflight = fetch;
     try {
       final items = await fetch;
-      _wardrobeCache = items;
-      _wardrobeCacheAt = DateTime.now();
-      _onWardrobeFetched?.call(items);
-      return items;
+      if (generation == _wardrobeGeneration) {
+        _wardrobeCache = items;
+        _wardrobeCacheAt = DateTime.now();
+        _onWardrobeFetched?.call(items);
+        notifyListeners();
+        return items;
+      }
+      if (scopeGeneration != _wardrobeScopeGeneration) {
+        throw StateError('Wardrobe request superseded by account change');
+      }
+      final replacement = _wardrobeInflight;
+      if (replacement != null && !identical(replacement, fetch)) {
+        return replacement;
+      }
+      final current = _wardrobeCache;
+      if (current != null) return current;
+      throw StateError('Wardrobe request superseded by cache invalidation');
     } finally {
-      _wardrobeInflight = null;
+      if (identical(_wardrobeInflight, fetch)) {
+        _wardrobeInflight = null;
+      }
     }
   }
 
@@ -1088,6 +1153,7 @@ class AppwriteService extends ChangeNotifier {
 
       return result.documents.map<Map<String, dynamic>>((doc) {
         return <String, dynamic>{
+          ...doc.data,
           "id": doc.$id,
           r"$id": doc.$id,
           "name": doc.data['name'],
@@ -1096,11 +1162,7 @@ class AppwriteService extends ChangeNotifier {
           "color_code": doc.data['color_code'],
           "pattern": doc.data['pattern'],
           "occasions": doc.data['occasions'],
-          "image_url":
-          doc.data['normalized_url'] ??
-              doc.data['masked_url'] ??
-              doc.data['image_url'] ??
-              doc.data['raw_url'],
+          "image_url": doc.data['image_url'] ?? doc.data['raw_url'],
           "masked_url": doc.data['masked_url'],
           "normalized_url": doc.data['normalized_url'],
           "raw_url": doc.data['raw_url'],
@@ -1109,10 +1171,10 @@ class AppwriteService extends ChangeNotifier {
           // without a separate query. Both keys are checked because the
           // field name may vary by collection schema version.
           "isLiked": doc.data['isLiked'] ?? doc.data['isFavourite'] ?? false,
-          "isFavourite": doc.data['isFavourite'] ?? doc.data['isLiked'] ?? false,
-          "imageUrl": doc.data['imageUrl'] ??
-              doc.data['normalized_url'] ??
-              doc.data['masked_url'] ??
+          "isFavourite":
+              doc.data['isFavourite'] ?? doc.data['isLiked'] ?? false,
+          "imageUrl":
+              doc.data['imageUrl'] ??
               doc.data['image_url'] ??
               doc.data['raw_url'],
         };
@@ -1125,9 +1187,9 @@ class AppwriteService extends ChangeNotifier {
 
   /// ✅ NEW: Update a wardrobe item (e.g., toggle isLiked/isFavourite flag)
   Future<Document> updateWardrobeItem(
-      String itemId,
-      Map<String, dynamic> updates,
-      ) async {
+    String itemId,
+    Map<String, dynamic> updates,
+  ) async {
     try {
       final user = await getCurrentUser();
       if (user == null) throw Exception("User not authenticated");
@@ -1227,21 +1289,20 @@ class AppwriteService extends ChangeNotifier {
 
   Future<List<Document>> getSavedBoardsByOccasion(String occasion) async {
     try {
-      final user = await getCurrentUser();
-      if (user == null) throw Exception("User not authenticated");
-      final normalizedOccasion = _savedBoardOccasionLabel(occasion);
-
-      final result = await databases.listDocuments(
-        databaseId: Env.appwriteDatabaseId,
-        collectionId: Env.savedBoardsCollection,
-        queries: [
-          Query.equal('userId', user.$id), // FIXED to userId
-          Query.equal('occasion', normalizedOccasion),
-          Query.orderDesc('\$createdAt'),
-        ],
-      );
-      _onSavedBoardsFetched?.call(occasion, result.documents);
-      return result.documents;
+      final bucket = canonicalSavedBoardBucket(occasion);
+      final documents = (await getAllSavedBoards())
+          .where((document) {
+            final data = expandSavedBoardData(
+              Map<String, dynamic>.from(document.data),
+            );
+            return canonicalSavedBoardBucket(
+                  data['bucket'] ?? data['occasion'],
+                ) ==
+                bucket;
+          })
+          .toList(growable: false);
+      _onSavedBoardsFetched?.call(occasion, documents);
+      return documents;
     } catch (e) {
       debugPrint("Error fetching $occasion boards: $e");
       return [];
@@ -1253,28 +1314,34 @@ class AppwriteService extends ChangeNotifier {
       final user = await getCurrentUser();
       if (user == null) throw Exception("User not authenticated");
 
-      final result = await databases.listDocuments(
-        databaseId: Env.appwriteDatabaseId,
-        collectionId: Env.savedBoardsCollection,
-        queries: [
-          Query.equal('userId', user.$id), // FIXED to userId
-          Query.orderDesc('\$createdAt'),
-        ],
-      );
-      return result.documents;
+      const pageSize = 100;
+      final documents = <Document>[];
+      String? cursor;
+      while (true) {
+        final result = await databases.listDocuments(
+          databaseId: Env.appwriteDatabaseId,
+          collectionId: Env.savedBoardsCollection,
+          queries: [
+            Query.equal('userId', user.$id),
+            Query.orderDesc('\$createdAt'),
+            Query.limit(pageSize),
+            if (cursor != null) Query.cursorAfter(cursor),
+          ],
+        );
+        documents.addAll(result.documents);
+        if (result.documents.length < pageSize) break;
+        cursor = result.documents.last.$id;
+      }
+      return documents;
     } catch (e) {
       debugPrint("Error fetching all boards: $e");
       return [];
     }
   }
 
-  // Persist a chat-generated style board to Appwrite so it shows up in the
-  // planner pages (occasion / office / party / vacation / everything_else).
-  // Schema fields the planner reads:
-  //   userId, occasion, outfitDescription, emoji, imageUrl, $createdAt.
   Future<Document?> saveBoardToCollection({
-    required String occasion,
-    required String outfitDescription,
+    String? occasion,
+    String? outfitDescription,
     String? imageUrl,
     String? emoji,
     String? boardCategory,
@@ -1282,209 +1349,48 @@ class AppwriteService extends ChangeNotifier {
     String? title,
     String? prompt,
     Map<String, dynamic>? extra,
+    SavedBoardContent? content,
   }) async {
     try {
       final user = await getCurrentUser();
-      if (user == null) throw Exception('User not authenticated');
-
-      final cleanImageUrl = (imageUrl ?? '').trim();
-      if (cleanImageUrl.isEmpty) {
-        throw Exception('Cannot save board without imageUrl');
-      }
-
-      final rawItemIds = extra?['itemIds'] ?? extra?['item_ids'] ?? <dynamic>[];
-      final itemIds = rawItemIds is Iterable
-          ? rawItemIds
-          .map((e) => e.toString())
-          .where((e) => e.isNotEmpty)
-          .toList()
-          : <String>[];
-      final outfitItems = _savedBoardItemList(extra?['outfitItems']);
-      final items = _savedBoardItemList(extra?['items']);
-      final boardPayload = _savedBoardPayload(extra?['board_payload']);
-      final boardPayloadCamel = _savedBoardPayload(extra?['boardPayload']);
-
-      final storageOccasion = _savedBoardOccasionLabel(occasion);
-      final categoryLabel = boardCategoryLabel?.trim().isNotEmpty == true
-          ? boardCategoryLabel!.trim()
-          : storageOccasion;
-      final categoryKey = boardCategory?.trim().isNotEmpty == true
-          ? boardCategory!.trim()
-          : _savedBoardCategoryKey(categoryLabel);
-      final nowIso = DateTime.now().toIso8601String();
-
-      final richData = <String, dynamic>{
-        'userId': user.$id,
-        'occasion': storageOccasion,
-        'imageUrl': cleanImageUrl,
-        'itemIds': itemIds,
-        'boardCategory': categoryKey,
-        'boardCategoryLabel': categoryLabel,
-        'title': (title ?? '').trim().isEmpty
-            ? _fallbackSavedBoardTitle(categoryLabel, outfitDescription)
-            : title!.trim(),
-        'prompt': (prompt ?? '').trim(),
-        'outfitDescription': outfitDescription.trim(),
-        'thumbnailUrl': cleanImageUrl,
-        'emoji': (emoji ?? '').trim().isEmpty ? '✨' : emoji!.trim(),
-        // ✅ REMOVED: 'createdAt' - Appwrite manages this as $createdAt
-      };
-      if (outfitItems.isNotEmpty) richData['outfitItems'] = outfitItems;
-      if (items.isNotEmpty) richData['items'] = items;
-      if (boardPayload.isNotEmpty) richData['board_payload'] = boardPayload;
-      if (boardPayloadCamel.isNotEmpty) {
-        richData['boardPayload'] = boardPayloadCamel;
-      }
-
-      try {
-        return await databases.createDocument(
-          databaseId: Env.appwriteDatabaseId,
-          collectionId: Env.savedBoardsCollection,
-          documentId: ID.unique(),
-          data: richData,
-        );
-      } catch (e) {
-        debugPrint(
-          'Rich saved board write failed, retrying JSON payload schema: $e',
+      if (user == null) {
+        throw const SavedBoardPersistenceException(
+          'not_authenticated',
+          'Please sign in again before saving this look.',
         );
       }
-
-      if (outfitItems.isNotEmpty || items.isNotEmpty) {
-        final payloadItems = outfitItems.isNotEmpty ? outfitItems : items;
-        final jsonPayload = jsonEncode({
-          'title': richData['title'],
-          'occasion': storageOccasion,
-          'items': payloadItems,
-        });
-        try {
-          return await databases.createDocument(
-            databaseId: Env.appwriteDatabaseId,
-            collectionId: Env.savedBoardsCollection,
-            documentId: ID.unique(),
-            data: {
-              'userId': user.$id,
-              'occasion': storageOccasion,
-              'imageUrl': cleanImageUrl,
-              'thumbnailUrl': cleanImageUrl,
-              'itemIds': itemIds,
-              'boardCategory': categoryKey,
-              'boardCategoryLabel': categoryLabel,
-              'title': richData['title'],
-              'prompt': richData['prompt'],
-              'outfitDescription': richData['outfitDescription'],
-              'emoji': richData['emoji'],
-              // ✅ REMOVED: 'createdAt' - Appwrite manages this as $createdAt
-              'board_payload': jsonPayload,
-            },
-          );
-        } catch (e) {
-          debugPrint(
-            'JSON saved board write failed, retrying minimal schema: $e',
-          );
-        }
+      if (content == null) {
+        throw const SavedBoardPersistenceException(
+          'missing_canonical_board',
+          'This look cannot be saved yet. Please create a fresh board.',
+        );
       }
-
-      return await databases.createDocument(
+      final data = buildSavedBoardPayload(
+        userId: user.$id,
+        imageUrl: imageUrl ?? '',
+        content: content,
+      );
+      debugPrint(
+        'AHVI_BOARD_SAVE_SCHEMA mode=deployed_legacy_v2 '
+        'accepted_fields=userId,imageUrl,itemIds,occasion,masterGarment,outfitItems '
+        'bucket=${content.bucket} '
+        'is_favourite=${content.isFavourite} '
+        'item_count=${content.itemIds.length}',
+      );
+      final document = await databases.createDocument(
         databaseId: Env.appwriteDatabaseId,
         collectionId: Env.savedBoardsCollection,
         documentId: ID.unique(),
-        data: {
-          'userId': user.$id,
-          'occasion': storageOccasion,
-          'imageUrl': cleanImageUrl,
-          'itemIds': itemIds,
-        },
+        data: data,
       );
-    } catch (e) {
-      debugPrint('Error saving board: $e');
+      return document.$id.trim().isEmpty ? null : document;
+    } on SavedBoardPersistenceException catch (e) {
+      debugPrint('AHVI_BOARD_SAVE_FAILED reason=${e.reason}');
+      rethrow;
+    } catch (_) {
+      debugPrint('AHVI_BOARD_SAVE_FAILED reason=appwrite_write_failed');
       return null;
     }
-  }
-
-  List<Map<String, dynamic>> _savedBoardItemList(Object? raw) {
-    if (raw is! Iterable) return const <Map<String, dynamic>>[];
-    return raw
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .where((item) {
-      final url =
-          (item['imageUrl'] ??
-              item['image_url'] ??
-              item['masked_url'] ??
-              item['maskedUrl'] ??
-              item['url'] ??
-              item['thumbnailUrl'])
-              ?.toString()
-              .trim() ??
-              '';
-      return url.isNotEmpty;
-    })
-        .toList();
-  }
-
-  Map<String, dynamic> _savedBoardPayload(Object? raw) {
-    if (raw is Map) return Map<String, dynamic>.from(raw);
-    return const <String, dynamic>{};
-  }
-
-  String _savedBoardOccasionLabel(String value) {
-    final raw = value.trim();
-    final key = raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
-    switch (key) {
-      case 'party':
-      case 'party_looks':
-      case 'date':
-      case 'date_night':
-        return 'Party';
-      case 'office':
-      case 'office_fit':
-      case 'office_fits':
-      case 'work':
-        return 'Office';
-      case 'vacation':
-      case 'travel':
-      case 'airport':
-      case 'holiday':
-        return 'Vacation';
-      case 'occasion':
-      case 'wedding':
-      case 'event':
-      case 'festival':
-        return 'Occasion';
-      case 'everything_else':
-      case 'everything':
-      case 'other':
-      case 'unclear':
-        return 'Everything Else';
-      default:
-        return raw.isEmpty ? 'Everything Else' : raw;
-    }
-  }
-
-  String _savedBoardCategoryKey(String label) {
-    switch (_savedBoardOccasionLabel(label).toLowerCase()) {
-      case 'party':
-        return 'party_looks';
-      case 'office':
-        return 'office_fits';
-      case 'vacation':
-        return 'vacation';
-      case 'occasion':
-        return 'occasion';
-      default:
-        return 'everything_else';
-    }
-  }
-
-  String _fallbackSavedBoardTitle(String categoryLabel, String desc) {
-    final cleanDesc = desc
-        .split('+')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .take(2)
-        .join(' ');
-    final stem = cleanDesc.isEmpty ? categoryLabel : cleanDesc;
-    return '$stem Look';
   }
 
   Future<void> deleteSavedBoard(String documentId) async {
@@ -1507,19 +1413,12 @@ class AppwriteService extends ChangeNotifier {
   /// Fetch all favourite saved boards for the current user
   Future<List<Document>> getFavouriteSavedBoards() async {
     try {
-      final user = await getCurrentUser();
-      if (user == null) throw Exception("User not authenticated");
-
-      final result = await databases.listDocuments(
-        databaseId: Env.appwriteDatabaseId,
-        collectionId: Env.savedBoardsCollection,
-        queries: [
-          Query.equal('userId', user.$id),
-          Query.equal('isFavourite', true),
-          Query.orderDesc('\$createdAt'),
-        ],
-      );
-      return result.documents;
+      return (await getAllSavedBoards())
+          .where(
+            (document) =>
+                savedBoardIsFavourite(Map<String, dynamic>.from(document.data)),
+          )
+          .toList(growable: false);
     } catch (e) {
       debugPrint("Error fetching favourite boards: $e");
       return [];
@@ -1528,39 +1427,42 @@ class AppwriteService extends ChangeNotifier {
 
   /// Add a saved board to favourites
   Future<void> addFavouriteSavedBoard(String documentId) async {
-    try {
-      await databases.updateDocument(
-        databaseId: Env.appwriteDatabaseId,
-        collectionId: Env.savedBoardsCollection,
-        documentId: documentId,
-        data: {
-          'isFavourite': true,
-          'favouriteAddedAt': DateTime.now().toIso8601String(),
-        },
-      );
-      debugPrint("Board added to favourites: $documentId");
-    } catch (e) {
-      debugPrint("Error adding board to favourites: $e");
-      throw Exception("Failed to add board to favourites");
-    }
+    await _setSavedBoardFavourite(documentId, true);
   }
 
   /// Remove a saved board from favourites
   Future<void> removeFavouriteSavedBoard(String documentId) async {
+    await _setSavedBoardFavourite(documentId, false);
+  }
+
+  Future<void> _setSavedBoardFavourite(
+    String documentId,
+    bool isFavourite,
+  ) async {
     try {
+      final document = await databases.getDocument(
+        databaseId: Env.appwriteDatabaseId,
+        collectionId: Env.savedBoardsCollection,
+        documentId: documentId,
+      );
       await databases.updateDocument(
         databaseId: Env.appwriteDatabaseId,
         collectionId: Env.savedBoardsCollection,
         documentId: documentId,
         data: {
-          'isFavourite': false,
-          'favouriteAddedAt': null,
+          'masterGarment': savedBoardMasterGarmentWithFavourite(
+            Map<String, dynamic>.from(document.data),
+            isFavourite,
+          ),
         },
       );
-      debugPrint("Board removed from favourites: $documentId");
+      debugPrint(
+        'Board ${isFavourite ? 'added to' : 'removed from'} favourites: '
+        '$documentId',
+      );
     } catch (e) {
-      debugPrint("Error removing board from favourites: $e");
-      throw Exception("Failed to remove board from favourites");
+      debugPrint("Error updating board favourite: $e");
+      throw Exception("Failed to update board favourite");
     }
   }
 
@@ -1572,7 +1474,7 @@ class AppwriteService extends ChangeNotifier {
         collectionId: Env.savedBoardsCollection,
         documentId: documentId,
       );
-      return (result.data['isFavourite'] ?? false) == true;
+      return savedBoardIsFavourite(Map<String, dynamic>.from(result.data));
     } catch (e) {
       debugPrint("Error checking if board is favourite: $e");
       return false;
@@ -1918,8 +1820,8 @@ class AppwriteService extends ChangeNotifier {
 
       debugPrint(
         'AHVI_MEDLOG_CREATE userId=${user.$id} '
-            'medId=${data['medId']} status=${data['status']} '
-            'collection=${Env.medLogsCollection}',
+        'medId=${data['medId']} status=${data['status']} '
+        'collection=${Env.medLogsCollection}',
       );
 
       final doc = await databases.createDocument(
@@ -2092,7 +1994,9 @@ class _ProfileSyncCircuitBreaker {
   void recordFailure() {
     _failureCount++;
     _failureResetTime = DateTime.now();
-    debugPrint('❌ Profile sync failure recorded ($_failureCount/$_maxConsecutiveFailures)');
+    debugPrint(
+      '❌ Profile sync failure recorded ($_failureCount/$_maxConsecutiveFailures)',
+    );
   }
 
   void recordSuccess() {

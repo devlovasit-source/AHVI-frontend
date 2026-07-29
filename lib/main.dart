@@ -144,7 +144,12 @@ class _MyAppState extends State<MyApp> {
           create: (_) => ConnectivityWatcher()..init(),
         ),
         ChangeNotifierProvider<OfflineCache>(create: (_) => OfflineCache()),
-        ChangeNotifierProvider(create: (_) => HomeCardSummaryProvider()),
+        ChangeNotifierProxyProvider2<AppwriteService, BackendService,
+            HomeCardSummaryProvider>(
+          create: (_) => HomeCardSummaryProvider(),
+          update: (_, appwrite, backend, p) =>
+              p!..configure(backend, appwrite),
+        ),
       ],
       child: Consumer<ThemeController>(
         builder: (context, controller, child) {

@@ -9,11 +9,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/shareable_outfit_board.dart';
+import 'package:myapp/style_board/board_models.dart';
+import 'package:myapp/style_board/editorial_board_renderer.dart';
 
-const _items = <ShareBoardItem>[
-  ShareBoardItem(role: 'top', imageUrl: 'https://x/top.png'),
-  ShareBoardItem(role: 'bottom', imageUrl: 'https://x/bottom.png'),
-  ShareBoardItem(role: 'footwear', imageUrl: 'https://x/shoe.png'),
+final _items = <StyleBoardItem>[
+  StyleBoardItem.fromJson(const {'item_id': 'top', 'role': 'top', 'image_url': 'https://x/top.png'}),
+  StyleBoardItem.fromJson(const {'item_id': 'bottom', 'role': 'bottom', 'image_url': 'https://x/bottom.png'}),
+  StyleBoardItem.fromJson(const {'item_id': 'shoe', 'role': 'footwear', 'image_url': 'https://x/shoe.png'}),
 ];
 
 Future<GlobalKey> _pump(
@@ -21,7 +23,7 @@ Future<GlobalKey> _pump(
   double width = 360,
   String title = 'Understated Ease',
   String occasion = 'Office',
-  List<ShareBoardItem> items = _items,
+  List<StyleBoardItem>? items,
 }) async {
   final key = GlobalKey();
   await tester.pumpWidget(
@@ -32,7 +34,7 @@ Future<GlobalKey> _pump(
             boundaryKey: key,
             title: title,
             occasion: occasion,
-            items: items,
+            items: items ?? _items,
             width: width,
           ),
         ),
@@ -71,7 +73,10 @@ void main() {
 
   testWidgets('three garment roles render', (tester) async {
     await _pump(tester);
-    expect(find.byType(Image), findsNWidgets(3));
+    expect(find.byType(EditorialBoardCanvas), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('top')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('bottom')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('shoe')), findsOneWidget);
   });
 
   testWidgets('no overflow at a Samsung-width equivalent', (tester) async {
@@ -94,7 +99,7 @@ void main() {
   });
 
   testWidgets('empty items still produce a safe opaque board', (tester) async {
-    await _pump(tester, items: const []);
+    await _pump(tester, items: const <StyleBoardItem>[]);
     expect(
       find.byWidgetPredicate(
         (w) => w is Container && w.color == ShareableOutfitBoard.kShareBackground,

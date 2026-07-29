@@ -90,12 +90,7 @@ class EditorialBoardLayoutEngine {
         );
       } else {
         raw = _accessoryHeavy(
-          mainItems: <StyleBoardItem>[
-            ?outerwear,
-            top,
-            bottom,
-            footwear,
-          ],
+          mainItems: <StyleBoardItem>[?outerwear, top, bottom, footwear],
           accessories: accessories,
           width: width,
           height: height,
@@ -151,6 +146,7 @@ class EditorialBoardLayoutEngine {
     required double height,
   }) {
     final hasOuter = outerwear != null;
+    final itemCount = 3 + accessories.length + (hasOuter ? 1 : 0);
     final placements = <BoardItemPlacement>[];
 
     if (hasOuter) {
@@ -193,28 +189,39 @@ class EditorialBoardLayoutEngine {
         ),
       );
     } else {
-      // Pure 3-piece flat-lay. Hero top spans the upper canvas, jeans pulled UP
-      // and right to overlap the top's hem (kills the dead vertical gap), shoes
-      // anchor lower-left. Widths are aggressive (~0.62 / 0.50) and heights are
-      // AR-matched so each cutout fills its box edge-to-edge.
-      final topW = width * 0.62;
+      // Pure 3-piece flat-lay. The garment trio dominates the canvas while
+      // retaining intentional overlap and enough negative space to read as an
+      // editorial composition rather than a product grid.
+      final topW =
+          width *
+          switch (itemCount) {
+            3 => 0.74,
+            4 => 0.69,
+            _ => 0.65,
+          };
       placements.add(
         BoardItemPlacement(
           item: top,
-          x: width * 0.15,
-          y: height * 0.07,
+          x: width * 0.08,
+          y: height * 0.05,
           width: topW,
           height: _boxHeight(BoardItemRole.top, topW, height * 0.52),
           rotation: -0.02,
           zIndex: 2,
         ),
       );
-      final botW = width * 0.50;
+      final botW =
+          width *
+          switch (itemCount) {
+            3 => 0.60,
+            4 => 0.56,
+            _ => 0.52,
+          };
       placements.add(
         BoardItemPlacement(
           item: bottom,
-          x: width * 0.45,
-          y: height * 0.40,
+          x: width * 0.36,
+          y: height * 0.35,
           width: botW,
           height: _boxHeight(BoardItemRole.bottom, botW, height * 0.52),
           rotation: 0.015,
@@ -223,11 +230,17 @@ class EditorialBoardLayoutEngine {
       );
     }
 
-    final footW = width * 0.46;
+    final footW =
+        width *
+        switch (itemCount) {
+          3 => 0.52,
+          4 => 0.48,
+          _ => 0.45,
+        };
     placements.add(
       BoardItemPlacement(
         item: footwear,
-        x: width * 0.10,
+        x: width * 0.08,
         y: height * 0.70,
         width: footW,
         height: _boxHeight(BoardItemRole.footwear, footW, height * 0.22),
@@ -239,7 +252,13 @@ class EditorialBoardLayoutEngine {
     for (var i = 0; i < math.min(accessories.length, 2); i++) {
       // i==0 = small jewelry/accessory mid-right; i==1 = bag/extra upper-right,
       // a touch larger but never dominant. Both kept off the main garments.
-      final accW = width * (i == 0 ? 0.17 : 0.22);
+      final accW =
+          width *
+          switch ((accessories.length, i)) {
+            (1, _) => 0.27,
+            (_, 0) => 0.27,
+            _ => 0.20,
+          };
       placements.add(
         BoardItemPlacement(
           item: accessories[i],
@@ -267,14 +286,14 @@ class EditorialBoardLayoutEngine {
     required double width,
     required double height,
   }) {
-    final dressW = width * 0.64;
+    final dressW = width * 0.80;
     final placements = <BoardItemPlacement>[
       BoardItemPlacement(
         item: dress,
-        x: width * 0.16,
+        x: width * 0.10,
         y: height * 0.04,
         width: dressW,
-        height: _boxHeight(BoardItemRole.dress, dressW, height * 0.74),
+        height: _boxHeight(BoardItemRole.dress, dressW, height * 0.80),
         rotation: 0.01,
         zIndex: 2,
       ),

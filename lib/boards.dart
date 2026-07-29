@@ -14,6 +14,7 @@ import 'package:myapp/occasion.dart'; // Handles Daily Wear, Office, Party, Vaca
 // ── Specific Board Imports ──
 import 'package:myapp/everything_else.dart' as everything_else;
 import 'package:myapp/home_and_utilities.dart' as home_utils;
+import 'package:myapp/medi_tracker.dart' as medi_tracker;
 import 'package:myapp/skincare.dart';
 import 'package:myapp/widgets/ahvi_home_text.dart';
 import 'package:myapp/widgets/ahvi_header.dart';
@@ -221,6 +222,24 @@ abstract final class _A {
   static const Curve pageEntry = Cubic(0.22, 1.0, 0.36, 1.0);
   static const Curve ease = Curves.easeOutCubic;
 }
+
+Route<void> buildBoardsPushRoute(Widget page) => PageRouteBuilder<void>(
+  opaque: true,
+  transitionDuration: _A.slow,
+  reverseTransitionDuration: _A.slow,
+  pageBuilder: (context, animation, secondaryAnimation) => page,
+  transitionsBuilder: (context, animation, secondary, child) {
+    final curved = CurvedAnimation(parent: animation, curve: _A.pageEntry);
+    return SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(0.04, 0),
+        end: Offset.zero,
+      ).animate(curved),
+      child: child,
+    );
+  },
+  maintainState: true,
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  BOARDS SCREEN
@@ -943,18 +962,26 @@ class _BoardsScreenState extends State<BoardsScreen>
                     size: 32,
                     color: _cardIconColor,
                   ),
-                  title: AppLocalizations.t(context, 'boards_home_utilities'),
+                  title: medi_tracker.sanitizeMediSurfaceText(
+                    AppLocalizations.t(context, 'boards_home_utilities'),
+                    surface: 'boards',
+                    field: 'home_utilities_card_title',
+                  ),
                   titleColor: lifeContentColor,
-                  subtitle: AppLocalizations.t(
-                    context,
-                    'boards_home_utilities_sub',
+                  subtitle: medi_tracker.sanitizeMediSurfaceText(
+                    AppLocalizations.t(context, 'boards_home_utilities_sub'),
+                    surface: 'boards',
+                    field: 'home_utilities_card_subtitle',
                   ),
                   subtitleColor: lifeContentColor,
                   arrowBg: _card,
                   arrowColor: _cardIconColor,
                   shellColor: _shell,
                   // <-- FIX: Now properly points to BillsScreen!
-                  onTap: () => _push(const home_utils.HomeUtilitiesScreen()),
+                  onTap: () {
+                    debugPrint('AHVI_MEDI_NAV source=boards_home_utilities');
+                    _push(const home_utils.HomeUtilitiesScreen());
+                  },
                 ),
               ),
             ),
@@ -1107,11 +1134,8 @@ class _BoardsScreenState extends State<BoardsScreen>
             panelColor: _panel,
             shellColor: _shell,
             onTap: () => _push(
-              OccasionBoard(
-                occasion: 'Favourites',
-                titleKey: 'boards_favourites',
-                subtitleKey: 'boards_favourites_sub',
-                emptyEmoji: '❤️',
+              const everything_else.EverythingElseScreen(
+                initialFilter: 'favourites',
               ),
             ),
           ),

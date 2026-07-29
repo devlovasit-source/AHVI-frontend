@@ -8,8 +8,10 @@ import 'package:share_plus/share_plus.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/style_board/saved_board_images.dart';
+import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:myapp/style_board/saved_board_thumb.dart';
 import 'package:myapp/theme/theme_tokens.dart';
+import 'package:myapp/util/wardrobe_image_resolver.dart';
 
 class SavedBoardCard extends StatelessWidget {
   final dynamic source;
@@ -25,19 +27,34 @@ class SavedBoardCard extends StatelessWidget {
 
   Map<String, dynamic> get _data {
     if (source is appwrite_models.Document) {
-      return Map<String, dynamic>.from(
-        (source as appwrite_models.Document).data,
+      return expandSavedBoardData(
+        Map<String, dynamic>.from((source as appwrite_models.Document).data),
       );
     }
     if (source is Map) {
       final data = (source as Map)['data'];
-      if (data is Map) return Map<String, dynamic>.from(data);
-      return Map<String, dynamic>.from(source as Map);
+      if (data is Map) {
+        return expandSavedBoardData(Map<String, dynamic>.from(data));
+      }
+      return expandSavedBoardData(Map<String, dynamic>.from(source as Map));
     }
     return const {};
   }
 
   List<Map<String, dynamic>> _itemsForBoard(Map<String, dynamic> data) {
+    final savedItems = _savedBoardItems(data);
+    if (savedItems.isNotEmpty) {
+      return savedItems
+          .map(
+            (item) => resolveStyleBoardItemImage(
+              item,
+              wardrobeById,
+              surface: 'style_board_saved',
+            ),
+          )
+          .toList(growable: false);
+    }
+
     final ids = <String>[
       ...((data['itemIds'] as List?) ?? const []).map((id) => id.toString()),
       ...((data['item_ids'] as List?) ?? const []).map((id) => id.toString()),
@@ -46,10 +63,17 @@ class SavedBoardCard extends StatelessWidget {
         .map((id) => wardrobeById[id])
         .whereType<Map<String, dynamic>>()
         .toList();
-    if (hydrated.isNotEmpty) return hydrated;
-
-    final savedItems = _savedBoardItems(data);
-    if (savedItems.isNotEmpty) return savedItems;
+    if (hydrated.isNotEmpty) {
+      return hydrated
+          .map(
+            (item) => resolveStyleBoardItemImage(
+              item,
+              wardrobeById,
+              surface: 'style_board_saved',
+            ),
+          )
+          .toList(growable: false);
+    }
 
     final extractedImages = extractSavedBoardImages(data);
     if (extractedImages.length >= 2) {
@@ -101,19 +125,18 @@ class SavedBoardCard extends StatelessWidget {
     if (snakePayload is Map) addItems(snakePayload['items']);
     final camelPayload = payload(data['boardPayload']);
     if (camelPayload is Map) addItems(camelPayload['items']);
-    return out.where((item) {
-      final url =
-          (item['imageUrl'] ??
-                  item['image_url'] ??
-                  item['masked_url'] ??
-                  item['maskedUrl'] ??
-                  item['url'] ??
-                  item['thumbnailUrl'])
-              ?.toString()
-              .trim() ??
-          '';
-      return url.isNotEmpty;
-    }).toList();
+    return out
+        .where(
+          (item) =>
+              resolveWardrobeImage(
+                item,
+                surface: 'style_board_saved',
+                itemId: wardrobeItemStableId(item),
+                emitDiagnostic: false,
+              ).url !=
+              null,
+        )
+        .toList();
   }
 
   void _openDetails(BuildContext context, Map<String, dynamic> data) {
@@ -142,8 +165,18 @@ class SavedBoardCard extends StatelessWidget {
       'tip',
     ]);
     final items = _itemsForBoard(data);
+    final parity = savedBoardReopenParity(data, renderedItems: items);
+    debugPrint(
+      'AHVI_BOARD_REOPEN_PARITY '
+      'board_id=${parity['board_id']} '
+      'item_count_match=${parity['item_count_match']} '
+      'item_order_match=${parity['item_order_match']} '
+      'source_policy_match=${parity['source_policy_match']} '
+      'image_provenance_match=${parity['image_provenance_match']} '
+      'bucket=${parity['bucket']} '
+      'is_favourite=${parity['is_favourite']}',
+    );
     debugPrint('saved_board.open boardId=$boardId');
-    debugPrint('saved_board.payload keys=${data.keys.toList()}');
     debugPrint('saved_board.items count=${items.length}');
 
     showModalBottomSheet<void>(

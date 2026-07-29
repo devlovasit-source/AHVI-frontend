@@ -38,6 +38,18 @@ EXPO_PUBLIC_BACKEND_API_URL=http://localhost:8000
 
 Do not put backend secrets, R2 secrets, Anthropic keys, or RunPod keys in Flutter env.
 
+## Location Context
+
+`LocationContextService` stores the canonical location context in
+`SharedPreferences`, scoped by the authenticated Appwrite user ID. The deployed
+users collection only supports identity, onboarding, style preference, and shop
+preference fields; none is a safe location/context field. The client therefore
+does not claim Appwrite profile persistence and does not overload an unrelated
+field. Backend requests receive the local canonical context through their
+existing `user_profile` and/or `context` payloads. The centralized location
+service does not contact a weather provider; backend-bound flows resolve
+weather server-side.
+
 ## Run
 
 ```bash

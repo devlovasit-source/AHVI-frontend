@@ -1,12 +1,6 @@
 import 'package:flutter/material.dart';
-
-/// One garment for the share composition. [role] is a lowercase slot
-/// (top / bottom / footwear / dress / outerwear / accessory).
-class ShareBoardItem {
-  final String role;
-  final String imageUrl;
-  const ShareBoardItem({required this.role, required this.imageUrl});
-}
+import 'package:myapp/style_board/board_models.dart';
+import 'package:myapp/style_board/editorial_board_renderer.dart';
 
 /// A purpose-built, share-only outfit board.
 ///
@@ -17,14 +11,13 @@ class ShareBoardItem {
 /// duplicated the WhatsApp caption.
 ///
 /// This widget fixes all of that: an explicit opaque [_bg] lives INSIDE the
-/// [RepaintBoundary], only branding + title + occasion + a tightened garment
-/// canvas + a small footer are captured, and the paragraphs are excluded. The
-/// in-app card is untouched.
+/// [RepaintBoundary], only branding + title + occasion + the canonical garment
+/// canvas + a small footer are captured, and the paragraphs are excluded.
 class ShareableOutfitBoard extends StatelessWidget {
   final GlobalKey boundaryKey;
   final String title;
   final String occasion;
-  final List<ShareBoardItem> items;
+  final List<StyleBoardItem> items;
   final double width;
 
   const ShareableOutfitBoard({
@@ -73,7 +66,15 @@ class ShareableOutfitBoard extends StatelessWidget {
               _occasionChip(occasion.trim()),
             ],
             const SizedBox(height: 10),
-            Expanded(child: _ShareCanvas(items: items)),
+            Expanded(
+              child: EditorialBoardCanvas(
+                board: StyleBoardData(
+                  title: title,
+                  occasion: occasion,
+                  items: items,
+                ),
+              ),
+            ),
             const SizedBox(height: 6),
             const Text(
               'Styled on AHVI',
@@ -136,88 +137,4 @@ class ShareableOutfitBoard extends StatelessWidget {
           ),
         ),
       );
-}
-
-/// Tight three-piece flat-lay: top upper-left, bottom large on the right,
-/// footwear larger in the lower-left — occupying ~75% of the canvas. Extra
-/// pieces (accessory / outerwear / dress) get sensible slots so nothing is lost.
-class _ShareCanvas extends StatelessWidget {
-  final List<ShareBoardItem> items;
-  const _ShareCanvas({required this.items});
-
-  // Normalized (x, y, width, height) boxes per role.
-  static const Map<String, List<double>> _slots = {
-    'top': [0.02, 0.00, 0.48, 0.46],
-    'outerwear': [0.00, 0.00, 0.50, 0.52],
-    'bottom': [0.50, 0.28, 0.48, 0.66],
-    'dress': [0.30, 0.02, 0.52, 0.82],
-    'footwear': [0.04, 0.60, 0.46, 0.36],
-    'accessory': [0.66, 0.02, 0.26, 0.26],
-    'bag': [0.66, 0.02, 0.28, 0.28],
-  };
-  // Fallback boxes for unknown roles / overflow, still ~75% coverage.
-  static const List<List<double>> _generic = [
-    [0.03, 0.02, 0.46, 0.46],
-    [0.50, 0.28, 0.47, 0.66],
-    [0.05, 0.60, 0.44, 0.36],
-    [0.62, 0.04, 0.30, 0.30],
-    [0.30, 0.32, 0.34, 0.34],
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final w = constraints.maxWidth;
-        final h = constraints.maxHeight;
-        if (w <= 0 || h <= 0 || items.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        final placed = <Widget>[];
-        final usedRoles = <String>{};
-        var genericIndex = 0;
-        for (final item in items.take(5)) {
-          List<double>? box = _slots[item.role];
-          if (box == null || usedRoles.contains(item.role)) {
-            box = _generic[genericIndex % _generic.length];
-            genericIndex++;
-          } else {
-            usedRoles.add(item.role);
-          }
-          placed.add(
-            Positioned(
-              left: box[0] * w,
-              top: box[1] * h,
-              width: box[2] * w,
-              height: box[3] * h,
-              child: _ShareGarment(url: item.imageUrl, role: item.role),
-            ),
-          );
-        }
-        return Stack(clipBehavior: Clip.hardEdge, children: placed);
-      },
-    );
-  }
-}
-
-class _ShareGarment extends StatelessWidget {
-  final String url;
-  final String role;
-  const _ShareGarment({required this.url, required this.role});
-
-  @override
-  Widget build(BuildContext context) {
-    // Footwear reads small inside its transparent PNG, so nudge its zoom up.
-    final scale = role == 'footwear' ? 1.30 : 1.06;
-    return Transform.scale(
-      scale: scale,
-      child: Image.network(
-        url,
-        fit: BoxFit.contain,
-        alignment: Alignment.center,
-        filterQuality: FilterQuality.high,
-        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-      ),
-    );
-  }
 }

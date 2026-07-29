@@ -1,6 +1,8 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:math' as math;
 import 'package:provider/provider.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/theme/theme_tokens.dart';
@@ -8,12 +10,210 @@ import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/backend_service.dart';
 import 'package:myapp/widgets/ahvi_stylist_chat.dart';
 import 'package:myapp/widgets/ahvi_lens_sheet.dart';
+import 'package:myapp/util/safe_text.dart';
 
 import 'package:myapp/services/notification_service.dart';
 
+typedef MediMarkTakenSync = Future<void> Function(
+  String id,
+  int newLeft,
+  String takenAtIso,
+);
+typedef MediDeleteSync = Future<void> Function(String id);
+typedef MediRecordDiagnostic = void Function(String message);
+
+String sanitizeMediSurfaceText(
+  String value, {
+  required String surface,
+  required String field,
+}) {
+  debugPrint('AHVI_MEDI_TEXT_SOURCE field=$field');
+  final safe = sanitizeUtf16(value);
+  if (safe != value) {
+    debugPrint('AHVI_UTF16_SANITIZED surface=$surface field=$field');
+  }
+  return safe;
+}
+
+String _sanitizeMediField(
+  Object? value, {
+  required String field,
+  required String recordId,
+  required MediRecordDiagnostic? diagnostic,
+  String fallback = '',
+}) {
+  final raw = value?.toString() ?? fallback;
+  final safe = sanitizeUtf16(raw);
+  if (safe != raw) {
+    diagnostic?.call(
+      'AHVI_MEDI_RECORD_SANITIZED record_id=$recordId field=$field',
+    );
+  }
+  return safe;
+}
+
+Map<String, dynamic> _stringKeyedMediMap(
+  Map<dynamic, dynamic> source, {
+  required String recordId,
+  required MediRecordDiagnostic? diagnostic,
+}) {
+  final data = <String, dynamic>{};
+  for (final entry in source.entries) {
+    final key = _sanitizeMediField(
+      entry.key,
+      field: 'map_key',
+      recordId: recordId,
+      diagnostic: diagnostic,
+    );
+    data[key] = entry.value;
+  }
+  return data;
+}
+
+Map<String, dynamic>? sanitizeMediRecord(
+  Map<dynamic, dynamic> source, {
+  required String recordId,
+  MediRecordDiagnostic? diagnostic,
+}) {
+  final safeRecordId = sanitizeUtf16(recordId);
+  try {
+    final data = _stringKeyedMediMap(
+      source,
+      recordId: safeRecordId,
+      diagnostic: diagnostic,
+    );
+
+    String text(String field, Object? value, {String fallback = ''}) {
+      return _sanitizeMediField(
+        value,
+        field: field,
+        recordId: safeRecordId,
+        diagnostic: diagnostic,
+        fallback: fallback,
+      );
+    }
+
+    int integer(Object? value, {int fallback = 0}) {
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '') ?? fallback;
+    }
+
+    bool boolean(Object? value, {required bool fallback}) {
+      if (value is bool) return value;
+      final normalized = value?.toString().trim().toLowerCase();
+      if (normalized == 'true' || normalized == '1') return true;
+      if (normalized == 'false' || normalized == '0') return false;
+      return fallback;
+    }
+
+    final left = integer(data['left'] ?? data['supply']);
+    final total = integer(data['total'], fallback: left);
+    return {
+      'id': text('id', data['id'], fallback: safeRecordId),
+      'name': text('name', data['name'], fallback: 'Medicine'),
+      'dose': text('dose', data['dose'] ?? data['dosage']),
+      'freq': text('freq', data['freq'] ?? data['frequency']),
+      'time': text(
+        'time',
+        data['time'] ?? data['scheduleTime'],
+        fallback: '12:00 PM',
+      ),
+      'cat': text(
+        'cat',
+        data['cat'] ?? data['category'],
+        fallback: 'Other',
+      ),
+      'notes': text('notes', data['notes']),
+      'supplyText': text(
+        'supplyText',
+        data['supplyText'] ?? data['supply_text'],
+      ),
+      'reminderText': text(
+        'reminderText',
+        data['reminderText'] ?? data['reminder_text'],
+      ),
+      'status': text('status', data['status']),
+      'lastTaken': text('lastTaken', data['lastTaken'] ?? data['last_taken']),
+      'left': left.clamp(0, 1 << 31),
+      'total': total.clamp(0, 1 << 31),
+      'reminder': boolean(data['reminder'], fallback: true),
+      'taken': boolean(data['taken'], fallback: false),
+      if (data['color'] is Color) 'color': data['color'],
+    };
+  } catch (error) {
+    diagnostic?.call(
+      'AHVI_MEDI_RECORD_SKIPPED record_id=$safeRecordId '
+      'reason=${error.runtimeType}',
+    );
+    return null;
+  }
+}
+
+Map<String, dynamic>? sanitizeMediLogRecord(
+  Map<dynamic, dynamic> source, {
+  required String recordId,
+  MediRecordDiagnostic? diagnostic,
+}) {
+  final safeRecordId = sanitizeUtf16(recordId);
+  try {
+    final data = _stringKeyedMediMap(
+      source,
+      recordId: safeRecordId,
+      diagnostic: diagnostic,
+    );
+    final medicine = sanitizeMediRecord(
+      data,
+      recordId: safeRecordId,
+      diagnostic: diagnostic,
+    );
+    if (medicine == null) return null;
+    final rawTime = medicine['time'].toString();
+    return {
+      'id': medicine['id'],
+      'medId': _sanitizeMediField(
+        data['medId'] ?? data['med_id'],
+        field: 'medId',
+        recordId: safeRecordId,
+        diagnostic: diagnostic,
+      ),
+      'medName': _sanitizeMediField(
+        data['medName'] ?? data['med_name'],
+        field: 'medName',
+        recordId: safeRecordId,
+        diagnostic: diagnostic,
+        fallback: 'Medicine',
+      ),
+      'dose': medicine['dose'],
+      'time': DateTime.tryParse(rawTime)?.toLocal() ?? DateTime.now(),
+      'status': medicine['status'],
+    };
+  } catch (error) {
+    diagnostic?.call(
+      'AHVI_MEDI_RECORD_SKIPPED record_id=$safeRecordId '
+      'reason=${error.runtimeType}',
+    );
+    return null;
+  }
+}
+
 class MediTrackScreen extends StatefulWidget {
   final bool fromHome;
-  const MediTrackScreen({super.key, this.fromHome = false});
+  final bool skipInitialFetch;
+  final List<Map<String, dynamic>> initialMeds;
+  final MediMarkTakenSync? markTakenSync;
+  final MediDeleteSync? deleteSync;
+  final Future<void> Function()? beforeInitialFetch;
+  final VoidCallback? onMarkTakenLogCreated;
+  const MediTrackScreen({
+    super.key,
+    this.fromHome = false,
+    this.skipInitialFetch = false,
+    this.initialMeds = const [],
+    this.markTakenSync,
+    this.deleteSync,
+    this.beforeInitialFetch,
+    this.onMarkTakenLogCreated,
+  });
 
   @override
   State<MediTrackScreen> createState() => _MediTrackScreenState();
@@ -21,6 +221,18 @@ class MediTrackScreen extends StatefulWidget {
 
 class _MediTrackScreenState extends State<MediTrackScreen>
     with TickerProviderStateMixin {
+  ScaffoldMessengerState? _messenger;
+  AppwriteService? _appwrite;
+  Color _toastBackground = Colors.black;
+  Color _toastText = Colors.white;
+  final Set<String> _markTakenInFlight = {};
+  final Set<String> _deleteInFlight = {};
+  int _fetchGeneration = 0;
+  int _mutationRevision = 0;
+  bool _medSaveInFlight = false;
+  bool _medSheetOpen = false;
+  bool _initialFetchStarted = false;
+  bool _renderReadyLogged = false;
   // ── Dynamic color palette from theme tokens ──
   AppThemeTokens get _t => context.themeTokens;
   Color get bg => _t.backgroundPrimary;
@@ -75,6 +287,25 @@ class _MediTrackScreenState extends State<MediTrackScreen>
   @override
   void initState() {
     super.initState();
+    debugPrint(
+      'AHVI_MEDI_INIT phase=init_state from_home=${widget.fromHome} '
+      'skip_initial_fetch=${widget.skipInitialFetch}',
+    );
+    if (widget.initialMeds.isNotEmpty) {
+      meds = widget.initialMeds
+          .asMap()
+          .entries
+          .map(
+            (entry) => sanitizeMediRecord(
+              entry.value,
+              recordId: 'initial-${entry.key}',
+              diagnostic: debugPrint,
+            ),
+          )
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      _isLoading = false;
+    }
     final now = DateTime.now();
     _calYear = now.year;
     _calMonth = now.month;
@@ -106,7 +337,32 @@ class _MediTrackScreenState extends State<MediTrackScreen>
     AhviNotificationService.instance.unreadCount.addListener(
       _onMediNotificationUnreadChanged,
     );
-    _fetchData();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _messenger = ScaffoldMessenger.maybeOf(context);
+    if (widget.beforeInitialFetch == null &&
+        (!widget.skipInitialFetch ||
+            widget.markTakenSync == null ||
+            widget.deleteSync == null)) {
+      _appwrite = Provider.of<AppwriteService>(context, listen: false);
+    }
+    _toastBackground = bg2;
+    _toastText = textColor;
+    for (final med in meds) {
+      med['color'] = med['color'] is Color
+          ? med['color']
+          : _getColorForCategory(med['cat'].toString());
+    }
+    debugPrint(
+      'AHVI_MEDI_INIT phase=dependencies appwrite_ready=${_appwrite != null}',
+    );
+    if (!widget.skipInitialFetch && !_initialFetchStarted) {
+      _initialFetchStarted = true;
+      unawaited(_fetchData());
+    }
   }
 
   void _onMediNotificationUnreadChanged() {
@@ -123,6 +379,13 @@ class _MediTrackScreenState extends State<MediTrackScreen>
     _shimmerCtrl.dispose();
     _pulseCtrl.dispose();
     _ringCtrl.dispose();
+    _nameCtrl.dispose();
+    _doseCtrl.dispose();
+    _timeCtrl.dispose();
+    _supplyCtrl.dispose();
+    _customCatCtrl.dispose();
+    _messenger = null;
+    _appwrite = null;
     super.dispose();
   }
 
@@ -264,53 +527,67 @@ class _MediTrackScreenState extends State<MediTrackScreen>
     );
   }
   Future<void> _fetchData() async {
+    final generation = ++_fetchGeneration;
+    final mutationAtStart = _mutationRevision;
+    debugPrint('AHVI_MEDI_FETCH_START generation=$generation');
     try {
-      final appwrite = Provider.of<AppwriteService>(context, listen: false);
+      await widget.beforeInitialFetch?.call();
+      final appwrite = _appwrite;
+      if (appwrite == null) {
+        debugPrint(
+          'AHVI_MEDI_FETCH_ERROR generation=$generation reason=appwrite_unavailable',
+        );
+        return;
+      }
       // Cache user session upfront so subsequent calls don't fail
       await appwrite.cacheCurrentUser();
       final medsDocs = await appwrite.getMeds();
       final logsDocs = await appwrite.getMedLogs();
 
-      if (mounted) {
+      final parsedMeds = <Map<String, dynamic>>[];
+      for (final document in medsDocs) {
+        final med = sanitizeMediRecord(
+          document.data,
+          recordId: document.$id,
+          diagnostic: debugPrint,
+        );
+        if (med == null) continue;
+        med['taken'] = _isTakenToday(med['lastTaken'].toString());
+        med['color'] = _getColorForCategory(med['cat'].toString());
+        parsedMeds.add(med);
+      }
+
+      final parsedLogs = <Map<String, dynamic>>[];
+      for (final document in logsDocs) {
+        final log = sanitizeMediLogRecord(
+          document.data,
+          recordId: document.$id,
+          diagnostic: debugPrint,
+        );
+        if (log != null) parsedLogs.add(log);
+      }
+
+      if (mounted &&
+          generation == _fetchGeneration &&
+          mutationAtStart == _mutationRevision) {
         setState(() {
-          meds = medsDocs
-              .map(
-                (d) => {
-              'id': d.$id,
-              'name': d.data['name'],
-              'dose': d.data['dose'],
-              'freq': d.data['freq'],
-              'time': d.data['time'],
-              'cat': d.data['cat'],
-              'left': d.data['left'],
-              'total': d.data['total'],
-              'reminder': d.data['reminder'] ?? true,
-              'taken': _isTakenToday(d.data['lastTaken']),
-              'color': _getColorForCategory(d.data['cat']),
-            },
-          )
-              .toList();
-
-          _log = logsDocs
-              .map(
-                (d) => {
-              'id': d.$id,
-              'medId': d.data['medId'],
-              'medName': d.data['medName'],
-              'dose': d.data['dose'],
-              'time': DateTime.parse(d.data['time']).toLocal(),
-              'status': d.data['status'],
-            },
-          )
-              .toList();
-
+          meds = parsedMeds;
+          _log = parsedLogs;
           _isLoading = false;
         });
+        debugPrint(
+          'AHVI_MEDI_FETCH_OK generation=$generation meds=${meds.length} '
+          'logs=${_log.length}',
+        );
         _animateRing(_computeRingProgress());
         _syncHomeAnimations();
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      debugPrint(
+        'AHVI_MEDI_FETCH_ERROR generation=$generation reason=${e.runtimeType}',
+      );
+      if (!mounted || generation != _fetchGeneration) return;
+      setState(() => _isLoading = false);
       _showToast(AppLocalizations.t(context, 'medi_failed_load'), '❌');
     }
   }
@@ -332,14 +609,23 @@ class _MediTrackScreenState extends State<MediTrackScreen>
   }
 
   void _markTaken(String id) async {
+    if (!mounted || _markTakenInFlight.contains(id)) return;
     final medIndex = meds.indexWhere((m) => m['id'] == id);
     if (medIndex == -1 || meds[medIndex]['taken']) return;
+    final appwrite = _appwrite;
+    if (widget.markTakenSync == null && appwrite == null) return;
+    _markTakenInFlight.add(id);
 
     final med = meds[medIndex];
     final newLeft = (med['left'] as int) > 0 ? (med['left'] as int) - 1 : 0;
     final now = DateTime.now();
+    final markedMessage = AppLocalizations.t(
+      context,
+      'medi_marked_taken',
+    ).replaceAll('{name}', med['name'] as String);
 
     // Optimistic UI Update
+    _mutationRevision++;
     setState(() {
       meds[medIndex] = {...med, 'taken': true, 'left': newLeft};
       _log.insert(0, {
@@ -351,13 +637,8 @@ class _MediTrackScreenState extends State<MediTrackScreen>
       });
       _animateRing(_computeRingProgress());
     });
-    _showToast(
-      AppLocalizations.t(
-        context,
-        'medi_marked_taken',
-      ).replaceAll('{name}', med['name'] as String),
-      '✅',
-    );
+    widget.onMarkTakenLogCreated?.call();
+    _showToast(markedMessage, '✅');
 
     // DB Update. Appwrite's datetime attributes require an ISO 8601
     // string with a timezone designator; toIso8601String() on a local
@@ -365,66 +646,68 @@ class _MediTrackScreenState extends State<MediTrackScreen>
     // Convert to UTC first — that gives a "...Z" suffix Appwrite accepts.
     final nowIso = now.toUtc().toIso8601String();
     try {
-      final appwrite = Provider.of<AppwriteService>(context, listen: false);
-      await appwrite.updateMed(id, {'left': newLeft, 'lastTaken': nowIso});
-      await appwrite.createMedLog({
-        'medId': id,
-        'medName': med['name'],
-        'dose': med['dose'],
-        'time': nowIso,
-        'status': 'taken',
-      });
+      if (widget.markTakenSync != null) {
+        await widget.markTakenSync!(id, newLeft, nowIso);
+      } else {
+        await appwrite!.updateMed(id, {'left': newLeft, 'lastTaken': nowIso});
+        await appwrite.createMedLog({
+          'medId': id,
+          'medName': med['name'],
+          'dose': med['dose'],
+          'time': nowIso,
+          'status': 'taken',
+        });
+      }
     } catch (e) {
       // Surface the raw Appwrite error to the screen so it can be read
       // / screenshotted without adb access. Trimmed to keep the toast
       // sized reasonably.
-      final errText = e.toString();
-      final shown = errText.length > 200
-          ? '${errText.substring(0, 200)}…'
-          : errText;
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: bg2,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          duration: const Duration(seconds: 12),
-          content: Text(
-            'Sync failed: $shown',
-            style: TextStyle(
-              color: textColor,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      );
+      final shown = truncateSafeText(e.toString(), 200, suffix: '…');
+      _showToast('Sync failed: $shown', '❌', duration: const Duration(seconds: 12));
+    } finally {
+      _markTakenInFlight.remove(id);
     }
   }
 
   void _deleteMed(String id) async {
+    if (!mounted || _deleteInFlight.contains(id)) return;
+    final appwrite = _appwrite;
+    if (widget.deleteSync == null && appwrite == null) return;
+    final successMessage = AppLocalizations.t(context, 'medi_medicine_removed');
+    final failureMessage = AppLocalizations.t(context, 'medi_remove_failed');
+    _deleteInFlight.add(id);
+    _mutationRevision++;
     setState(() => meds.removeWhere((m) => m['id'] == id));
     _animateRing(_computeRingProgress());
     try {
-      await Provider.of<AppwriteService>(context, listen: false).deleteMed(id);
-      _showToast(AppLocalizations.t(context, 'medi_medicine_removed'), '🗑️');
+      if (widget.deleteSync != null) {
+        await widget.deleteSync!(id);
+      } else {
+        await appwrite!.deleteMed(id);
+      }
+      _showToast(successMessage, '🗑️');
     } catch (e) {
-      _showToast(AppLocalizations.t(context, 'medi_remove_failed'), '❌');
+      _showToast(failureMessage, '❌');
+    } finally {
+      _deleteInFlight.remove(id);
     }
   }
 
-  void _showToast(String message, String icon) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
+  void _showToast(
+    String message,
+    String icon, {
+    Duration duration = const Duration(seconds: 3),
+  }) {
+    final messenger = _messenger;
+    if (!mounted || messenger == null || !messenger.mounted) return;
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
       SnackBar(
-        backgroundColor: bg2,
+        backgroundColor: _toastBackground,
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        duration: const Duration(seconds: 3),
+        duration: duration,
         content: Row(
           children: [
             Text(icon, style: const TextStyle(fontSize: 18)),
@@ -433,7 +716,7 @@ class _MediTrackScreenState extends State<MediTrackScreen>
               child: Text(
                 message,
                 style: TextStyle(
-                  color: textColor,
+                  color: _toastText,
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                 ),
@@ -448,19 +731,35 @@ class _MediTrackScreenState extends State<MediTrackScreen>
   String _getGreeting(BuildContext context) {
     final l = AppLocalizations.t;
     final hour = DateTime.now().hour;
-    if (hour < 5) return l(context, 'medi_greeting_latenight');
-    if (hour < 12) return l(context, 'medi_greeting_morning');
-    if (hour < 18) return l(context, 'medi_greeting_afternoon');
-    return l(context, 'medi_greeting_evening');
+    final value = hour < 5
+        ? l(context, 'medi_greeting_latenight')
+        : hour < 12
+        ? l(context, 'medi_greeting_morning')
+        : hour < 18
+        ? l(context, 'medi_greeting_afternoon')
+        : l(context, 'medi_greeting_evening');
+    return sanitizeMediSurfaceText(
+      value,
+      surface: 'medi_tracker',
+      field: 'greeting',
+    );
   }
 
   String _getGreetingTitle(BuildContext context) {
     final l = AppLocalizations.t;
     final hour = DateTime.now().hour;
-    if (hour < 5) return l(context, 'medi_title_latenight');
-    if (hour < 12) return l(context, 'medi_title_morning');
-    if (hour < 18) return l(context, 'medi_title_afternoon');
-    return l(context, 'medi_title_evening');
+    final value = hour < 5
+        ? l(context, 'medi_title_latenight')
+        : hour < 12
+        ? l(context, 'medi_title_morning')
+        : hour < 18
+        ? l(context, 'medi_title_afternoon')
+        : l(context, 'medi_title_evening');
+    return sanitizeMediSurfaceText(
+      value,
+      surface: 'medi_tracker',
+      field: 'greeting_title',
+    );
   }
 
   void navTo(String screen) {
@@ -473,6 +772,16 @@ class _MediTrackScreenState extends State<MediTrackScreen>
 
   @override
   Widget build(BuildContext context) {
+    debugPrint(
+      'AHVI_MEDI_BUILD phase=${_isLoading ? "loading" : "loaded"} '
+      'from_home=${widget.fromHome}',
+    );
+    if (!_isLoading && !_renderReadyLogged) {
+      _renderReadyLogged = true;
+      debugPrint(
+        'AHVI_MEDI_RENDER_READY meds=${meds.length} logs=${_log.length}',
+      );
+    }
     return PopScope(
       canPop: true,
       child: Scaffold(
@@ -563,7 +872,11 @@ class _MediTrackScreenState extends State<MediTrackScreen>
               ),
               const SizedBox(width: 9),
               Text(
-                AppLocalizations.t(context, 'medi_app_name'),
+                sanitizeMediSurfaceText(
+                  AppLocalizations.t(context, 'medi_app_name'),
+                  surface: 'medi_tracker',
+                  field: 'app_name',
+                ),
                 style: TextStyle(
                   color: textColor,
                   fontSize: 19,
@@ -748,7 +1061,11 @@ class _MediTrackScreenState extends State<MediTrackScreen>
       l(context, 'medi_weekday_saturday'),
       l(context, 'medi_weekday_sunday'),
     ];
-    return '${days[now.weekday - 1]}, ${months[now.month - 1]} ${now.day}';
+    return sanitizeMediSurfaceText(
+      '${days[now.weekday - 1]}, ${months[now.month - 1]} ${now.day}',
+      surface: 'medi_tracker',
+      field: 'hero_date',
+    );
   }
 
   Widget _buildProgressCard() {
@@ -1064,9 +1381,7 @@ class _MediTrackScreenState extends State<MediTrackScreen>
                           ),
                           if (!taken) ...[
                             const SizedBox(height: 2),
-                            GestureDetector(
-                              onTap: () => _markTaken(id),
-                              child: Container(
+                            Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 8,
                                   vertical: 3,
@@ -1096,7 +1411,6 @@ class _MediTrackScreenState extends State<MediTrackScreen>
                                     ),
                                   ],
                                 ),
-                              ),
                             ),
                           ],
                         ],
@@ -2548,7 +2862,9 @@ class _MediTrackScreenState extends State<MediTrackScreen>
   String? _selCat;
   bool _isCustomCat = false;
 
-  void _showAddMedSheet({Map<String, dynamic>? editMed}) {
+  Future<void> _showAddMedSheet({Map<String, dynamic>? editMed}) async {
+    if (!mounted || _medSheetOpen) return;
+    _medSheetOpen = true;
     final l = AppLocalizations.t;
     final isEditing = editMed != null;
     if (isEditing) {
@@ -2569,7 +2885,8 @@ class _MediTrackScreenState extends State<MediTrackScreen>
       _customCatCtrl.clear();
     }
 
-    showModalBottomSheet(
+    var sheetSaving = false;
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -2688,11 +3005,14 @@ class _MediTrackScreenState extends State<MediTrackScreen>
                     const SizedBox(height: 10),
                     _PressScaleButton(
                       onTap: () async {
-                        final name = _nameCtrl.text.trim();
-                        final dose = _doseCtrl.text.trim();
+                        if (sheetSaving || _medSaveInFlight) return;
+                         final name = sanitizeUtf16(_nameCtrl.text.trim());
+                         final dose = sanitizeUtf16(_doseCtrl.text.trim());
                         final supply =
                             int.tryParse(_supplyCtrl.text.trim()) ?? 0;
-                        final customText = _customCatCtrl.text.trim();
+                         final customText = sanitizeUtf16(
+                           _customCatCtrl.text.trim(),
+                         );
                         final effectiveCat = _isCustomCat
                             ? customText
                             : (_selCat ?? l(this.context, 'medi_cat_diabetes'));
@@ -2714,18 +3034,18 @@ class _MediTrackScreenState extends State<MediTrackScreen>
                           return;
                         }
 
-                        final navigator = Navigator.of(context);
-
+                        final appwrite = _appwrite;
+                        if (appwrite == null) return;
+                        sheetSaving = true;
+                        _medSaveInFlight = true;
+                        setSheetState(() {});
                         try {
-                          final appwrite = Provider.of<AppwriteService>(
-                            this.context,
-                            listen: false,
-                          );
-                          final resolvedTime = _timeCtrl.text.trim().isEmpty
-                              ? '12:00 PM'
-                              : _timeCtrl.text.trim();
-                          final resolvedFreq =
-                              _selFreq ?? l(this.context, 'medi_freq_once');
+                           final resolvedTime = _timeCtrl.text.trim().isEmpty
+                               ? '12:00 PM'
+                               : sanitizeUtf16(_timeCtrl.text.trim());
+                           final resolvedFreq = sanitizeUtf16(
+                             _selFreq ?? l(this.context, 'medi_freq_once'),
+                           );
                           if (isEditing) {
                             // Update existing medicine. Leave `left` and
                             // `lastTaken` alone so today's taken-state and
@@ -2749,7 +3069,7 @@ class _MediTrackScreenState extends State<MediTrackScreen>
                               timeText: resolvedTime,
                             );
 
-                            if (!mounted) return;
+                            if (!mounted || !context.mounted) return;
                             _showToast('Medicine updated', '✅');
                           } else {
                             final created = await appwrite.createMed({
@@ -2771,7 +3091,7 @@ class _MediTrackScreenState extends State<MediTrackScreen>
                               timeText: resolvedTime,
                             );
 
-                            if (!mounted) return;
+                            if (!mounted || !context.mounted) return;
                             _showToast(
                               AppLocalizations.t(
                                 this.context,
@@ -2780,7 +3100,8 @@ class _MediTrackScreenState extends State<MediTrackScreen>
                               '💊',
                             );
                           }
-                          navigator.pop();
+                          if (!mounted || !context.mounted) return;
+                          Navigator.of(context).pop();
 
                           _nameCtrl.clear();
                           _doseCtrl.clear();
@@ -2791,9 +3112,18 @@ class _MediTrackScreenState extends State<MediTrackScreen>
                           _selCat = null;
                           _isCustomCat = false;
 
-                          _fetchData();
-                        } catch (e) {
-                          _showToast('Save failed: $e', '❌');
+                          if (mounted) _fetchData();
+                         } catch (e) {
+                           if (mounted) {
+                             _showToast(
+                               'Save failed: ${sanitizeUtf16(e.toString())}',
+                               '❌',
+                             );
+                           }
+                        } finally {
+                          _medSaveInFlight = false;
+                          sheetSaving = false;
+                          if (context.mounted) setSheetState(() {});
                         }
                       },
                       child: Container(
@@ -2822,7 +3152,10 @@ class _MediTrackScreenState extends State<MediTrackScreen>
           },
         );
       },
-    );
+    ).whenComplete(() {
+      _medSaveInFlight = false;
+      _medSheetOpen = false;
+    });
   }
 
   Widget _buildInputLabel(String text) {

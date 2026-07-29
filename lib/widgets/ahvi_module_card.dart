@@ -84,6 +84,31 @@ class AhviModuleCard {
       return int.tryParse(v?.toString() ?? '') ?? 0;
     }
 
+    String routeValue(dynamic value) {
+      if (value is Map) {
+        return (value['route'] ??
+                value['module'] ??
+                value['value'] ??
+                value['target'] ??
+                value['path'] ??
+                '')
+            .toString()
+            .trim();
+      }
+      return value?.toString().trim() ?? '';
+    }
+
+    final openKey = <dynamic>[
+      raw['open_key'],
+      raw['open_module'],
+      raw['cta'],
+      response['open_module'],
+      response['cta'],
+    ].map(routeValue).firstWhere(
+      (value) => value.isNotEmpty,
+      orElse: () => '',
+    );
+
     return AhviModuleCard(
       module: (response['module'] ?? raw['module'] ?? '').toString(),
       title: (raw['title'] ?? 'Summary').toString(),
@@ -92,7 +117,7 @@ class AhviModuleCard {
       countDone: _toInt(raw['count_done']),
       countTotal: _toInt(raw['count_total']),
       rows: rows,
-      openKey: (raw['open_key'] ?? '').toString(),
+      openKey: openKey,
     );
   }
 

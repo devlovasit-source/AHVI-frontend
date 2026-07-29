@@ -23,7 +23,11 @@ import 'package:myapp/widgets/ahvi_header.dart';
 import 'package:myapp/widgets/ahvi_stylist_chat.dart';
 import 'package:myapp/widgets/ahvi_item_detail_modal.dart';
 import 'package:myapp/widgets/ahvi_3step_upload_flow.dart';
+import 'package:myapp/util/wardrobe_image_resolver.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+export 'package:myapp/util/wardrobe_image_resolver.dart'
+    show ResolvedWardrobeImage, resolveWardrobeImage;
 
 // ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¡ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Backend & Providers
 
@@ -118,69 +122,17 @@ class WardrobeItem {
     this.raw = const <String, dynamic>{},
   });
 
-  // Central resolver: canonical catalog/cutout URL wins; masked is last.
-  String? get displayUrl => resolveWardrobeImage(
-    raw,
-    normalizedUrl: normalizedUrl,
-    imageUrl: imageUrl,
-    maskedUrl: maskedUrl,
-  ).url;
-}
+  ResolvedWardrobeImage resolveImage({String surface = 'wardrobe'}) =>
+      resolveWardrobeImage(
+        raw,
+        normalizedUrl: normalizedUrl,
+        imageUrl: imageUrl,
+        maskedUrl: maskedUrl,
+        surface: surface,
+        itemId: id,
+      );
 
-/// Resolved wardrobe image: the URL, the field it came from, and whether it
-/// fell back to a masked/temporary URL (used to trigger a silent refresh).
-class ResolvedWardrobeImage {
-  final String? url;
-  final String field;
-  final bool usedMasked;
-  const ResolvedWardrobeImage(this.url, this.field, this.usedMasked);
-}
-
-/// Wardrobe grid image priority. Canonical catalog/cutout URLs win; the
-/// masked/temporary URL is only used when nothing canonical exists.
-ResolvedWardrobeImage resolveWardrobeImage(
-    Map<String, dynamic> raw, {
-      String? normalizedUrl,
-      String? imageUrl,
-      String? maskedUrl,
-    }) {
-  String? clean(Object? v) {
-    final t = v?.toString().trim() ?? '';
-    return t.isEmpty || t == 'null' ? null : t;
-  }
-
-  final canonical = <List<dynamic>>[
-    ['display_image_url', clean(raw['display_image_url'])],
-    ['displayImageUrl', clean(raw['displayImageUrl'])],
-    ['normalized_image_url', clean(raw['normalized_image_url'])],
-    ['normalizedImageUrl', clean(raw['normalizedImageUrl'])],
-    ['normalizedUrl', clean(normalizedUrl ?? raw['normalized_url'] ?? raw['normalizedUrl'])],
-    ['catalog_image_url', clean(raw['catalog_image_url'])],
-    ['catalogImageUrl', clean(raw['catalogImageUrl'])],
-    ['board_image_url', clean(raw['board_image_url'])],
-    ['boardImageUrl', clean(raw['boardImageUrl'])],
-    ['transparent_image_url', clean(raw['transparent_image_url'])],
-    ['transparentImageUrl', clean(raw['transparentImageUrl'])],
-    ['cutout_url', clean(raw['cutout_url'])],
-    ['cutoutUrl', clean(raw['cutoutUrl'])],
-    ['rmbg_url', clean(raw['rmbg_url'])],
-    ['rmbgUrl', clean(raw['rmbgUrl'])],
-    ['image_url', clean(raw['image_url'])],
-    ['imageUrl', clean(imageUrl ?? raw['imageUrl'])],
-    ['preview_url', clean(raw['preview_url'])],
-    ['previewUrl', clean(raw['previewUrl'])],
-  ];
-  for (final c in canonical) {
-    if (c[1] != null) return ResolvedWardrobeImage(c[1] as String, c[0] as String, false);
-  }
-  final masked = <List<dynamic>>[
-    ['masked_url', clean(maskedUrl ?? raw['masked_url'])],
-    ['maskedUrl', clean(raw['maskedUrl'])],
-  ];
-  for (final c in masked) {
-    if (c[1] != null) return ResolvedWardrobeImage(c[1] as String, c[0] as String, true);
-  }
-  return const ResolvedWardrobeImage(null, 'none', false);
+  String? get displayUrl => resolveImage().url;
 }
 
 String _cleanUiText(Object? value, {String fallback = ''}) {
@@ -197,6 +149,34 @@ String _cleanUiText(Object? value, {String fallback = ''}) {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   return cleaned.isNotEmpty ? cleaned : fallback;
+}
+
+Map<String, dynamic> _cachedImageMetadata(Map<String, dynamic> raw) {
+  const keys = <String>[
+    'board_image_url',
+    'boardImageUrl',
+    'transparent_image_url',
+    'transparentImageUrl',
+    'cutout_url',
+    'cutoutUrl',
+    'rmbg_url',
+    'rmbgUrl',
+    'catalog_image_url',
+    'catalogImageUrl',
+    'board_status',
+    'boardStatus',
+    'cutout_status',
+    'cutoutStatus',
+    'image_status',
+    'imageStatus',
+    'validation_status',
+    'validationStatus',
+    'source',
+  ];
+  return <String, dynamic>{
+    for (final key in keys)
+      if (raw[key] != null) key: raw[key],
+  };
 }
 
 List<String> _categoryTokens(Object? value) {
@@ -459,6 +439,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     'imageUrl': item.imageUrl,
     'maskedUrl': item.maskedUrl,
     'normalizedUrl': item.normalizedUrl,
+    'imageMetadata': _cachedImageMetadata(item.raw),
   };
 
   WardrobeItem? _itemFromCacheJson(Map<String, dynamic> data) {
@@ -480,6 +461,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       normalizedUrl:
       data['normalizedUrl']?.toString() ??
           data['normalized_url']?.toString(),
+      raw: data['imageMetadata'] is Map
+          ? Map<String, dynamic>.from(data['imageMetadata'] as Map)
+          : const <String, dynamic>{},
     );
   }
 
@@ -5973,6 +5957,7 @@ class _ItemCardState extends State<_ItemCard>
     final t = context.themeTokens;
     final accent4 = _accent4(t);
     final item = widget.item;
+    final resolvedImage = item.resolveImage(surface: 'wardrobe_grid');
     final wornLabel = item.worn == 0 ? 'New' : '${item.worn} worn';
     final wornColor = item.worn > 0
         ? t.accent.tertiary.withValues(alpha: 0.15)
@@ -6024,9 +6009,9 @@ class _ItemCardState extends State<_ItemCard>
                           ],
                         ),
                         // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Prioritize Masked URL over Raw URL
-                        image: item.displayUrl != null
+                        image: resolvedImage.url != null
                             ? DecorationImage(
-                          image: NetworkImage(item.displayUrl!),
+                          image: NetworkImage(resolvedImage.url!),
                           fit: BoxFit.contain,
                         )
                             : (item.imageBytes != null
@@ -6037,7 +6022,7 @@ class _ItemCardState extends State<_ItemCard>
                             : null),
                       ),
                       child:
-                      (item.displayUrl == null && item.imageBytes == null)
+                      (resolvedImage.url == null && item.imageBytes == null)
                           ? Center(
                         child: Text(
                           _catEmoji(item.cat),
