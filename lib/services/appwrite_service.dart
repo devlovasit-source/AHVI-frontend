@@ -1884,6 +1884,30 @@ class AppwriteService extends ChangeNotifier {
     }
   }
 
+  Future<Document> updateMealPlan(
+    String documentId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      // Never send identity/system fields. Only editable schema attributes:
+      // name, desc, planType, totalCal, meals. userId/$id/$createdAt stay put.
+      const allowed = {'name', 'desc', 'planType', 'totalCal', 'meals'};
+      final payload = <String, dynamic>{
+        for (final e in data.entries)
+          if (allowed.contains(e.key)) e.key: e.value,
+      };
+      return await databases.updateDocument(
+        databaseId: Env.appwriteDatabaseId,
+        collectionId: Env.mealPlansCollection,
+        documentId: documentId,
+        data: payload,
+      );
+    } catch (e) {
+      debugPrint("Error updating meal plan: $e");
+      rethrow;
+    }
+  }
+
   Future<void> deleteMealPlan(String documentId) async {
     try {
       await databases.deleteDocument(
