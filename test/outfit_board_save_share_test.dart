@@ -204,6 +204,143 @@ void main() {
     expect(shared, isTrue);
   });
 
+  // ── Post-shuffle state ────────────────────────────────────────────────────
+
+  testWidgets('Save uses currentBoardItems (post-shuffle) not original direction', (tester) async {
+    final shuffledItems = <Map<String, dynamic>>[
+      {'name': 'Shuffled tee', 'item_id': 'stee-1', 'role': 'top', 'image_url': 'https://x/stee.png', 'source': 'style_asset'},
+      {'name': 'Shuffled trousers', 'item_id': 'str-2', 'role': 'bottom', 'image_url': 'https://x/str.png', 'source': 'style_asset'},
+      {'name': 'Shuffled sneakers', 'item_id': 'ssn-3', 'role': 'footwear', 'image_url': 'https://x/ssn.png', 'source': 'style_asset'},
+    ];
+    Map<String, dynamic>? captured;
+    await _pumpBar(
+      tester,
+      OutfitActionBar(
+        direction: _direction(),
+        editorialCover: const {},
+        primaryLabel: 'Office Look',
+        missingName: '',
+        shareBoundaryKey: GlobalKey(),
+        currentBoardItems: shuffledItems,
+        saveBoardOverride: ({required occasion, required outfitDescription, required imageUrl, required title, required itemIds, required items}) async {
+          captured = {'items': items, 'itemIds': itemIds};
+          return 'doc-shuffled';
+        },
+      ),
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(captured, isNotNull, reason: 'save callback must fire');
+    final savedItems = captured!['items'] as List;
+    expect(savedItems.length, 3, reason: 'shuffled item count preserved');
+    expect(savedItems.first['name'], 'Shuffled tee',
+        reason: 'shuffled items used, not original direction board_items');
+    final savedIds = captured!['itemIds'] as List;
+    expect(savedIds, containsAll(<String>['stee-1', 'str-2', 'ssn-3']),
+        reason: 'shuffled item IDs propagated');
+  });
+
+  testWidgets('Save/reopen item count and order match after shuffle (outfitItems preserves sequence)', (tester) async {
+    final shuffled = <Map<String, dynamic>>[
+      {'name': 'A', 'item_id': 'a-1', 'role': 'top', 'image_url': 'https://x/a.png', 'source': 'wardrobe'},
+      {'name': 'B', 'item_id': 'b-2', 'role': 'bottom', 'image_url': 'https://x/b.png', 'source': 'wardrobe'},
+    ];
+    List<Map<String, dynamic>>? savedOutfitItems;
+    await _pumpBar(
+      tester,
+      OutfitActionBar(
+        direction: _direction(),
+        editorialCover: const {},
+        primaryLabel: 'Test',
+        missingName: '',
+        shareBoundaryKey: GlobalKey(),
+        currentBoardItems: shuffled,
+        saveBoardOverride: ({required occasion, required outfitDescription, required imageUrl, required title, required itemIds, required items}) async {
+          savedOutfitItems = items;
+          return 'doc-2';
+        },
+      ),
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(savedOutfitItems, isNotNull);
+    expect(savedOutfitItems!.length, 2);
+    expect(savedOutfitItems![0]['item_id'], 'a-1');
+    expect(savedOutfitItems![1]['item_id'], 'b-2');
+  });
+
+  testWidgets('asset_cutout_url preserved through currentBoardItems into save', (tester) async {
+    final itemWithCutout = <Map<String, dynamic>>[
+      {
+        'name': 'Floral dress',
+        'item_id': 'dress-1',
+        'role': 'dress',
+        'image_url': 'https://x/opaque.jpg',
+        'asset_cutout_url': 'https://x/cutout.png',
+        'source': 'style_asset',
+      },
+    ];
+    Map<String, dynamic>? captured;
+    await _pumpBar(
+      tester,
+      OutfitActionBar(
+        direction: _direction(),
+        editorialCover: const {},
+        primaryLabel: 'Test',
+        missingName: '',
+        shareBoundaryKey: GlobalKey(),
+        currentBoardItems: itemWithCutout,
+        saveBoardOverride: ({required occasion, required outfitDescription, required imageUrl, required title, required itemIds, required items}) async {
+          captured = {'items': items};
+          return 'doc-3';
+        },
+      ),
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(captured, isNotNull);
+    final item = (captured!['items'] as List).first as Map;
+    expect(item['asset_cutout_url'], 'https://x/cutout.png',
+        reason: 'asset_cutout_url must survive toContractJson() round-trip via raw');
+    expect(item['image_url'], 'https://x/opaque.jpg',
+        reason: 'image_url also preserved for fallback');
+  });
+
+  testWidgets('Unlocked board item has no visible border (no frame on transparent cutout)', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: _testTheme,
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 320,
+              child: AhviOutfitBoardCard(direction: _direction(), width: 320),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    tester.takeException(); // dismiss network-image noise
+
+    // Every DecoratedBox in the canvas should have a null border when items are unlocked.
+    // BoardMutationBar absent (no contract) so no lock toggles rendered.
+    final decoratedBoxes = tester.widgetList<DecoratedBox>(find.byType(DecoratedBox));
+    for (final box in decoratedBoxes) {
+      final deco = box.decoration;
+      if (deco is BoxDecoration) {
+        expect(deco.border, isNull,
+            reason: 'Unlocked item must not have a visible frame border');
+      }
+    }
+  });
+
   testWidgets('Lock/Shuffle stays disabled (no BoardMutationBar) without a contract, while Save/Share still render', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

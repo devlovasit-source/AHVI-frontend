@@ -324,6 +324,9 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
                 onSendMessage: widget.onSendMessage,
                 onShuffle: _controller == null ? null : _shuffleBoard,
                 shareBoundaryKey: _shareBoundaryKey,
+                currentBoardItems: _controller?.state.items
+                    .map((i) => i.toContractJson())
+                    .toList(),
               ),
             ],
           ),
@@ -738,6 +741,10 @@ class OutfitActionBar extends StatefulWidget {
   final OutfitBoardMessageSender? onSendMessage;
   final Future<void> Function()? onShuffle;
   final GlobalKey? shareBoundaryKey;
+  // Current board items from the controller (null = use original direction).
+  // Replaces _saveItems()' direction read after a Shuffle so Save/Share export
+  // the actual displayed outfit, not the pre-shuffle original.
+  final List<Map<String, dynamic>>? currentBoardItems;
   // Test seams (production uses the real Appwrite + share_plus paths).
   final BoardSaveFn? saveBoardOverride;
   final Future<Uint8List?> Function()? captureOverride;
@@ -754,6 +761,7 @@ class OutfitActionBar extends StatefulWidget {
     this.onSendMessage,
     this.onShuffle,
     this.shareBoundaryKey,
+    this.currentBoardItems,
     this.saveBoardOverride,
     this.captureOverride,
     this.shareImageOverride,
@@ -810,6 +818,9 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
       final url = _text(
         item['board_image_url'] ??
             item['transparent_image_url'] ??
+            item['asset_cutout_url'] ??
+            item['asset_masked_url'] ??
+            item['transparent_url'] ??
             item['cutout_url'] ??
             item['image_url'] ??
             item['imageUrl'],
@@ -955,12 +966,13 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
   }
 
   List<Map<String, dynamic>> _saveItems() {
-    final items = _maps(
+    final current = widget.currentBoardItems;
+    if (current != null && current.isNotEmpty) return current;
+    return _maps(
       widget.direction['board_items'] ??
           widget.direction['boardItems'] ??
           widget.direction['items'],
     );
-    return items;
   }
 
   List<String> _saveItemIds() {
@@ -1873,6 +1885,12 @@ String? _transparentUrlFor(
     'boardImageUrl',
     'transparent_image_url',
     'transparentImageUrl',
+    'asset_cutout_url',
+    'assetCutoutUrl',
+    'asset_masked_url',
+    'assetMaskedUrl',
+    'transparent_url',
+    'transparentUrl',
   ]) {
     final v = item[key]?.toString().trim() ?? '';
     if (v.isNotEmpty) return v;

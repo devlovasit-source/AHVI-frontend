@@ -1097,8 +1097,8 @@ class AppwriteService extends ChangeNotifier {
           "pattern": doc.data['pattern'],
           "occasions": doc.data['occasions'],
           "image_url":
-          doc.data['normalized_url'] ??
-              doc.data['masked_url'] ??
+          doc.data['masked_url'] ??
+              doc.data['normalized_url'] ??
               doc.data['image_url'] ??
               doc.data['raw_url'],
           "masked_url": doc.data['masked_url'],
@@ -1110,9 +1110,9 @@ class AppwriteService extends ChangeNotifier {
           // field name may vary by collection schema version.
           "isLiked": doc.data['isLiked'] ?? doc.data['isFavourite'] ?? false,
           "isFavourite": doc.data['isFavourite'] ?? doc.data['isLiked'] ?? false,
-          "imageUrl": doc.data['imageUrl'] ??
+          "imageUrl": doc.data['masked_url'] ??
+              doc.data['imageUrl'] ??
               doc.data['normalized_url'] ??
-              doc.data['masked_url'] ??
               doc.data['image_url'] ??
               doc.data['raw_url'],
         };
