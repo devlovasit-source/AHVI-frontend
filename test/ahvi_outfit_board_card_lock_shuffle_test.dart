@@ -84,72 +84,6 @@ void main() {
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test(
-    'interaction mode is explicit and never inferred from source policy',
-    () {
-      expect(
-        inferBoardInteractionMode({'source_policy': 'wardrobe'}),
-        BoardInteractionMode.recommendation,
-      );
-      expect(
-        inferBoardInteractionMode({
-          'interaction_mode': 'style-this',
-          'source_policy': 'wardrobe',
-        }),
-        BoardInteractionMode.styleThis,
-      );
-      expect(
-        inferBoardInteractionMode({
-          'interaction_mode': '',
-          'scenario': 'build_outfit',
-          'source_policy': 'style_asset',
-        }),
-        BoardInteractionMode.buildOutfit,
-      );
-    },
-  );
-
-  testWidgets('recommendation exposes feedback without mutation controls', (
-    tester,
-  ) async {
-    await _pumpCard(
-      tester,
-      board: _board(scenario: 'recommendation'),
-      shuffleCall: (state) async => _success(state),
-    );
-
-    expect(find.byType(BoardMutationBar), findsNothing);
-    expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
-    expect(find.textContaining('Shuffle'), findsNothing);
-    expect(find.text('Save'), findsOneWidget);
-    expect(find.text('Like'), findsOneWidget);
-    expect(find.text('Dislike'), findsOneWidget);
-    expect(find.text('Share'), findsOneWidget);
-  });
-
-  testWidgets('Style This locks its originating garment by default', (
-    tester,
-  ) async {
-    final board = _board(scenario: 'style_this', sourcePolicy: 'style_asset');
-    final items = (board['board_items'] as List).whereType<Map>();
-    for (final item in items) {
-      item['locked'] = false;
-      if (item['item_id'] != 'anchor') item['source'] = 'style_asset';
-    }
-    await _pumpCard(
-      tester,
-      board: board,
-      shuffleCall: (state) async => _success(state),
-    );
-
-    expect(find.text('1 of 3 items locked'), findsOneWidget);
-    expect(find.byIcon(Icons.lock_rounded), findsOneWidget);
-    expect(find.text('Like'), findsNothing);
-    expect(find.text('Dislike'), findsNothing);
-    expect(find.text('Save'), findsOneWidget);
-    expect(find.text('Share'), findsOneWidget);
-  });
-
   testWidgets('active card locks multiple items and unlocks all locally', (
     tester,
   ) async {
@@ -184,117 +118,6 @@ void main() {
     expect(apiCalls, 0);
   });
 
-  testWidgets(
-    'live board matches wardrobe image by stable id without changing layout',
-    (tester) async {
-      List<Map<String, dynamic>>? savedItems;
-      final board = _board();
-      board['title'] = 'Image audit board';
-      final top = (board['board_items'] as List).first as Map<String, dynamic>;
-      top['board_image_url'] = 'https://example.test/white-board.png';
-      top['image_url'] = 'https://example.test/original.jpg';
-
-      await _pumpCard(
-        tester,
-        board: board,
-        shuffleCall: (state) async => _success(state),
-      );
-      await tester.tap(find.byKey(const ValueKey<String>('lock-shoe-1')));
-      await tester.pump();
-      expect(find.text('2 of 3 items locked'), findsOneWidget);
-      await _pumpCard(
-        tester,
-        board: board,
-        wardrobeById: {
-          'anchor': {
-            r'$id': 'anchor',
-            'normalized_url': 'https://example.test/catalog_anchor.jpg',
-          },
-        },
-        shuffleCall: (state) async => _success(state),
-        saveBoardOverride:
-            ({
-              required occasion,
-              required outfitDescription,
-              required imageUrl,
-              required title,
-              required itemIds,
-              required items,
-              required isFavourite,
-            }) async {
-              savedItems = items;
-              return 'doc-1';
-            },
-      );
-      expect(find.text('2 of 3 items locked'), findsOneWidget);
-
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Save look'));
-      await tester.pumpAndSettle();
-
-      final savedTop = savedItems!.firstWhere(
-        (item) => item['item_id'] == 'anchor',
-      );
-      expect(savedTop['image_url'], 'https://example.test/catalog_anchor.jpg');
-      expect(savedTop['selected_field'], 'normalized_url');
-      expect(savedTop['source_kind'], 'catalog_fallback');
-      expect(savedTop['expected_transparent'], isFalse);
-      expect(savedTop['position'], top['position']);
-      expect(savedTop['item_id'], 'anchor');
-    },
-  );
-
-  testWidgets('clearing an explicit wardrobe map removes stale images', (
-    tester,
-  ) async {
-    List<Map<String, dynamic>>? savedItems;
-    final board = _board()..['title'] = 'Cleared wardrobe map regression';
-    await _pumpCard(
-      tester,
-      board: board,
-      wardrobeById: {
-        'anchor': {
-          r'$id': 'anchor',
-          'normalized_url': 'https://example.test/catalog_anchor.jpg',
-        },
-      },
-      shuffleCall: (state) async => _success(state),
-    );
-    await _pumpCard(
-      tester,
-      board: board,
-      shuffleCall: (state) async => _success(state),
-      saveBoardOverride:
-          ({
-            required occasion,
-            required outfitDescription,
-            required imageUrl,
-            required title,
-            required itemIds,
-            required items,
-            required isFavourite,
-          }) async {
-            savedItems = items;
-            return 'doc-1';
-          },
-    );
-    await tester.tap(find.text('Save'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Save look'));
-    await tester.pumpAndSettle();
-
-    final savedTop = savedItems!.firstWhere(
-      (item) => item['item_id'] == 'anchor',
-    );
-    expect(
-      savedTop['image_url'],
-      isNot('https://example.test/catalog_anchor.jpg'),
-    );
-    expect(savedTop['source_kind'], 'original');
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
-
   testWidgets('actual chat parser preserves connected Build Outfit contract', (
     tester,
   ) async {
@@ -325,44 +148,8 @@ void main() {
     expect(find.byKey(const ValueKey<String>('anchor')), findsOneWidget);
   });
 
-  testWidgets('Save persists the current shuffled board items', (tester) async {
-    List<Map<String, dynamic>>? savedItems;
-    await _pumpCard(
-      tester,
-      board: _board(),
-      shuffleCall: (state) async => _success(state),
-      saveBoardOverride:
-          ({
-            required occasion,
-            required outfitDescription,
-            required imageUrl,
-            required title,
-            required itemIds,
-            required items,
-            required isFavourite,
-          }) async {
-            savedItems = items;
-            return 'doc-1';
-          },
-    );
-
-    await tester.tap(find.text('Shuffle unlocked pieces'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Save'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Save look'));
-    await tester.pumpAndSettle();
-
-    expect(savedItems, isNotNull);
-    expect(savedItems!.map((item) => item['item_id']), [
-      'anchor',
-      'bottom-1-new',
-      'shoe-1-new',
-    ]);
-  });
-
   testWidgets(
-    'wardrobe board without positions keeps durable mutation shuffle',
+    'wardrobe board without positions enables footer durable shuffle only',
     (tester) async {
       final board = _board();
       for (final item in (board['board_items'] as List).whereType<Map>()) {
@@ -389,8 +176,8 @@ void main() {
         },
       );
 
-      expect(find.text('Shuffle unlocked pieces'), findsOneWidget);
-      await tester.tap(find.text('Shuffle unlocked pieces'));
+      expect(find.text('Shuffle'), findsOneWidget);
+      await tester.tap(find.text('Shuffle'));
       await tester.pumpAndSettle();
 
       expect(sentMessages, isEmpty);
@@ -399,7 +186,7 @@ void main() {
       expect(request!.sourcePolicy, 'wardrobe');
       expect(request!.lockedItemIds, {'anchor'});
 
-      await tester.tap(find.text('Shuffle unlocked pieces'));
+      await tester.tap(find.text('Shuffle'));
       await tester.pumpAndSettle();
       expect(request!.revision, 2);
       expect(request!.sourcePolicy, 'wardrobe');
@@ -408,9 +195,7 @@ void main() {
     },
   );
 
-  testWidgets('contract check logs the actual failed predicate', (
-    tester,
-  ) async {
+  testWidgets('contract check logs the actual failed predicate', (tester) async {
     final messages = <String>[];
     final previousDebugPrint = debugPrint;
     debugPrint = (message, {wrapWidth}) {
@@ -430,13 +215,7 @@ void main() {
       expect(check, contains('can_lock=false'));
       expect(check, contains('can_shuffle=false'));
       expect(check, contains('failed_predicates=source_policy'));
-      expect(find.textContaining('Shuffle'), findsNothing);
-      final interaction = messages.singleWhere(
-        (message) => message.startsWith('AHVI_BOARD_INTERACTION_MODE'),
-      );
-      expect(interaction, contains('mode=build_outfit'));
-      expect(interaction, contains('lock=false'));
-      expect(interaction, contains('shuffle=false'));
+      expect(find.text('Shuffle unavailable'), findsOneWidget);
     } finally {
       debugPrint = previousDebugPrint;
     }
@@ -579,7 +358,8 @@ void main() {
           final items = state.items.map((item) {
             if (state.lockedItemIds.contains(item.itemId)) return item;
             return StyleBoardItem.fromJson({
-              ..._item('${item.itemId}-new', item.slot, x: item.position!.x!),
+              ..._item('${item.itemId}-new', item.slot,
+                  x: item.position!.x!),
               'source': 'style_asset',
             });
           }).toList();
@@ -632,7 +412,7 @@ void main() {
     );
     expect(find.text('Shuffle unlocked pieces'), findsNothing);
     expect(find.text('0 of 3 items locked'), findsNothing);
-    expect(find.textContaining('Shuffle'), findsNothing);
+    expect(find.text('Shuffle unavailable'), findsOneWidget);
   });
 
   testWidgets(
@@ -676,8 +456,6 @@ Future<void> _pumpCard(
   required Future<StyleBoardShuffleResult> Function(StyleBoardState)
   shuffleCall,
   ValueChanged<String>? onSendMessage,
-  BoardSaveFn? saveBoardOverride,
-  Map<String, Map<String, dynamic>> wardrobeById = const {},
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -694,8 +472,6 @@ Future<void> _pumpCard(
             width: 390,
             onSendMessage: onSendMessage ?? (_) {},
             shuffleCall: shuffleCall,
-            saveBoardOverride: saveBoardOverride,
-            wardrobeById: wardrobeById,
           ),
         ),
       ),

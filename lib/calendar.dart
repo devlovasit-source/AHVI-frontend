@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/app_localizations.dart';
-import 'package:myapp/models/calendar_actions.dart';
-import 'package:myapp/models/calendar_event_record.dart';
 import 'package:myapp/services/ahvi_response_parser.dart';
 import 'package:myapp/services/ahvi_speech_service.dart';
 import 'package:myapp/services/backend_service.dart';
@@ -192,22 +190,28 @@ class _CalendarShellState extends State<CalendarShell> {
     );
   }
 
-  PlanItem _planFromBackendEvent(CalendarEventRecord event) {
-    final occasion = (event.metadata['occasion'] ??
-            (event.type.isNotEmpty ? event.type : event.title))
+  PlanItem _planFromBackendEvent(Map<String, dynamic> event) {
+    final title = (event['title'] ?? 'Plan').toString();
+    final startRaw = (event['start_time'] ?? '').toString();
+    final start = DateTime.tryParse(startRaw);
+    final metadata = event['metadata'] is Map
+        ? Map<String, dynamic>.from(event['metadata'] as Map)
+        : <String, dynamic>{};
+
+    final occasion = (metadata['occasion'] ?? event['type'] ?? title)
         .toString();
-    final outfit = (event.metadata['outfit'] ?? event.description)
+    final outfit = (metadata['outfit'] ?? event['description'] ?? '')
         .toString();
 
     return PlanItem(
-      id: event.id,
-      occasion: occasion.isEmpty ? event.title : occasion,
+      id: (event['id'] ?? event[r'$id'] ?? '').toString(),
+      occasion: occasion.isEmpty ? title : occasion,
       icon: _iconForOccasion(occasion),
       colorTheme: _themeForOccasion(occasion),
-      time: _formatTime(event.startTime),
+      time: start != null ? _formatTime(start) : '',
       outfit: outfit,
-      startTime: event.startTime,
-      hasReminder: event.reminderMinutes > 0,
+      startTime: start,
+      hasReminder: ((event['reminder_minutes'] ?? 30) as num).toInt() > 0,
     );
   }
 
@@ -215,22 +219,13 @@ class _CalendarShellState extends State<CalendarShell> {
     if (_isLoadingPlans) return;
     setState(() => _isLoadingPlans = true);
 
-    final events = await _backend.getCalendarEvents(
-      limit: 300,
-      surface: CalendarListSurface.calendar,
-    );
+    final events = await _backend.getCalendarEvents(limit: 300);
     final next = <String, List<PlanItem>>{};
 
     for (final event in events) {
-      final record = CalendarEventRecord.tryParse(
-        event,
-        onSkipped: (eventId, field) => debugPrint(
-          'AHVI_CALENDAR_PARSE_SKIPPED event_id=$eventId field=$field',
-        ),
-      );
-      if (record == null) continue;
-      final plan = _planFromBackendEvent(record);
-      final key = _dateKey(record.startTime);
+      final plan = _planFromBackendEvent(event);
+      final date = plan.startTime ?? DateTime.now();
+      final key = _dateKey(date);
       next.putIfAbsent(key, () => <PlanItem>[]).add(plan);
     }
 
@@ -276,33 +271,23 @@ class _CalendarShellState extends State<CalendarShell> {
       },
     );
 
-    if (!mounted) return;
-    if (created == null) {
-      setState(() => _plansData[key]?.remove(plan));
-      return;
-    }
+    if (!mounted || created == null) return;
 
-    CalendarRefreshSignal.notify();
-    await _loadCalendarEvents();
-  }
+    final savedStart =
+        DateTime.tryParse((created['start_time'] ?? '').toString()) ?? start;
+    final savedPlan = plan.copyWith(
+      id: (created['id'] ?? created[r'$id'] ?? '').toString(),
+      startTime: savedStart,
+      time: _formatTime(savedStart),
+    );
 
-  Future<void> _handleCalendarMutation(Map<String, dynamic> response) async {
-    final mutation = CalendarMutationResult.tryParse(response);
-    if (mutation == null) return;
-    debugPrint('AHVI_CALENDAR_CREATE_START');
-    if (mutation.reused) {
-      debugPrint('AHVI_CALENDAR_CREATE_REUSED event_id=${mutation.eventId}');
-    } else {
-      debugPrint('AHVI_CALENDAR_CREATE_OK event_id=${mutation.eventId}');
-    }
-    if (mutation.reminderConfirmed) {
-      final reminderId = mutation.reminderId.isNotEmpty
-          ? mutation.reminderId
-          : 'scheduled';
-      debugPrint('AHVI_CALENDAR_REMINDER_OK reminder_id=$reminderId');
-    }
-    CalendarRefreshSignal.notify();
-    await _loadCalendarEvents();
+    setState(() {
+      final list = _plansData[key] ?? <PlanItem>[];
+      final idx = list.indexOf(plan);
+      if (idx >= 0) {
+        list[idx] = savedPlan;
+      }
+    });
   }
 
   Future<void> _removePlan(int index) async {
@@ -375,10 +360,22 @@ class _CalendarShellState extends State<CalendarShell> {
                           occasion: _activeOccasion,
                           icon: _activeIcon,
                           onBack: _closeChat,
-                          onOpenRoute: (route) async => _closeChat(),
-                          onCalendarMutation: (response) async {
-                            await _handleCalendarMutation(response);
-                            if (!context.mounted) return;
+                          onSavePlan: (time, outfit) {
+                            _addPlan(
+                              PlanItem(
+                                occasion: _activeOccasion,
+                                icon: _activeIcon,
+                                time: time,
+                                outfit: outfit,
+                                colorTheme:
+                                    [
+                                      'orange',
+                                      'blue',
+                                      'pink',
+                                    ][DateTime.now().millisecond %
+                                        3], // Random theme
+                              ),
+                            );
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
@@ -1324,7 +1321,6 @@ class ChatMessage {
   final List<AhviChip> chips;
   final AhviVisualBoard? visualBoard;
   final AhviModuleCard? moduleCard;
-  final CalendarPlanPack? planPack;
   ChatMessage(
     this.text, {
     required this.isUser,
@@ -1332,7 +1328,6 @@ class ChatMessage {
     this.chips = const [],
     this.visualBoard,
     this.moduleCard,
-    this.planPack,
   });
 }
 
@@ -1340,18 +1335,14 @@ class StyleChatScreen extends StatefulWidget {
   final String occasion;
   final IconData icon;
   final VoidCallback onBack;
-  final Future<void> Function(String route) onOpenRoute;
-  final Future<void> Function(Map<String, dynamic>) onCalendarMutation;
-  final BackendService? backend;
+  final Function(String, String) onSavePlan;
 
   const StyleChatScreen({
     super.key,
     required this.occasion,
     required this.icon,
     required this.onBack,
-    required this.onOpenRoute,
-    required this.onCalendarMutation,
-    this.backend,
+    required this.onSavePlan,
   });
 
   @override
@@ -1361,14 +1352,11 @@ class StyleChatScreen extends StatefulWidget {
 class _StyleChatScreenState extends State<StyleChatScreen> {
   final TextEditingController _textCtrl = TextEditingController();
   final List<ChatMessage> _msgs = [];
-  final CalendarActionCoordinator _actionCoordinator =
-      CalendarActionCoordinator();
   bool _isListening = false;
   String? _lastDraftPlan;
   String? _lastDraftTime;
 
   bool _greetingAdded = false;
-  BackendService get _backend => widget.backend ?? BackendService();
 
   @override
   void initState() {
@@ -1428,15 +1416,7 @@ class _StyleChatScreenState extends State<StyleChatScreen> {
   }
 
   List<AhviChip> _calendarChipsFor(AhviResponse parsed) {
-    final chips = parsed.chips.map((chip) {
-      final action = calendarQuickActionFor(
-        value: chip.value,
-        label: chip.label,
-      );
-      return action == null
-          ? chip
-          : AhviChip(label: action.label, value: action.id);
-    }).toList();
+    final chips = <AhviChip>[...parsed.chips];
     final hasStructuredPlan =
         parsed.isPlan ||
         parsed.isPrep ||
@@ -1454,52 +1434,33 @@ class _StyleChatScreenState extends State<StyleChatScreen> {
     return chips.where((chip) => seen.add(chip.label)).take(3).toList();
   }
 
-  Future<void> _handleChip(AhviChip chip) async {
-    final action = calendarQuickActionFor(
-      value: chip.value,
-      label: chip.label,
-    );
-    if (action != null) {
-      await _actionCoordinator.dispatch(
-        action,
-        navigate: (route) async {
-          await widget.onOpenRoute(route);
-          debugPrint(
-            'AHVI_CALENDAR_ACTION action=view_events '
-            'outcome=navigated route=$route',
-          );
-        },
-        requestPlan: (requestedAction) async {
-          debugPrint(
-            'AHVI_CALENDAR_ACTION '
-            'action=${requestedAction == CalendarQuickAction.prepTomorrow ? 'prep_tomorrow' : 'plan_day'} '
-            'outcome=requested',
-          );
-          await _sendMsg(action: requestedAction);
-        },
-      );
-      return;
-    }
+  void _handleChip(AhviChip chip) {
     if (chip.value == 'calendar_save_draft') {
       final plan = _lastDraftPlan;
       if (plan == null || plan.trim().isEmpty) return;
-      _textCtrl.text = 'Save to calendar at ${_lastDraftTime ?? '9:00 AM'}: $plan';
-      await _sendMsg();
+      widget.onSavePlan(_lastDraftTime ?? '9:00 AM', plan);
+      setState(() {
+        _msgs.add(
+          ChatMessage(
+            'Saved it to your calendar.',
+            isUser: false,
+            time: AppLocalizations.t(context, 'calendar_chat_time_now'),
+          ),
+        );
+      });
       return;
     }
     _textCtrl.text = chip.value;
-    await _sendMsg();
+    _sendMsg();
   }
 
-  Future<void> _sendMsg({CalendarQuickAction? action}) async {
-    if (action == null && _textCtrl.text.trim().isEmpty) return;
+  Future<void> _sendMsg() async {
+    if (_textCtrl.text.trim().isEmpty) return;
 
-    final userText = action?.label ?? _textCtrl.text;
+    final userText = _textCtrl.text;
     final lower = userText.toLowerCase();
-    final attemptedSave = lower.contains('yes') ||
-        lower.contains('save') ||
-        lower.contains('add');
-    var calendarMutationApplied = false;
+    final mockOutfit = "Styling layer with ${widget.occasion} vibes.";
+
     setState(() {
       _msgs.add(
         ChatMessage(
@@ -1514,14 +1475,9 @@ class _StyleChatScreenState extends State<StyleChatScreen> {
     String reply = '';
     List<AhviChip> responseChips = const [];
     try {
-      final actionRequest = action == null
-          ? null
-          : calendarActionRequest(action, occasion: widget.occasion);
-      final response = await _backend.sendModuleChat(
+      final response = await BackendService().sendModuleChat(
         domain: 'calendar',
-        message:
-            actionRequest?.message ?? 'Occasion: ${widget.occasion}\n\n$userText',
-        context: actionRequest?.context,
+        message: 'Occasion: ${widget.occasion}\n\n$userText',
         chatHistory: _msgs
             .map(
               (m) => <String, String>{
@@ -1531,65 +1487,6 @@ class _StyleChatScreenState extends State<StyleChatScreen> {
             )
             .toList(),
       );
-      final mutation = CalendarMutationResult.tryParse(response);
-      if (mutation != null) {
-        await widget.onCalendarMutation(response);
-        calendarMutationApplied = true;
-      }
-
-      final openRoute = calendarOpenModuleRoute(response);
-      if (openRoute != null) {
-        final normalizedRoute = normalizeCalendarRoute(openRoute);
-        if (normalizedRoute == null) {
-          debugPrint(
-            'AHVI_CALENDAR_ACTION action=open_module '
-            'outcome=ignored route=$openRoute',
-          );
-        } else {
-          await _actionCoordinator.dispatch(
-            CalendarQuickAction.viewEvents,
-            navigate: (route) async {
-              await widget.onOpenRoute(route);
-              debugPrint(
-                'AHVI_CALENDAR_ACTION action=view_events '
-                'outcome=navigated route=$route',
-              );
-            },
-            requestPlan: (_) async {},
-          );
-          if (!mounted) return;
-        }
-      }
-
-      final planPack = CalendarPlanPack.tryParse(
-        response,
-        requestedAction: action,
-      );
-      if (planPack != null) {
-        if (action == CalendarQuickAction.planDay) {
-          // The backend currently exposes one plan_pack capability. Keep the
-          // requested day-plan identity and title distinct in the frontend.
-          debugPrint(
-            'AHVI_CALENDAR_PLAN_CAPABILITY requested=day_plan '
-            'backend_intent=plan_pack',
-          );
-        }
-        debugPrint('AHVI_CALENDAR_PLAN_OK plan_type=${planPack.planType}');
-        if (!mounted) return;
-        setState(() {
-          _msgs.add(
-            ChatMessage(
-              _responseText(response).isNotEmpty
-                  ? _responseText(response)
-                  : planPack.title,
-              isUser: false,
-              time: AppLocalizations.t(context, 'calendar_chat_time_now'),
-              planPack: planPack,
-            ),
-          );
-        });
-        return;
-      }
 
       // Module summary card response (medicines / bills / events / etc).
       if (AhviModuleCard.isModuleCard(response)) {
@@ -1646,14 +1543,29 @@ class _StyleChatScreenState extends State<StyleChatScreen> {
     if (!mounted) return;
     setState(() {
       final extractedTime = _extractTime(userText);
-      if (calendarMutationApplied) {
-        reply = reply.isNotEmpty ? reply : 'Saved it to your calendar.';
-      } else if (attemptedSave) {
-        reply = "I couldn't confirm that calendar event. Please try again.";
+      if (lower.contains('yes') ||
+          lower.contains('save') ||
+          lower.contains('add')) {
+        if (extractedTime.isNotEmpty) {
+          widget.onSavePlan(extractedTime, mockOutfit);
+          reply = reply.isNotEmpty
+              ? reply
+              : AppLocalizations.t(context, 'calendar_chat_saved_with_time')
+                    .replaceAll('{occasion}', widget.occasion)
+                    .replaceAll('{time}', extractedTime);
+        } else {
+          reply = reply.isNotEmpty
+              ? reply
+              : AppLocalizations.t(context, 'calendar_chat_ask_time');
+        }
       } else if (extractedTime.isNotEmpty) {
+        widget.onSavePlan(extractedTime, mockOutfit);
         reply = reply.isNotEmpty
             ? reply
-            : AppLocalizations.t(context, 'calendar_chat_suggest_save');
+            : AppLocalizations.t(
+                context,
+                'calendar_chat_set_reminder',
+              ).replaceAll('{time}', extractedTime);
       } else {
         reply = reply.isNotEmpty
             ? reply
@@ -1953,11 +1865,6 @@ class _StyleChatScreenState extends State<StyleChatScreen> {
                                   ),
                                 ),
                               ),
-                            if (!m.isUser && m.planPack != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: _planPackView(m.planPack!, theme),
-                              ),
                             ],
                           ),
                         ),
@@ -2078,52 +1985,6 @@ class _StyleChatScreenState extends State<StyleChatScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _planPackView(CalendarPlanPack plan, dynamic theme) {
-    return Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.82,
-      ),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme.card,
-        border: Border.all(color: theme.cardBorder),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            plan.title,
-            style: TextStyle(
-              color: theme.textPrimary,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          for (final section in plan.sections) ...[
-            const SizedBox(height: 10),
-            Text(
-              section.title,
-              style: TextStyle(
-                color: theme.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            for (final item in section.items)
-              Padding(
-                padding: const EdgeInsets.only(top: 5),
-                child: Text(
-                  '- $item',
-                  style: TextStyle(color: theme.mutedText, fontSize: 12.5),
-                ),
-              ),
-          ],
-        ],
       ),
     );
   }

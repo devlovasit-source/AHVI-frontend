@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:myapp/services/style_board_api_service.dart';
-import 'board_models.dart';
 import 'style_board_state.dart';
 
 typedef StyleBoardShuffleCall =
@@ -118,12 +117,6 @@ class StyleBoardController extends ChangeNotifier {
     final previous = _undo!;
     _undo = null;
     _state = previous;
-    notifyListeners();
-  }
-
-  void refreshItemImages(List<StyleBoardItem> items) {
-    if (_state.isShuffling || items.isEmpty) return;
-    _state = _state.copyWith(items: List.unmodifiable(items));
     notifyListeners();
   }
 

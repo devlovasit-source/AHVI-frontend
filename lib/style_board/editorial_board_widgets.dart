@@ -12,19 +12,19 @@ import 'board_models.dart';
 double editorialVisualScaleForRole(BoardItemRole role) {
   switch (role) {
     case BoardItemRole.top:
-      return 1.24;
+      return 1.15;
     case BoardItemRole.bottom:
-      return 1.18;
+      return 1.10;
     case BoardItemRole.dress:
-      return 1.20;
-    case BoardItemRole.outerwear:
-      return 1.18;
-    case BoardItemRole.footwear:
-      return 1.48; // shoes carry the most transparent padding
-    case BoardItemRole.accessory:
-      return 1.20; // bags / jewellery collapse into accessory
-    case BoardItemRole.unknown:
       return 1.12;
+    case BoardItemRole.outerwear:
+      return 1.12;
+    case BoardItemRole.footwear:
+      return 1.38; // shoes carry the most transparent padding
+    case BoardItemRole.accessory:
+      return 1.16; // bags / jewellery collapse into accessory
+    case BoardItemRole.unknown:
+      return 1.08;
   }
 }
 
@@ -52,12 +52,8 @@ class EditorialBoardItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final resolved = item.resolveImage(surface: 'style_board_render');
-    final imageUrl = resolved.url ?? '';
-    final shouldFrame = resolved.requiresFrame;
     final garment = Image.network(
-      imageUrl,
+      item.imageUrl,
       fit: BoxFit.contain,
       alignment: Alignment.center,
       filterQuality: FilterQuality.high,
@@ -71,40 +67,32 @@ class EditorialBoardItem extends StatelessWidget {
     );
     final content = Transform.rotate(
       angle: rotation,
-      child: shouldFrame
-          ? Container(
-              key: item.hasStableIdentity
-                  ? ValueKey<String>('fallback-${item.itemId}')
-                  : null,
-              padding: const EdgeInsets.all(5),
-              color: colors.surfaceContainerLow,
-              child: garment,
-            )
-          : Stack(
-              key: item.hasStableIdentity
-                  ? ValueKey<String>('cutout-${item.itemId}')
-                  : null,
-              fit: StackFit.expand,
-              children: [
-                Positioned.fill(
-                  child: Transform.translate(
-                    offset: const Offset(0, 4),
-                    child: ImageFiltered(
-                      imageFilter: ui.ImageFilter.blur(sigmaX: 7, sigmaY: 7),
-                      child: Image.network(
-                        imageUrl,
-                        fit: BoxFit.contain,
-                        alignment: Alignment.center,
-                        color: Colors.black.withValues(alpha: 0.22),
-                        colorBlendMode: BlendMode.srcIn,
-                        errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                      ),
-                    ),
-                  ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Soft drop-shadow so a light/white cutout (white trousers, white
+          // sneakers, off-white shirt) stays visible on the off-white board
+          // canvas. The bare Image had zero separation and vanished into the
+          // background, making the board look empty.
+          Positioned.fill(
+            child: Transform.translate(
+              offset: const Offset(0, 4),
+              child: ImageFiltered(
+                imageFilter: ui.ImageFilter.blur(sigmaX: 7, sigmaY: 7),
+                child: Image.network(
+                  item.imageUrl,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.center,
+                  color: Colors.black.withValues(alpha: 0.22),
+                  colorBlendMode: BlendMode.srcIn,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
                 ),
-                garment,
-              ],
+              ),
             ),
+          ),
+          garment,
+        ],
+      ),
     );
     // Per-role visual zoom (paint-only): enlarges the visible cutout inside its
     // existing box. Layout size is unchanged, so the box, lock button and card
@@ -114,7 +102,7 @@ class EditorialBoardItem extends StatelessWidget {
       key: item.hasStableIdentity
           ? ValueKey<String>('vscale-${item.itemId}')
           : null,
-      scale: shouldFrame ? 1 : editorialVisualScaleForRole(item.role),
+      scale: editorialVisualScaleForRole(item.role),
       alignment: editorialAlignmentForRole(item.role),
       filterQuality: FilterQuality.high,
       child: content,

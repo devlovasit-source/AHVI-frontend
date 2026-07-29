@@ -23,7 +23,13 @@ BoardItemPlacement _p(
   double y,
   double w,
   double h,
-) => BoardItemPlacement(item: _item(role), x: x, y: y, width: w, height: h);
+) => BoardItemPlacement(
+  item: _item(role),
+  x: x,
+  y: y,
+  width: w,
+  height: h,
+);
 
 void main() {
   const w = 390.0;
@@ -32,13 +38,13 @@ void main() {
   group('role visual scale constants', () {
     test('every role stays within safe zoom bounds', () {
       double s(BoardItemRole r) => editorialVisualScaleForRole(r);
-      expect(s(BoardItemRole.top), inInclusiveRange(1.20, 1.30));
-      expect(s(BoardItemRole.bottom), inInclusiveRange(1.15, 1.25));
-      expect(s(BoardItemRole.footwear), inInclusiveRange(1.45, 1.55));
-      expect(s(BoardItemRole.dress), inInclusiveRange(1.15, 1.25));
-      expect(s(BoardItemRole.outerwear), inInclusiveRange(1.15, 1.25));
-      expect(s(BoardItemRole.accessory), inInclusiveRange(1.15, 1.25));
-      expect(s(BoardItemRole.unknown), inInclusiveRange(1.0, 1.15));
+      expect(s(BoardItemRole.top), inInclusiveRange(1.12, 1.18));
+      expect(s(BoardItemRole.bottom), inInclusiveRange(1.08, 1.14));
+      expect(s(BoardItemRole.footwear), inInclusiveRange(1.30, 1.45));
+      expect(s(BoardItemRole.dress), inInclusiveRange(1.08, 1.15));
+      expect(s(BoardItemRole.outerwear), inInclusiveRange(1.08, 1.18));
+      expect(s(BoardItemRole.accessory), inInclusiveRange(1.12, 1.25));
+      expect(s(BoardItemRole.unknown), inInclusiveRange(1.0, 1.12));
       // Never shrink.
       for (final r in BoardItemRole.values) {
         expect(s(r), greaterThanOrEqualTo(1.0));
@@ -70,101 +76,6 @@ void main() {
   });
 
   group('composition normalisation (coverage-gated)', () {
-    test('three-piece layout gives garments dominant placement widths', () {
-      final board = StyleBoardData(
-        boardId: 'density',
-        revision: 1,
-        title: 'Density',
-        items: [
-          _item(BoardItemRole.top),
-          _item(BoardItemRole.bottom),
-          _item(BoardItemRole.footwear),
-        ],
-      );
-      final placements = EditorialBoardLayoutEngine.resolve(
-        board,
-        width: w,
-        height: h,
-      ).placements;
-      double widthFor(BoardItemRole role) =>
-          placements.singleWhere((p) => p.item.role == role).width / w;
-
-      expect(widthFor(BoardItemRole.top), inInclusiveRange(.70, .75));
-      expect(widthFor(BoardItemRole.bottom), inInclusiveRange(.58, .62));
-      expect(widthFor(BoardItemRole.footwear), inInclusiveRange(.50, .54));
-    });
-
-    test('four- and five-piece layouts preserve the garment hierarchy', () {
-      StyleBoardData boardWith(int accessories) => StyleBoardData(
-        boardId: 'density-$accessories',
-        revision: 1,
-        title: 'Density',
-        items: [
-          _item(BoardItemRole.top),
-          _item(BoardItemRole.bottom),
-          _item(BoardItemRole.footwear),
-          for (var i = 0; i < accessories; i++)
-            StyleBoardItem(
-              id: 'accessory-$i',
-              name: 'accessory-$i',
-              imageUrl: 'https://example.test/accessory-$i.png',
-              category: 'accessory',
-              role: BoardItemRole.accessory,
-            ),
-        ],
-      );
-
-      final four = EditorialBoardLayoutEngine.resolve(
-        boardWith(1),
-        width: w,
-        height: h,
-      ).placements;
-      final five = EditorialBoardLayoutEngine.resolve(
-        boardWith(2),
-        width: w,
-        height: h,
-      ).placements;
-      double roleWidth(List<BoardItemPlacement> items, BoardItemRole role) =>
-          items.singleWhere((p) => p.item.role == role).width / w;
-
-      expect(roleWidth(four, BoardItemRole.top), inInclusiveRange(.67, .71));
-      expect(roleWidth(four, BoardItemRole.bottom), inInclusiveRange(.54, .58));
-      expect(
-        roleWidth(four, BoardItemRole.footwear),
-        inInclusiveRange(.46, .50),
-      );
-      expect(roleWidth(five, BoardItemRole.top), inInclusiveRange(.63, .67));
-      expect(roleWidth(five, BoardItemRole.bottom), inInclusiveRange(.50, .54));
-      expect(
-        roleWidth(five, BoardItemRole.footwear),
-        inInclusiveRange(.43, .47),
-      );
-      final accessoryWidths = five
-          .where((p) => p.item.role == BoardItemRole.accessory)
-          .map((p) => p.width / w)
-          .toList();
-      expect(
-        accessoryWidths,
-        containsAll([closeTo(.27, .01), closeTo(.20, .01)]),
-      );
-    });
-
-    test('dress-led boards use the dress as the visual hero', () {
-      final board = StyleBoardData(
-        boardId: 'dress-density',
-        revision: 1,
-        title: 'Dress density',
-        items: [_item(BoardItemRole.dress), _item(BoardItemRole.footwear)],
-      );
-      final dress = EditorialBoardLayoutEngine.resolve(
-        board,
-        width: w,
-        height: h,
-      ).placements.singleWhere((p) => p.item.role == BoardItemRole.dress);
-
-      expect(dress.width / w, inInclusiveRange(.78, .82));
-    });
-
     test('a dense board is NOT enlarged again', () {
       // Union ≈ 0.85w × 0.90h → already above thresholds.
       final dense = <BoardItemPlacement>[

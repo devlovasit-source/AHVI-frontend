@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:myapp/util/wardrobe_image_resolver.dart';
 
 enum BoardItemRole {
   top,
@@ -24,8 +23,6 @@ class StyleBoardItem {
   final String maskedUrl;
   final String boardImageUrl;
   final String normalizedUrl;
-  final String assetCutoutUrl;
-  final String assetMaskedUrl;
   final String category;
   final String subCategory;
   final BoardItemRole role;
@@ -45,8 +42,6 @@ class StyleBoardItem {
     this.maskedUrl = '',
     this.boardImageUrl = '',
     this.normalizedUrl = '',
-    this.assetCutoutUrl = '',
-    this.assetMaskedUrl = '',
     required this.category,
     this.subCategory = '',
     required this.role,
@@ -63,23 +58,12 @@ class StyleBoardItem {
       r'$id',
       'itemId',
       'image_id',
-      'imageId',
       'asset_id',
       'wardrobe_item_id',
       'wardrobeItemId',
     ]);
     final slot = _firstText(json, const ['slot', 'role']);
     final role = boardItemRoleFromText(slot);
-    final resolved = resolveWardrobeImage(
-      json,
-      surface: 'style_board_parse',
-      itemId: itemId,
-      emitDiagnostic: false,
-    );
-    final raw = Map<String, dynamic>.from(json)
-      ..['_image_should_frame'] = resolved.shouldFrame
-      ..['_image_source_kind'] = resolved.sourceKind
-      ..['_image_expected_transparent'] = resolved.expectedTransparent;
     return StyleBoardItem(
       id: itemId,
       slot: slot.toLowerCase(),
@@ -102,7 +86,7 @@ class StyleBoardItem {
         'subCategory',
         'subcategory',
       ]),
-      imageUrl: resolved.url ?? '',
+      imageUrl: _firstText(json, const ['image_url', 'imageUrl']),
       maskedUrl: _firstText(json, const ['masked_url', 'maskedUrl']),
       boardImageUrl: _firstText(json, const [
         'board_image_url',
@@ -112,40 +96,19 @@ class StyleBoardItem {
         'normalized_url',
         'normalizedUrl',
       ]),
-      assetCutoutUrl: _firstText(json, const [
-        'asset_cutout_url',
-        'assetCutoutUrl',
-      ]),
-      assetMaskedUrl: _firstText(json, const [
-        'asset_masked_url',
-        'assetMaskedUrl',
-      ]),
       role: role,
       position: BoardPosition.fromItemJson(json),
       isLocked: json['locked'] == true || json['is_locked'] == true,
-      raw: raw,
+      raw: Map<String, dynamic>.from(json),
     );
   }
 
-  ResolvedWardrobeImage resolveImage({String surface = 'style_board'}) {
-    final rawImageUrl = _firstText(raw, const ['image_url', 'imageUrl']);
-    return resolveWardrobeImage(
-      raw,
-      normalizedUrl: normalizedUrl,
-      imageUrl: rawImageUrl.isEmpty ? imageUrl : null,
-      maskedUrl: maskedUrl,
-      surface: surface,
-      itemId: id,
-    );
+  String get displayImageUrl {
+    for (final value in [boardImageUrl, normalizedUrl, maskedUrl, imageUrl]) {
+      if (value.trim().isNotEmpty) return value.trim();
+    }
+    return '';
   }
-
-  String get displayImageUrl => resolveImage().url ?? '';
-  bool get shouldFrame => raw['_image_should_frame'] is bool
-      ? raw['_image_should_frame'] as bool
-      : resolveImage().shouldFrame;
-  bool get hasValidatedCutout =>
-      raw['_image_source_kind'] == 'validated_cutout' ||
-      resolveImage().sourceKind == 'validated_cutout';
 
   bool get hasStableIdentity => id.trim().isNotEmpty;
   bool get isLockable =>
@@ -166,8 +129,6 @@ class StyleBoardItem {
         maskedUrl: maskedUrl,
         boardImageUrl: boardImageUrl,
         normalizedUrl: normalizedUrl,
-        assetCutoutUrl: assetCutoutUrl,
-        assetMaskedUrl: assetMaskedUrl,
         category: category,
         subCategory: subCategory,
         role: role,
@@ -193,14 +154,9 @@ class StyleBoardItem {
       'masked_url': maskedUrl,
       'board_image_url': boardImageUrl,
       'normalized_url': normalizedUrl,
-      'asset_cutout_url': assetCutoutUrl,
-      'asset_masked_url': assetMaskedUrl,
       'locked': isLocked,
     });
     if (position != null) value['position'] = position!.toJson();
-    value.remove('_image_should_frame');
-    value.remove('_image_source_kind');
-    value.remove('_image_expected_transparent');
     value.removeWhere((_, item) => item == null || item == '');
     return value;
   }
@@ -292,9 +248,6 @@ String _canonicalSource(dynamic value) =>
     switch (value?.toString().trim().toLowerCase()) {
       'wardrobe' || 'user_wardrobe' || 'uploaded' || 'closet' => 'wardrobe',
       'style_asset' ||
-      'style_assets' ||
-      'shared_asset' ||
-      'shared_assets' ||
       'asset' ||
       'asset_library' ||
       'curated' ||

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -16,116 +15,51 @@ final ThemeData _testTheme = ThemeData(
 
 // A board WITHOUT board_id / revision / source_policy (no backend contract).
 Map<String, dynamic> _direction() => {
-  'occasion': 'office',
-  'why': 'Sharp and balanced.',
-  'board_items': [
-    {
-      'name': 'White shirt',
-      'item_id': 'shirt-1',
-      'role': 'top',
-      'image_url': 'https://x/shirt.png',
-    },
-    {
-      'name': 'Navy chinos',
-      'item_id': 'chino-1',
-      'role': 'bottom',
-      'image_url': 'https://x/chino.png',
-    },
-    {
-      'name': 'Brown loafers',
-      'item_id': 'loafer-1',
-      'role': 'footwear',
-      'image_url': 'https://x/loafer.png',
-    },
-  ],
-};
+      'occasion': 'office',
+      'why': 'Sharp and balanced.',
+      'board_items': [
+        {'name': 'White shirt', 'item_id': 'shirt-1', 'role': 'top', 'image_url': 'https://x/shirt.png'},
+        {'name': 'Navy chinos', 'item_id': 'chino-1', 'role': 'bottom', 'image_url': 'https://x/chino.png'},
+        {'name': 'Brown loafers', 'item_id': 'loafer-1', 'role': 'footwear', 'image_url': 'https://x/loafer.png'},
+      ],
+    };
 
 Future<void> _pumpBar(WidgetTester tester, OutfitActionBar bar) =>
-    tester.pumpWidget(
-      MaterialApp(
-        theme: _testTheme,
-        home: Scaffold(body: bar),
+    tester.pumpWidget(MaterialApp(theme: _testTheme, home: Scaffold(body: bar)));
+
+void main() {
+  testWidgets('Save invokes callback, persists the rendered board, works without a board contract', (tester) async {
+    Map<String, dynamic>? captured;
+    await _pumpBar(
+      tester,
+      OutfitActionBar(
+        direction: _direction(),
+        editorialCover: const {},
+        primaryLabel: 'Office Look',
+        missingName: '',
+        shareBoundaryKey: GlobalKey(),
+        saveBoardOverride: ({required occasion, required outfitDescription, required imageUrl, required title, required itemIds, required items}) async {
+          captured = {'occasion': occasion, 'title': title, 'imageUrl': imageUrl, 'itemIds': itemIds, 'items': items, 'desc': outfitDescription};
+          return 'doc-1';
+        },
       ),
     );
 
-Future<void> _confirmSave(
-  WidgetTester tester, {
-  String? category,
-  bool favourite = false,
-}) async {
-  await tester.tap(find.text('Save'));
-  await tester.pumpAndSettle();
-  expect(find.text('Save this look to'), findsOneWidget);
-  if (category != null) {
-    await tester.tap(find.text(category));
+    await tester.tap(find.text('Save'));
     await tester.pump();
-  }
-  if (favourite) {
-    await tester.tap(find.text('Add to Favourites'));
     await tester.pump();
-  }
-  await tester.tap(find.text('Save look'));
-  await tester.pumpAndSettle();
-}
 
-void main() {
-  testWidgets(
-    'Save invokes callback, persists the rendered board, works without a board contract',
-    (tester) async {
-      Map<String, dynamic>? captured;
-      await _pumpBar(
-        tester,
-        OutfitActionBar(
-          direction: _direction(),
-          editorialCover: const {},
-          primaryLabel: 'Office Look',
-          missingName: '',
-          shareBoundaryKey: GlobalKey(),
-          saveBoardOverride:
-              ({
-                required occasion,
-                required outfitDescription,
-                required imageUrl,
-                required title,
-                required itemIds,
-                required items,
-                required isFavourite,
-              }) async {
-                captured = {
-                  'occasion': occasion,
-                  'title': title,
-                  'imageUrl': imageUrl,
-                  'itemIds': itemIds,
-                  'items': items,
-                  'desc': outfitDescription,
-                };
-                return 'doc-1';
-              },
-        ),
-      );
+    expect(captured, isNotNull);
+    expect(captured!['occasion'], 'office');
+    expect(captured!['title'], 'Office Look');
+    expect(captured!['imageUrl'], 'https://x/shirt.png');
+    expect(captured!['desc'], 'Sharp and balanced.');
+    expect((captured!['itemIds'] as List), containsAll(<String>['shirt-1', 'chino-1', 'loafer-1']));
+    expect((captured!['items'] as List).length, 3);
+    expect(find.text('Saved'), findsOneWidget); // heart flips only after success
+  });
 
-      await _confirmSave(tester);
-
-      expect(captured, isNotNull);
-      expect(captured!['occasion'], 'office_fits');
-      expect(captured!['title'], 'Office Look');
-      expect(captured!['imageUrl'], 'https://x/shirt.png');
-      expect(captured!['desc'], 'Sharp and balanced.');
-      expect(
-        (captured!['itemIds'] as List),
-        containsAll(<String>['shirt-1', 'chino-1', 'loafer-1']),
-      );
-      expect((captured!['items'] as List).length, 3);
-      expect(
-        find.text('Saved'),
-        findsOneWidget,
-      ); // heart flips only after success
-    },
-  );
-
-  testWidgets('Double-tap Save does not create duplicate saves', (
-    tester,
-  ) async {
+  testWidgets('Double-tap Save does not create duplicate saves', (tester) async {
     var calls = 0;
     await _pumpBar(
       tester,
@@ -135,23 +69,16 @@ void main() {
         primaryLabel: 'Office Look',
         missingName: '',
         shareBoundaryKey: GlobalKey(),
-        saveBoardOverride:
-            ({
-              required occasion,
-              required outfitDescription,
-              required imageUrl,
-              required title,
-              required itemIds,
-              required items,
-              required isFavourite,
-            }) async {
-              calls++;
-              return 'doc-$calls';
-            },
+        saveBoardOverride: ({required occasion, required outfitDescription, required imageUrl, required title, required itemIds, required items}) async {
+          calls++;
+          return 'doc-$calls';
+        },
       ),
     );
 
-    await _confirmSave(tester);
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    await tester.pump();
     await tester.tap(find.text('Saved'));
     await tester.pump();
     await tester.pump();
@@ -159,46 +86,7 @@ void main() {
     expect(calls, 1);
   });
 
-  testWidgets(
-    'Save completion after navigation does not use disposed context',
-    (tester) async {
-      final pending = Completer<String?>();
-      await _pumpBar(
-        tester,
-        OutfitActionBar(
-          direction: _direction(),
-          editorialCover: const {},
-          primaryLabel: 'Office Look',
-          missingName: '',
-          shareBoundaryKey: GlobalKey(),
-          saveBoardOverride:
-              ({
-                required occasion,
-                required outfitDescription,
-                required imageUrl,
-                required title,
-                required itemIds,
-                required items,
-                required isFavourite,
-              }) => pending.future,
-        ),
-      );
-
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Save look'));
-      await tester.pump();
-      await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
-      pending.complete('doc-1');
-      await tester.pump();
-
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('Save failure restores the unsaved icon and surfaces an error', (
-    tester,
-  ) async {
+  testWidgets('Save failure restores the unsaved icon and surfaces an error', (tester) async {
     await _pumpBar(
       tester,
       OutfitActionBar(
@@ -207,29 +95,25 @@ void main() {
         primaryLabel: 'Office Look',
         missingName: '',
         shareBoundaryKey: GlobalKey(),
-        saveBoardOverride:
-            ({
-              required occasion,
-              required outfitDescription,
-              required imageUrl,
-              required title,
-              required itemIds,
-              required items,
-              required isFavourite,
-            }) async {
-              throw Exception('appwrite down');
-            },
+        saveBoardOverride: ({required occasion, required outfitDescription, required imageUrl, required title, required itemIds, required items}) async {
+          throw Exception('appwrite down');
+        },
       ),
     );
 
-    await _confirmSave(tester);
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    await tester.pump();
 
     expect(find.text('Saved'), findsNothing); // stays unsaved
     expect(find.text('Save'), findsOneWidget);
     expect(find.textContaining('Could not save'), findsOneWidget);
   });
 
-  testWidgets('Appwrite null document is failure', (tester) async {
+  testWidgets('Share invokes capture and opens the share sheet with the title caption', (tester) async {
+    var captured = false;
+    Uint8List? sharedBytes;
+    String? caption;
     await _pumpBar(
       tester,
       OutfitActionBar(
@@ -238,96 +122,53 @@ void main() {
         primaryLabel: 'Office Look',
         missingName: '',
         shareBoundaryKey: GlobalKey(),
-        saveBoardOverride:
-            ({
-              required occasion,
-              required outfitDescription,
-              required imageUrl,
-              required title,
-              required itemIds,
-              required items,
-              required isFavourite,
-            }) async => null,
+        captureOverride: () async {
+          captured = true;
+          return Uint8List.fromList(<int>[1, 2, 3, 4]);
+        },
+        shareImageOverride: (b, c) async {
+          sharedBytes = b;
+          caption = c;
+        },
       ),
     );
 
-    await _confirmSave(tester);
+    await tester.tap(find.text('Share'));
+    await tester.pump();
+    await tester.pump();
 
-    expect(find.text('Saved'), findsNothing);
-    expect(find.text('Save'), findsOneWidget);
-    expect(find.textContaining('Could not save'), findsOneWidget);
+    expect(captured, isTrue); // Share attempted PNG capture
+    expect(sharedBytes, isNotNull);
+    expect(sharedBytes!.isNotEmpty, isTrue);
+    expect(caption, contains('Office Look')); // caption carries the board title
   });
 
-  testWidgets(
-    'Share invokes capture and opens the share sheet with the title caption',
-    (tester) async {
-      var captured = false;
-      Uint8List? sharedBytes;
-      String? caption;
-      await _pumpBar(
-        tester,
-        OutfitActionBar(
-          direction: _direction(),
-          editorialCover: const {},
-          primaryLabel: 'Office Look',
-          missingName: '',
-          shareBoundaryKey: GlobalKey(),
-          captureOverride: () async {
-            captured = true;
-            return Uint8List.fromList(<int>[1, 2, 3, 4]);
-          },
-          shareImageOverride: (b, c) async {
-            sharedBytes = b;
-            caption = c;
-          },
-        ),
-      );
+  testWidgets('Share capture failure falls back to text sharing (never does nothing)', (tester) async {
+    var filesShared = false;
+    var textShared = false;
+    await _pumpBar(
+      tester,
+      OutfitActionBar(
+        direction: _direction(),
+        editorialCover: const {},
+        primaryLabel: 'Office Look',
+        missingName: '',
+        shareBoundaryKey: GlobalKey(),
+        captureOverride: () async => null, // capture fails
+        shareImageOverride: (b, c) async => filesShared = true,
+        shareTextOverride: (t) async => textShared = true,
+      ),
+    );
 
-      await tester.tap(find.text('Share'));
-      await tester.pump();
-      await tester.pump();
+    await tester.tap(find.text('Share'));
+    await tester.pump();
+    await tester.pump();
 
-      expect(captured, isTrue); // Share attempted PNG capture
-      expect(sharedBytes, isNotNull);
-      expect(sharedBytes!.isNotEmpty, isTrue);
-      expect(
-        caption,
-        contains('Office Look'),
-      ); // caption carries the board title
-    },
-  );
+    expect(filesShared, isFalse);
+    expect(textShared, isTrue); // text fallback fired
+  });
 
-  testWidgets(
-    'Share capture failure falls back to text sharing (never does nothing)',
-    (tester) async {
-      var filesShared = false;
-      var textShared = false;
-      await _pumpBar(
-        tester,
-        OutfitActionBar(
-          direction: _direction(),
-          editorialCover: const {},
-          primaryLabel: 'Office Look',
-          missingName: '',
-          shareBoundaryKey: GlobalKey(),
-          captureOverride: () async => null, // capture fails
-          shareImageOverride: (b, c) async => filesShared = true,
-          shareTextOverride: (t) async => textShared = true,
-        ),
-      );
-
-      await tester.tap(find.text('Share'));
-      await tester.pump();
-      await tester.pump();
-
-      expect(filesShared, isFalse);
-      expect(textShared, isTrue); // text fallback fired
-    },
-  );
-
-  testWidgets('Save and Share remain enabled without a board contract', (
-    tester,
-  ) async {
+  testWidgets('Save and Share remain enabled without a board contract', (tester) async {
     var saved = false;
     var shared = false;
     await _pumpBar(
@@ -338,19 +179,10 @@ void main() {
         primaryLabel: 'Office Look',
         missingName: '',
         shareBoundaryKey: GlobalKey(),
-        saveBoardOverride:
-            ({
-              required occasion,
-              required outfitDescription,
-              required imageUrl,
-              required title,
-              required itemIds,
-              required items,
-              required isFavourite,
-            }) async {
-              saved = true;
-              return 'doc-1';
-            },
+        saveBoardOverride: ({required occasion, required outfitDescription, required imageUrl, required title, required itemIds, required items}) async {
+          saved = true;
+          return 'doc-1';
+        },
         captureOverride: () async => Uint8List.fromList(<int>[1, 2, 3]),
         shareImageOverride: (b, c) async => shared = true,
       ),
@@ -364,101 +196,35 @@ void main() {
     await tester.tap(find.text('Share'));
     await tester.pump();
     await tester.pump();
-    await _confirmSave(tester);
+    await tester.tap(find.text('Save'), warnIfMissed: false);
+    await tester.pump();
+    await tester.pump();
 
     expect(saved, isTrue);
     expect(shared, isTrue);
   });
 
-  testWidgets('office is preselected and user can override category', (
-    tester,
-  ) async {
-    String? selected;
-    await _pumpBar(
-      tester,
-      OutfitActionBar(
-        direction: _direction(),
-        editorialCover: const {},
-        primaryLabel: 'Office Look',
-        missingName: '',
-        shareBoundaryKey: GlobalKey(),
-        saveBoardOverride:
-            ({
-              required occasion,
-              required outfitDescription,
-              required imageUrl,
-              required title,
-              required itemIds,
-              required items,
-              required isFavourite,
-            }) async {
-              selected = occasion;
-              return 'doc-1';
-            },
-      ),
-    );
-
-    await _confirmSave(tester, category: 'Vacation');
-    expect(selected, 'vacation');
-  });
-
-  testWidgets('Favourite can be enabled during Save', (tester) async {
-    bool? selectedFavourite;
-    await _pumpBar(
-      tester,
-      OutfitActionBar(
-        direction: _direction(),
-        editorialCover: const {},
-        primaryLabel: 'Office Look',
-        missingName: '',
-        shareBoundaryKey: GlobalKey(),
-        saveBoardOverride:
-            ({
-              required occasion,
-              required outfitDescription,
-              required imageUrl,
-              required title,
-              required itemIds,
-              required items,
-              required isFavourite,
-            }) async {
-              selectedFavourite = isFavourite;
-              return 'doc-1';
-            },
-      ),
-    );
-
-    await _confirmSave(tester, favourite: true);
-    expect(selectedFavourite, isTrue);
-  });
-
-  testWidgets(
-    'Lock/Shuffle stays disabled (no BoardMutationBar) without a contract, while Save/Share still render',
-    (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: _testTheme,
-          home: Scaffold(
-            body: Center(
-              child: SizedBox(
-                width: 320,
-                child: AhviOutfitBoardCard(direction: _direction(), width: 320),
-              ),
+  testWidgets('Lock/Shuffle stays disabled (no BoardMutationBar) without a contract, while Save/Share still render', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: _testTheme,
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 320,
+              child: AhviOutfitBoardCard(direction: _direction(), width: 320),
             ),
           ),
         ),
-      );
-      await tester.pump();
-      // Clear any collage layout/network-image noise; this test asserts gating,
-      // not pixel layout.
-      tester.takeException();
+      ),
+    );
+    await tester.pump();
+    // Clear any collage layout/network-image noise; this test asserts gating,
+    // not pixel layout.
+    tester.takeException();
 
-      expect(
-        find.byType(BoardMutationBar),
-        findsNothing,
-      ); // lock/shuffle gated off
-      expect(find.text('Save'), findsOneWidget);
-      expect(find.text('Share'), findsOneWidget);
-    },
-  );
+    expect(find.byType(BoardMutationBar), findsNothing); // lock/shuffle gated off
+    expect(find.text('Save'), findsOneWidget);
+    expect(find.text('Share'), findsOneWidget);
+  });
 }

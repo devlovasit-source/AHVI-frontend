@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -19,44 +18,10 @@ import 'package:myapp/style_board/style_board_controller.dart';
 import 'package:myapp/style_board/style_board_state.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/style_board/board_models.dart';
-import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/shareable_outfit_board.dart';
 import 'package:myapp/style_board/editorial_board_renderer.dart';
-import 'package:myapp/util/wardrobe_image_resolver.dart';
 
 typedef OutfitBoardMessageSender = void Function(String message);
-
-enum BoardInteractionMode { recommendation, styleThis, buildOutfit }
-
-extension BoardInteractionModeName on BoardInteractionMode {
-  String get wireName => switch (this) {
-    BoardInteractionMode.recommendation => 'recommendation',
-    BoardInteractionMode.styleThis => 'style_this',
-    BoardInteractionMode.buildOutfit => 'build_outfit',
-  };
-
-  bool get supportsMutation => this != BoardInteractionMode.recommendation;
-}
-
-BoardInteractionMode inferBoardInteractionMode(Map<String, dynamic> board) {
-  String normalized(Object? value) =>
-      value?.toString().trim().toLowerCase().replaceAll(
-        RegExp(r'[\s-]+'),
-        '_',
-      ) ??
-      '';
-
-  final value = [
-    board['interaction_mode'],
-    board['interactionMode'],
-    board['scenario'],
-  ].map(normalized).firstWhere((value) => value.isNotEmpty, orElse: () => '');
-  return switch (value) {
-    'style_this' => BoardInteractionMode.styleThis,
-    'build_outfit' => BoardInteractionMode.buildOutfit,
-    _ => BoardInteractionMode.recommendation,
-  };
-}
 
 String _shuffleFailureMessage(String code) => switch (code) {
   'ALL_ITEMS_LOCKED' => 'Unlock an item to shuffle.',
@@ -72,22 +37,19 @@ String _shuffleFailureMessage(String code) => switch (code) {
     'No curated pieces are available for this look right now.',
   'BOARD_SOURCE_POLICY_UNKNOWN' =>
     'This board is missing its styling source. Ask AHVI for a fresh look to continue.',
-  _ =>
-    'We couldn’t refresh these pieces. Your current look has been preserved.',
+  _ => 'We couldn’t refresh these pieces. Your current look has been preserved.',
 };
 
 /// Persists a board and returns the created document id (or null on failure).
 /// Overridable so tests can drive Save without a live Appwrite backend.
-typedef BoardSaveFn =
-    Future<String?> Function({
-      required String occasion,
-      required String outfitDescription,
-      required String imageUrl,
-      required String title,
-      required List<String> itemIds,
-      required List<Map<String, dynamic>> items,
-      required bool isFavourite,
-    });
+typedef BoardSaveFn = Future<String?> Function({
+  required String occasion,
+  required String outfitDescription,
+  required String imageUrl,
+  required String title,
+  required List<String> itemIds,
+  required List<Map<String, dynamic>> items,
+});
 
 class AhviOutfitBoardCard extends StatefulWidget {
   final Map<String, dynamic> direction;
@@ -100,8 +62,6 @@ class AhviOutfitBoardCard extends StatefulWidget {
   /// gesture so Save / Shuffle / Style This / Missing never trigger the sheet.
   final VoidCallback? onTapBoard;
   final StyleBoardShuffleCall? shuffleCall;
-  final BoardSaveFn? saveBoardOverride;
-  final Map<String, Map<String, dynamic>> wardrobeById;
 
   const AhviOutfitBoardCard({
     super.key,
@@ -111,8 +71,6 @@ class AhviOutfitBoardCard extends StatefulWidget {
     this.editorialCover = const {},
     this.onTapBoard,
     this.shuffleCall,
-    this.saveBoardOverride,
-    this.wardrobeById = const {},
   });
 
   @override
@@ -122,58 +80,23 @@ class AhviOutfitBoardCard extends StatefulWidget {
 class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
   late OutfitBoardModel _model;
   late StyleBoardData _initialBoard;
-  Map<String, Map<String, dynamic>> _wardrobeById = const {};
   StyleBoardController? _controller;
   StyleBoardData? _pendingBoard;
-  StyleBoardData? _pendingImageBoard;
   // Wraps ONLY the shareable board visual (context strip + collage), never the
   // mutation/action controls, so Share captures a clean image.
   final GlobalKey _shareBoundaryKey = GlobalKey();
 
-  BoardInteractionMode get _interactionMode =>
-      inferBoardInteractionMode(widget.direction);
-
   @override
   void initState() {
     super.initState();
-    _wardrobeById = widget.wardrobeById;
     _replaceBoard(_parseBoard(widget));
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (widget.wardrobeById.isNotEmpty) return;
-    try {
-      final appwrite = Provider.of<AppwriteService>(context);
-      final next = buildWardrobeImageMap(appwrite.cachedWardrobeItems);
-      if (mapEquals(_wardrobeById, next)) return;
-      _wardrobeById = next;
-      _refreshBoardImages(_parseBoard(widget));
-    } catch (_) {}
   }
 
   @override
   void didUpdateWidget(covariant AhviOutfitBoardCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final previousWardrobe = _wardrobeById;
-    if (widget.wardrobeById.isNotEmpty || oldWidget.wardrobeById.isNotEmpty) {
-      _wardrobeById = widget.wardrobeById;
-    }
     final incoming = _parseBoard(widget);
-    final wardrobeChanged = !mapEquals(previousWardrobe, _wardrobeById);
-    final modeChanged =
-        inferBoardInteractionMode(oldWidget.direction) !=
-        inferBoardInteractionMode(widget.direction);
-    final boardChanged =
-        modeChanged || _isMeaningfulBoardUpdate(_initialBoard, incoming.board);
-    if (wardrobeChanged && !boardChanged) {
-      _refreshBoardImages(incoming);
-      return;
-    }
-    if (!boardChanged) {
-      return;
-    }
+    if (!_isMeaningfulBoardUpdate(_initialBoard, incoming.board)) return;
     if (_controller?.state.isShuffling == true &&
         incoming.board.boardId == _initialBoard.boardId) {
       _pendingBoard = incoming.board;
@@ -189,14 +112,7 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
       source.direction,
       editorialCover: source.editorialCover,
     );
-    return (
-      model: model,
-      board: _toStyleBoardData(
-        model,
-        source.direction,
-        wardrobeById: _wardrobeById,
-      ),
-    );
+    return (model: model, board: _toStyleBoardData(model, source.direction));
   }
 
   bool _isMeaningfulBoardUpdate(StyleBoardData current, StyleBoardData next) {
@@ -215,45 +131,17 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
     _model = parsed.model;
     _initialBoard = parsed.board;
     _pendingBoard = null;
-    _pendingImageBoard = null;
-    final lockedItemIds = parsed.board.items
-        .where((item) => item.isLocked && item.hasStableIdentity)
-        .map((item) => item.itemId)
-        .toSet();
-    if (_interactionMode == BoardInteractionMode.styleThis) {
-      final requestedAnchor = _text(
-        widget.direction['originating_item_id'] ??
-            widget.direction['originatingItemId'] ??
-            widget.direction['anchor_item_id'] ??
-            widget.direction['anchorItemId'],
-      );
-      final anchor = parsed.board.items.where((item) {
-        return item.hasStableIdentity && item.itemId == requestedAnchor;
-      }).firstOrNull;
-      final wardrobeAnchor = parsed.board.items.where((item) {
-        return item.hasStableIdentity && item.source == 'wardrobe';
-      }).firstOrNull;
-      final fallbackAnchor = parsed.board.items
-          .where((item) => item.hasStableIdentity)
-          .firstOrNull;
-      final originatingItem = anchor ?? wardrobeAnchor ?? fallbackAnchor;
-      if (originatingItem != null) lockedItemIds.add(originatingItem.itemId);
-    }
-    final stateItems = parsed.board.items
-        .map(
-          (item) => lockedItemIds.contains(item.itemId)
-              ? item.copyWith(isLocked: true)
-              : item,
-        )
-        .toList(growable: false);
     final state = StyleBoardState(
       boardId: parsed.board.boardId,
       revision: parsed.board.revision,
       scenario: parsed.board.scenario,
       sourcePolicy: parsed.board.sourcePolicy,
       allowWardrobeFallback: parsed.board.allowWardrobeFallback,
-      items: stateItems,
-      lockedItemIds: lockedItemIds,
+      items: parsed.board.items,
+      lockedItemIds: parsed.board.items
+          .where((item) => item.isLocked && item.hasStableIdentity)
+          .map((item) => item.itemId)
+          .toSet(),
     );
     final failedPredicates = state.failedContractPredicates;
     debugPrint(
@@ -268,29 +156,11 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
       'stable_item_ids_ok=${state.stableItemIdsOk} '
       'positions_ok=${state.positionsOk} '
       'request_carried_items_ok=${state.requestCarriedItemsOk} '
-      'canonical_item_count=${state.items.length} '
-      'items_with_stable_id=${state.items.where((i) => i.hasStableIdentity).length} '
-      'items_with_role=${state.items.where((i) => i.role != BoardItemRole.unknown).length} '
-      'items_with_required_payload=${state.items.where((i) => i.raw.isNotEmpty && i.source != "unknown").length} '
-      'request_carried_source=${state.items.every((i) => i.raw.isNotEmpty) ? "canonical_reconstruction" : "none"} '
       'can_lock=${state.canLock} '
       'can_shuffle=${state.canShuffle} '
       'failed_predicates=${failedPredicates.isEmpty ? "none" : failedPredicates.join(",")}',
     );
-    final modeAllowsMutation = _interactionMode.supportsMutation;
-    final controlsEnabled = modeAllowsMutation && state.supportsShuffle;
-    debugPrint(
-      'AHVI_BOARD_INTERACTION_MODE '
-      'board_id=${state.boardId} '
-      'mode=${_interactionMode.wireName} '
-      'lock=$controlsEnabled '
-      'shuffle=$controlsEnabled '
-      'undo=$controlsEnabled '
-      'save=true share=true '
-      'like=${_interactionMode == BoardInteractionMode.recommendation} '
-      'dislike=${_interactionMode == BoardInteractionMode.recommendation}',
-    );
-    if (!controlsEnabled) {
+    if (!state.supportsShuffle) {
       _controller = null;
       return;
     }
@@ -300,97 +170,13 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
     )..addListener(_handleControllerChange);
   }
 
-  Future<StyleBoardShuffleResult> _shuffleThroughApi(
-    StyleBoardState board,
-  ) async {
+  Future<StyleBoardShuffleResult> _shuffleThroughApi(StyleBoardState board) {
     final backend = Provider.of<BackendService>(context, listen: false);
-    final result = await StyleBoardApiService(backend).shuffle(
+    return StyleBoardApiService(backend).shuffle(
       board: board,
       occasion: _initialBoard.occasion,
       styleDirection: _initialBoard.styleArchetype,
     );
-    return StyleBoardShuffleResult(
-      boardId: result.boardId,
-      revision: result.revision,
-      previousRevision: result.previousRevision,
-      lockedItemsPreserved: result.lockedItemsPreserved,
-      changedSlots: result.changedSlots,
-      scenario: result.scenario,
-      sourcePolicy: result.sourcePolicy,
-      items: result.items
-          .map((item) {
-            final resolved = resolveStyleBoardItemImage(
-              item.toContractJson(),
-              _wardrobeById,
-              surface: 'style_board_live',
-            );
-            return StyleBoardItem.fromJson(resolved);
-          })
-          .toList(growable: false),
-    );
-  }
-
-  void _refreshBoardImages(
-    ({OutfitBoardModel model, StyleBoardData board}) parsed,
-  ) {
-    final controller = _controller;
-    if (controller?.state.isShuffling == true) {
-      _pendingImageBoard = parsed.board;
-      return;
-    }
-    final current = controller?.state.items ?? _initialBoard.items;
-    final refreshedById = {
-      for (final item in parsed.board.items) item.itemId: item,
-    };
-    final refreshed = current
-        .map((item) {
-          final image = refreshedById[item.itemId];
-          if (image == null) return item;
-          return StyleBoardItem(
-            id: item.id,
-            slot: item.slot,
-            boardRole: item.boardRole,
-            source: item.source,
-            accessoryType: item.accessoryType,
-            name: item.name,
-            imageUrl: image.imageUrl,
-            maskedUrl: image.maskedUrl,
-            boardImageUrl: image.boardImageUrl,
-            normalizedUrl: image.normalizedUrl,
-            assetCutoutUrl: image.assetCutoutUrl,
-            assetMaskedUrl: image.assetMaskedUrl,
-            category: item.category,
-            subCategory: item.subCategory,
-            role: item.role,
-            position: item.position,
-            isLocked: item.isLocked,
-            isRegenerating: item.isRegenerating,
-            raw: image.raw,
-          );
-        })
-        .toList(growable: false);
-    _model = parsed.model;
-    _initialBoard = parsed.board;
-    if (controller == null) {
-      _initialBoard = StyleBoardData(
-        boardId: parsed.board.boardId,
-        revision: parsed.board.revision,
-        scenario: parsed.board.scenario,
-        sourcePolicy: parsed.board.sourcePolicy,
-        allowWardrobeFallback: parsed.board.allowWardrobeFallback,
-        title: parsed.board.title,
-        styleArchetype: parsed.board.styleArchetype,
-        boardRole: parsed.board.boardRole,
-        occasion: parsed.board.occasion,
-        whyItWorks: parsed.board.whyItWorks,
-        items: refreshed,
-        story: parsed.board.story,
-        stylingTip: parsed.board.stylingTip,
-      );
-      if (mounted) setState(() {});
-      return;
-    }
-    controller.refreshItemImages(refreshed);
   }
 
   Future<void> _shuffleBoard() async {
@@ -415,11 +201,6 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
   void _handleControllerChange() {
     if (!mounted) return;
     setState(() {});
-    if (_controller?.state.isShuffling == false && _pendingImageBoard != null) {
-      final pending = _pendingImageBoard!;
-      _pendingImageBoard = null;
-      _refreshBoardImages((model: _model, board: pending));
-    }
     if (_controller?.state.isShuffling == false && _pendingBoard != null) {
       final pending = _pendingBoard!;
       _pendingBoard = null;
@@ -461,25 +242,6 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
     );
   }
 
-  Map<String, dynamic> get _currentDirection {
-    final board = _currentBoard;
-    return {
-      ...widget.direction,
-      'board_id': board.boardId,
-      'revision': board.revision,
-      'scenario': board.scenario,
-      'source_policy': board.sourcePolicy,
-      'allow_wardrobe_fallback': board.allowWardrobeFallback,
-      'title': board.title,
-      'occasion': board.occasion,
-      'why_it_works': board.whyItWorks,
-      'styling_tip': board.stylingTip,
-      'board_items': board.items
-          .map((item) => item.toContractJson())
-          .toList(growable: false),
-    }..removeWhere((_, value) => value == null);
-  }
-
   @override
   void dispose() {
     _controller?.removeListener(_handleControllerChange);
@@ -491,8 +253,6 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
   Widget build(BuildContext context) {
     final board = _currentBoard;
     final renderable = _isRenderableOutfit(board.items);
-    final theme = Theme.of(context);
-    final mode = _interactionMode;
 
     return SizedBox(
       width: widget.width,
@@ -500,11 +260,13 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
       height: widget.width * 5 / 4,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
+          // Soft off-white canvas so the board reads as one flat-lay surface,
+          // not a stack of product tiles.
+          color: const Color(0xFFFAF9F6),
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: theme.shadowColor.withValues(alpha: 0.07),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 18,
               offset: const Offset(0, 8),
             ),
@@ -519,22 +281,24 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
                   key: _shareBoundaryKey,
                   child: Column(
                     children: [
-                      _PremiumBoardHeader(mode: mode),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: widget.onTapBoard,
+                        child: OutfitContextStrip(model: _model),
+                      ),
                       Expanded(
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTap: widget.onTapBoard,
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+                            padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
                             child: renderable
                                 ? EditorialBoardCanvas(
                                     board: board,
                                     lockedItemIds:
                                         _controller?.state.lockedItemIds ??
-                                        const {},
-                                    onToggleLock: mode.supportsMutation
-                                        ? _controller?.toggleLock
-                                        : null,
+                                            const {},
+                                    onToggleLock: _controller?.toggleLock,
                                   )
                                 : _IncompleteBoardFallback(
                                     title: board.title,
@@ -542,11 +306,6 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
                                   ),
                           ),
                         ),
-                      ),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: widget.onTapBoard,
-                        child: OutfitContextStrip(model: _model),
                       ),
                     ],
                   ),
@@ -558,49 +317,15 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
                   onShuffle: _shuffleBoard,
                 ),
               OutfitActionBar(
-                interactionMode: mode,
-                direction: _currentDirection,
+                direction: widget.direction,
                 editorialCover: widget.editorialCover,
                 primaryLabel: _model.title,
                 missingName: _model.missingName,
                 onSendMessage: widget.onSendMessage,
+                onShuffle: _controller == null ? null : _shuffleBoard,
                 shareBoundaryKey: _shareBoundaryKey,
-                saveBoardOverride: widget.saveBoardOverride,
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PremiumBoardHeader extends StatelessWidget {
-  final BoardInteractionMode mode;
-
-  const _PremiumBoardHeader({required this.mode});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final label = switch (mode) {
-      BoardInteractionMode.recommendation => 'AHVI EDIT',
-      BoardInteractionMode.styleThis => 'STYLE THIS',
-      BoardInteractionMode.buildOutfit => 'BUILD OUTFIT',
-    };
-    return SizedBox(
-      height: 30,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.4,
-            ),
           ),
         ),
       ),
@@ -615,18 +340,17 @@ class OutfitCollageGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final t = context.themeTokens;
     if (items.isEmpty) {
       return DecoratedBox(
         decoration: BoxDecoration(
-          color: colors.primary.withValues(alpha: 0.05),
+          color: t.accent.primary.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Center(
           child: Icon(
             Icons.checkroom_rounded,
-            color: colors.primary.withValues(alpha: 0.55),
+            color: t.accent.primary.withValues(alpha: 0.55),
             size: 42,
           ),
         ),
@@ -784,10 +508,9 @@ class OutfitContextStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final t = context.themeTokens;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 7),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
       child: SizedBox(
         width: double.infinity,
         child: Column(
@@ -799,14 +522,15 @@ class OutfitContextStrip extends StatelessWidget {
               textAlign: TextAlign.left,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: colors.onSurface,
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 18,
                 fontWeight: FontWeight.w700,
                 height: 1.05,
               ),
             ),
             if (model.chips.isNotEmpty || model.wardrobeMatchPct != null) ...[
-              const SizedBox(height: 5),
+              const SizedBox(height: 7),
               Wrap(
                 spacing: 6,
                 runSpacing: 5,
@@ -823,28 +547,30 @@ class OutfitContextStrip extends StatelessWidget {
             // Style reason (why_it_works) — was never rendered, so boards
             // showed no rationale. Show it under the title.
             if (model.intelligenceText.isNotEmpty) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               Text(
                 model.intelligenceText,
                 textAlign: TextAlign.left,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onSurface,
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontSize: 13,
                   fontWeight: FontWeight.w500,
                   height: 1.22,
                 ),
               ),
             ],
             if (model.stylingTip.isNotEmpty) ...[
-              const SizedBox(height: 3),
+              const SizedBox(height: 6),
               Text(
                 model.stylingTip,
                 textAlign: TextAlign.left,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
+                style: TextStyle(
+                  color: t.mutedText,
+                  fontSize: 13,
                   fontStyle: FontStyle.italic,
                   fontWeight: FontWeight.w500,
                   height: 1.18,
@@ -865,22 +591,21 @@ class _ContextChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final t = context.themeTokens;
     return Container(
       constraints: const BoxConstraints(maxWidth: 98),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
-        border: Border.all(color: colors.outlineVariant, width: 0.7),
+        color: Colors.white.withValues(alpha: 0.76),
+        border: Border.all(color: const Color(0xFFE7E0D8), width: 0.7),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: colors.onSurfaceVariant,
+        style: TextStyle(
+          color: t.mutedText,
           fontSize: 9.5,
           fontWeight: FontWeight.w700,
         ),
@@ -898,14 +623,13 @@ class _WardrobeMatchPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final t = context.themeTokens;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
       decoration: BoxDecoration(
-        color: colors.primaryContainer,
+        color: t.accent.primary.withValues(alpha: 0.12),
         border: Border.all(
-          color: colors.primary.withValues(alpha: 0.35),
+          color: t.accent.primary.withValues(alpha: 0.45),
           width: 0.7,
         ),
         borderRadius: BorderRadius.circular(6),
@@ -913,12 +637,12 @@ class _WardrobeMatchPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.checkroom_rounded, size: 11, color: colors.primary),
+          Icon(Icons.checkroom_rounded, size: 11, color: t.accent.primary),
           const SizedBox(width: 4),
           Text(
             '$pct% wardrobe match',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: colors.onPrimaryContainer,
+            style: TextStyle(
+              color: t.accent.primary,
               fontSize: 9.5,
               fontWeight: FontWeight.w700,
             ),
@@ -945,17 +669,15 @@ class BoardMutationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final t = context.themeTokens;
     final state = controller.state;
     final locked = state.lockedItemIds.length;
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: theme.colorScheme.outlineVariant),
-        ),
+        border: Border(top: BorderSide(color: t.cardBorder)),
       ),
       child: SizedBox(
-        height: 52,
+        height: 58,
         child: Row(
           children: [
             Expanded(
@@ -996,7 +718,7 @@ class BoardMutationBar extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 9.5,
                     fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.onSurfaceVariant,
+                    color: t.mutedText,
                   ),
                 ),
               ),
@@ -1009,18 +731,18 @@ class BoardMutationBar extends StatelessWidget {
 }
 
 class OutfitActionBar extends StatefulWidget {
-  final BoardInteractionMode interactionMode;
   final Map<String, dynamic> direction;
   final Map<String, dynamic> editorialCover;
   final String primaryLabel;
   final String missingName;
   final OutfitBoardMessageSender? onSendMessage;
+  final Future<void> Function()? onShuffle;
   final GlobalKey? shareBoundaryKey;
   // Test seams (production uses the real Appwrite + share_plus paths).
   final BoardSaveFn? saveBoardOverride;
   final Future<Uint8List?> Function()? captureOverride;
   final Future<void> Function(Uint8List bytes, String caption)?
-  shareImageOverride;
+      shareImageOverride;
   final Future<void> Function(String text)? shareTextOverride;
 
   const OutfitActionBar({
@@ -1029,8 +751,8 @@ class OutfitActionBar extends StatefulWidget {
     required this.editorialCover,
     required this.primaryLabel,
     required this.missingName,
-    this.interactionMode = BoardInteractionMode.recommendation,
     this.onSendMessage,
+    this.onShuffle,
     this.shareBoundaryKey,
     this.saveBoardOverride,
     this.captureOverride,
@@ -1047,25 +769,15 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
   bool _saving = false;
   bool _liked = false;
   bool _disliked = false;
-  BackendService? _backend;
-  ScaffoldMessengerState? _messenger;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _messenger = ScaffoldMessenger.maybeOf(context);
-    try {
-      _backend = Provider.of<BackendService>(context, listen: false);
-    } catch (_) {
-      _backend = null;
-    }
-  }
 
   void _sendFeedback(String action) {
     // Fire-and-forget; also the adaptive stylist-brain training signal.
     // Never let a missing provider or feedback error break Save/Share.
     try {
-      _backend?.sendBoardFeedback(action: action, board: widget.direction);
+      Provider.of<BackendService>(
+        context,
+        listen: false,
+      ).sendBoardFeedback(action: action, board: widget.direction);
     } catch (_) {}
   }
 
@@ -1092,11 +804,23 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
     return 'My "$title" look, styled on AHVI.';
   }
 
-  List<StyleBoardItem> _shareBoardItems() {
-    final out = <StyleBoardItem>[];
+  List<ShareBoardItem> _shareBoardItems() {
+    final out = <ShareBoardItem>[];
     for (final item in _saveItems()) {
-      final parsed = StyleBoardItem.fromJson(item);
-      if (parsed.displayImageUrl.isNotEmpty) out.add(parsed);
+      final url = _text(
+        item['board_image_url'] ??
+            item['transparent_image_url'] ??
+            item['cutout_url'] ??
+            item['image_url'] ??
+            item['imageUrl'],
+      ).trim();
+      if (url.isEmpty) continue;
+      out.add(
+        ShareBoardItem(
+          role: _text(item['role'] ?? item['slot']).trim().toLowerCase(),
+          imageUrl: url,
+        ),
+      );
     }
     return out;
   }
@@ -1198,7 +922,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
       } catch (e2) {
         debugPrint('AHVI_BOARD_SHARE_FAILED error=$e2');
         if (mounted) {
-          _messenger?.showSnackBar(
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
             const SnackBar(content: Text('Could not open the share sheet.')),
           );
         }
@@ -1258,32 +982,22 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
   }
 
   String _saveImageUrl() {
-    final candidates = <ResolvedWardrobeImage>[
-      resolveWardrobeImage(
-        widget.direction,
-        surface: 'style_board_cover',
-        itemId: _id,
-      ),
-      resolveWardrobeImage(
-        widget.editorialCover,
-        surface: 'style_board_cover',
-        itemId: _id,
-      ),
+    String pick(dynamic v) => _text(v);
+    // Prefer an explicit board/cover image, else the first item's image.
+    final candidates = <String>[
+      pick(widget.direction['image_url']),
+      pick(widget.direction['imageUrl']),
+      pick(widget.direction['board_image_url']),
+      pick(widget.editorialCover['image_url']),
+      pick(widget.editorialCover['imageUrl']),
     ];
     for (final item in _saveItems()) {
-      candidates.add(
-        resolveWardrobeImage(
-          item,
-          surface: 'style_board_cover',
-          itemId: _text(item['item_id'] ?? item['id'] ?? item[r'$id']),
-        ),
-      );
+      candidates.add(pick(item['image_url']));
+      candidates.add(pick(item['imageUrl']));
+      candidates.add(pick(item['normalized_url']));
+      candidates.add(pick(item['cutout_url']));
     }
-    candidates.sort((a, b) => a.tier.compareTo(b.tier));
-    for (final candidate in candidates) {
-      if (isValidSavedBoardHttpUrl(candidate.url)) return candidate.url!;
-    }
-    return '';
+    return candidates.firstWhere((u) => u.isNotEmpty, orElse: () => '');
   }
 
   String _saveExplanation() {
@@ -1304,120 +1018,21 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
     required String title,
     required List<String> itemIds,
     required List<Map<String, dynamic>> items,
-    required bool isFavourite,
   }) async {
-    final content = buildSavedBoardContent(
-      board: widget.direction,
-      items: items,
-      selection: SavedBoardSelection(
-        bucket: occasion,
-        isFavourite: isFavourite,
-      ),
-      title: title,
-      originalOccasion: _occasion,
-    );
     final doc = await AppwriteService().saveBoardToCollection(
+      occasion: occasion,
+      outfitDescription: outfitDescription,
       imageUrl: imageUrl,
-      content: content,
-    );
-    return doc?.$id;
-  }
-
-  Future<SavedBoardSelection?> _showSaveSheet() {
-    var bucket = inferSavedBoardBucket({
-      ...widget.direction,
-      'occasion': _occasion,
-    });
-    var isFavourite = false;
-    const categories = <(String, String, IconData)>[
-      ('party_looks', 'Party Looks', Icons.celebration_rounded),
-      ('office_fits', 'Office Fits', Icons.work_outline_rounded),
-      ('vacation', 'Vacation', Icons.flight_takeoff_rounded),
-      ('occasion', 'Occasion', Icons.diamond_outlined),
-      ('everything_else', 'Everything Else', Icons.auto_awesome_rounded),
-    ];
-    return showModalBottomSheet<SavedBoardSelection>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        final t = sheetContext.themeTokens;
-        return StatefulBuilder(
-          builder: (context, setSheetState) => SafeArea(
-            child: Container(
-              margin: const EdgeInsets.all(12),
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              decoration: BoxDecoration(
-                color: t.panel,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: t.cardBorder),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Save this look to',
-                    style: TextStyle(
-                      color: t.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  for (final category in categories)
-                    ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(category.$3, color: t.accent.primary),
-                      title: Text(
-                        category.$2,
-                        style: TextStyle(color: t.textPrimary),
-                      ),
-                      trailing: Icon(
-                        bucket == category.$1
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_off_rounded,
-                        color: bucket == category.$1
-                            ? t.accent.primary
-                            : t.mutedText,
-                      ),
-                      onTap: () => setSheetState(() => bucket = category.$1),
-                    ),
-                  const Divider(),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      'Add to Favourites',
-                      style: TextStyle(
-                        color: t.textPrimary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    value: isFavourite,
-                    onChanged: (value) =>
-                        setSheetState(() => isFavourite = value),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(sheetContext).pop(
-                        SavedBoardSelection(
-                          bucket: bucket,
-                          isFavourite: isFavourite,
-                        ),
-                      ),
-                      child: const Text('Save look'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
+      title: title,
+      emoji: '✨',
+      extra: {
+        'itemIds': itemIds,
+        'items': items,
+        'outfitItems': items,
+        'board_payload': {'title': title, 'occasion': occasion, 'items': items},
       },
     );
+    return doc?.$id;
   }
 
   Future<void> _toggleSave() async {
@@ -1425,35 +1040,23 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
     debugPrint('AHVI_BOARD_SAVE_TAP');
     // Idempotent: ignore taps while saving or once already saved.
     if (_saving || _saved) return;
-    final selection = await _showSaveSheet();
-    if (selection == null || !mounted) return;
     setState(() => _saving = true);
     debugPrint('AHVI_BOARD_SAVE_START');
     try {
       final items = _saveItems();
       final saver = widget.saveBoardOverride ?? _defaultSaveBoard;
       final docId = await saver(
-        occasion: selection.bucket,
+        occasion: _occasion,
         outfitDescription: _saveExplanation(),
         imageUrl: _saveImageUrl(),
         title: widget.primaryLabel,
         itemIds: _saveItemIds(),
         items: items,
-        isFavourite: selection.isFavourite,
       );
       if (docId == null || docId.isEmpty) {
         throw Exception('appwrite_returned_null_document');
       }
-      final boardId = _text(
-        widget.direction['board_id'] ?? widget.direction['boardId'],
-      );
-      debugPrint(
-        'AHVI_BOARD_SAVE_SUCCESS document_id=$docId '
-        'board_id=${boardId.isEmpty ? _id : boardId} '
-        'item_count=${items.length} '
-        'bucket=${selection.bucket} '
-        'is_favourite=${selection.isFavourite}',
-      );
+      debugPrint('AHVI_BOARD_SAVE_SUCCESS board_document_id=$docId');
       _sendFeedback('saved');
       // Best-effort local echo so the heart persists on reload. Appwrite is the
       // authoritative store; this is UI state only, not a replacement.
@@ -1470,19 +1073,14 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
         _saved = true; // heart only flips AFTER persistence succeeds
         _saving = false;
       });
-      _messenger?.showSnackBar(
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         const SnackBar(content: Text('Saved to your boards')),
       );
-    } on SavedBoardPersistenceException catch (e) {
-      debugPrint('AHVI_BOARD_SAVE_FAILED reason=${e.reason}');
-      if (!mounted) return;
-      setState(() => _saving = false);
-      _messenger?.showSnackBar(SnackBar(content: Text(e.userMessage)));
-    } catch (_) {
-      debugPrint('AHVI_BOARD_SAVE_FAILED reason=save_write_failed');
+    } catch (e) {
+      debugPrint('AHVI_BOARD_SAVE_FAILED error=$e');
       if (!mounted) return;
       setState(() => _saving = false); // stays unsaved on failure
-      _messenger?.showSnackBar(
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         const SnackBar(
           content: Text('Could not save board. Please try again.'),
         ),
@@ -1492,7 +1090,8 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final t = context.themeTokens;
+    final canShuffle = widget.onShuffle != null;
     final actions = <Widget>[
       _BoardAction(
         icon: _saved
@@ -1502,24 +1101,28 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
         enabled: !_saving,
         onTap: _toggleSave,
       ),
-      if (widget.interactionMode == BoardInteractionMode.recommendation) ...[
-        _BoardAction(
-          icon: _liked
-              ? Icons.thumb_up_alt_rounded
-              : Icons.thumb_up_off_alt_rounded,
-          label: 'Like',
-          enabled: true,
-          onTap: _toggleLike,
-        ),
-        _BoardAction(
-          icon: _disliked
-              ? Icons.thumb_down_alt_rounded
-              : Icons.thumb_down_off_alt_rounded,
-          label: 'Dislike',
-          enabled: true,
-          onTap: _toggleDislike,
-        ),
-      ],
+      _BoardAction(
+        icon: Icons.shuffle_rounded,
+        label: canShuffle ? 'Shuffle' : 'Shuffle unavailable',
+        enabled: canShuffle,
+        onTap: () => unawaited(widget.onShuffle?.call()),
+      ),
+      _BoardAction(
+        icon: _liked
+            ? Icons.thumb_up_alt_rounded
+            : Icons.thumb_up_off_alt_rounded,
+        label: 'Like',
+        enabled: true,
+        onTap: _toggleLike,
+      ),
+      _BoardAction(
+        icon: _disliked
+            ? Icons.thumb_down_alt_rounded
+            : Icons.thumb_down_off_alt_rounded,
+        label: 'Dislike',
+        enabled: true,
+        onTap: _toggleDislike,
+      ),
       _BoardAction(
         icon: Icons.ios_share_rounded,
         label: 'Share',
@@ -1530,9 +1133,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: theme.colorScheme.outlineVariant),
-        ),
+        border: Border(top: BorderSide(color: t.cardBorder)),
       ),
       child: SizedBox(
         height: 48,
@@ -1559,10 +1160,8 @@ class _BoardAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final color = enabled
-        ? colors.onSurface
-        : colors.onSurfaceVariant.withValues(alpha: 0.45);
+    final t = context.themeTokens;
+    final color = enabled ? t.textPrimary : t.mutedText.withValues(alpha: 0.45);
     return InkWell(
       onTap: enabled ? onTap : null,
       child: Column(
@@ -1923,18 +1522,19 @@ bool outfitBoardViable(
 
 StyleBoardData _toStyleBoardData(
   OutfitBoardModel model,
-  Map<String, dynamic> direction, {
-  Map<String, Map<String, dynamic>> wardrobeById = const {},
-}) {
+  Map<String, dynamic> direction,
+) {
   final items = <StyleBoardItem>[];
-  final seenIds = <String>{};
-  final rawItems = <Map<String, dynamic>>[
-    ..._maps(direction['board_items'] ?? direction['boardItems']),
-    ..._maps(direction['items'] ?? direction['pieces']),
-    ..._maps(direction['composition_items']),
-  ];
-  for (final item in model.items) {
+  // Render-adjacent safety net: even if the backend (now family-capped) or the
+  // upstream id-keyed dedup let a duplicate through, never paint the same image
+  // or the same normalized name twice on the collage.
+  final seenImages = <String>{};
+  final seenNames = <String>{};
+  for (final item in model.imageItems) {
     final image = (item.imageUrl ?? '').trim();
+    final normName = item.name.trim().toLowerCase();
+    if (image.isNotEmpty && !seenImages.add(image)) continue;
+    if (normName.isNotEmpty && !seenNames.add(normName)) continue;
     var role = _mapItemRole(item.role);
     if (role == BoardItemRole.top &&
         RegExp(
@@ -1943,6 +1543,11 @@ StyleBoardData _toStyleBoardData(
         ).hasMatch(item.name.toLowerCase())) {
       role = BoardItemRole.dress;
     }
+    final rawItems = <Map<String, dynamic>>[
+      ..._maps(direction['board_items'] ?? direction['boardItems']),
+      ..._maps(direction['items'] ?? direction['pieces']),
+      ..._maps(direction['composition_items']),
+    ];
     final raw = rawItems
         .where(
           (candidate) =>
@@ -1960,95 +1565,29 @@ StyleBoardData _toStyleBoardData(
         )
         .firstOrNull;
     final canonical = raw == null ? null : StyleBoardItem.fromJson(raw);
-    // Request-carried payload: the persistence-free Shuffle endpoint needs each
-    // current item serialisable. When the raw board_items lookup misses (or the
-    // item carries no per-item source), reconstruct it from the canonical
-    // parsed item. A wardrobe-only board's items ARE wardrobe items, so the
-    // board-level source_policy is the honest per-item source fallback. Never
-    // fabricates IDs: an item without a stable id keeps raw={} and stays
-    // ineligible via requestCarriedItemsOk.
-    final boardPolicy = _text(
-      direction['source_policy'] ?? direction['sourcePolicy'],
-    ).trim().toLowerCase();
-    var source = canonical?.source ?? 'unknown';
-    if (source == 'unknown' &&
-        {'wardrobe', 'style_asset'}.contains(boardPolicy)) {
-      source = boardPolicy;
-    }
-    final hasStableId = item.id.trim().isNotEmpty;
-    final carriedRaw = Map<String, dynamic>.from(
-      raw ??
-          (hasStableId
-              ? <String, dynamic>{
-                  'item_id': item.id,
-                  'name': item.name,
-                  'slot': role.name,
-                  'role': role.name,
-                  'category': item.role.name,
-                  'image_url': image,
-                  'source': source,
-                }
-              : const <String, dynamic>{}),
-    );
-    if (source != 'unknown' &&
-        _text(
-          carriedRaw['source'] ??
-              carriedRaw['item_source'] ??
-              carriedRaw['itemSource'],
-        ).isEmpty) {
-      carriedRaw['source'] = source;
-    }
-    final resolved = resolveWardrobeImage(
-      carriedRaw,
-      normalizedUrl: canonical?.normalizedUrl,
-      maskedUrl: canonical?.maskedUrl,
-      surface: 'style_board_live',
-      itemId: item.id,
-      wardrobeRecord: wardrobeById[item.id],
-    );
-    final selectedImage = resolved.url ?? image;
-    if (selectedImage.isEmpty) continue;
-    if (item.id.isNotEmpty && !seenIds.add(item.id)) continue;
-    final originalImage = _text(
-      carriedRaw['image_url'] ?? carriedRaw['imageUrl'],
-    );
-    final resolvedRaw = Map<String, dynamic>.from(carriedRaw)
-      ..addAll({
-        if (originalImage.isNotEmpty && originalImage != selectedImage)
-          'original_image_url': originalImage,
-      })
-      ..['image_url'] = selectedImage
-      ..['selected_field'] = resolved.field
-      ..['source_kind'] = resolved.sourceKind
-      ..['expected_transparent'] = resolved.expectedTransparent
-      ..['_image_should_frame'] = resolved.shouldFrame
-      ..['_image_source_kind'] = resolved.sourceKind
-      ..['_image_expected_transparent'] = resolved.expectedTransparent;
     items.add(
       StyleBoardItem(
         id: item.id,
         slot: canonical?.slot ?? role.name,
         boardRole: canonical?.boardRole ?? '',
-        source: source,
+        source: canonical?.source ?? 'unknown',
         accessoryType: canonical?.accessoryType ?? '',
         name: item.name,
-        imageUrl: selectedImage,
+        imageUrl: canonical?.imageUrl ?? image,
         maskedUrl: canonical?.maskedUrl ?? '',
         boardImageUrl: canonical?.boardImageUrl ?? image,
         normalizedUrl: canonical?.normalizedUrl ?? '',
-        assetCutoutUrl: canonical?.assetCutoutUrl ?? '',
-        assetMaskedUrl: canonical?.assetMaskedUrl ?? '',
         category: canonical?.category ?? item.role.name,
         subCategory: canonical?.subCategory ?? '',
         role: role,
         position: canonical?.position,
         isLocked: canonical?.isLocked ?? false,
-        raw: resolvedRaw,
+        raw: raw ?? const {},
       ),
     );
   }
   final rendered = _enforceSlots(items);
-  final totalInput = model.items.length;
+  final totalInput = model.imageItems.length;
   final totalRendered = rendered.length;
   debugPrint(
     'AHVI_BOARD_RENDER_ASSET_SELECTION '
@@ -2104,17 +1643,6 @@ List<StyleBoardItem> _enforceSlots(List<StyleBoardItem> items) {
     final cap = caps[it.role] ?? 0;
     final n = counts[it.role] ?? 0;
     if (cap == 0 || n >= cap) {
-      final replaceAt = kept.indexWhere(
-        (current) =>
-            current.role == it.role &&
-            !current.isLocked &&
-            !current.hasValidatedCutout &&
-            it.hasValidatedCutout,
-      );
-      if (replaceAt >= 0) {
-        kept[replaceAt] = it;
-        continue;
-      }
       dropped++;
       continue;
     }
@@ -2326,16 +1854,70 @@ List<Map<String, dynamic>> _maps(dynamic value) {
       .toList(growable: false);
 }
 
-/// Selects the strongest available image and records whether it needs framing.
+/// Returns the first valid transparent-PNG URL for a board item, or null.
+///
+/// Priority:
+///   1. board_image_url / transparent_image_url (explicit transparent fields)
+///   2. cutout_url if cutout_status == ready
+///   3. image_url if board_status == cutout_ready (backend already resolved it)
+///
+/// Never falls back to normalized/catalog product tile URLs.
 String? _transparentUrlFor(
   Map<String, dynamic> item, {
   String? itemId,
   String? itemName,
   String? role,
 }) {
-  return resolveWardrobeImage(
-    item,
-    surface: 'style_board_live',
-    itemId: itemId ?? '',
-  ).url;
+  for (final key in const <String>[
+    'board_image_url',
+    'boardImageUrl',
+    'transparent_image_url',
+    'transparentImageUrl',
+  ]) {
+    final v = item[key]?.toString().trim() ?? '';
+    if (v.isNotEmpty) return v;
+  }
+  final cutoutStatus = (item['cutout_status'] ?? item['cutoutStatus'] ?? '')
+      .toString()
+      .toLowerCase()
+      .trim();
+  final cutoutUrl = (item['cutout_url'] ?? item['cutoutUrl'] ?? '')
+      .toString()
+      .trim();
+  if (cutoutUrl.isNotEmpty && cutoutStatus == 'ready') return cutoutUrl;
+
+  // board_status == "cutout_ready" means the backend's resolver already picked
+  // a transparent PNG and placed it in image_url. Trust the backend signal.
+  final boardStatus = (item['board_status'] ?? item['boardStatus'] ?? '')
+      .toString()
+      .toLowerCase()
+      .trim();
+  if (boardStatus == 'cutout_ready') {
+    final imageUrl = (item['image_url'] ?? item['imageUrl'] ?? '')
+        .toString()
+        .trim();
+    if (imageUrl.isNotEmpty) return imageUrl;
+  }
+
+  final source = (item['source'] ?? '').toString().trim();
+  final imageUrl = (item['image_url'] ?? item['imageUrl'] ?? '')
+      .toString()
+      .trim();
+  if ((itemId ?? '').trim().isNotEmpty &&
+      source.isNotEmpty &&
+      imageUrl.isNotEmpty) {
+    return imageUrl;
+  }
+
+  debugPrint(
+    'AHVI_BOARD_ASSET_SKIPPED_NON_TRANSPARENT '
+    'item_id=${itemId ?? ""} '
+    'role=${role ?? ""} '
+    'name=${itemName ?? ""} '
+    'attempted_url_fields=[board_image_url,transparent_image_url,cutout_url,image_url(board_status=cutout_ready)] '
+    'cutout_status=$cutoutStatus '
+    'board_status=$boardStatus '
+    'reason=no_transparent_png_available',
+  );
+  return null;
 }

@@ -23,7 +23,6 @@ import 'package:myapp/wardrobe.dart'; // WardrobeItem lives here
 import 'package:myapp/services/backend_service.dart'; // styleWardrobeItem
 import 'package:myapp/style_board/board_models.dart';
 import 'package:myapp/style_board/board_layout_engine.dart';
-import 'package:myapp/util/wardrobe_image_resolver.dart';
 import 'package:myapp/app_localizations.dart'; // ÃƒÂ°Ã…Â¸Ã¢â‚¬Â Ã¢â‚¬Â¢ Localization
 import 'style_boards.dart'; // ÃƒÂ°Ã…Â¸Ã¢â‚¬Â Ã¢â‚¬Â¢ STYLE BOARDS INTEGRATION (consolidated, same folder)
 import 'pairing_engine.dart';
@@ -206,24 +205,10 @@ class _ItemDetailModal extends StatelessWidget {
                             ),
                             clipBehavior: Clip.antiAlias,
                             child:
-                                item
-                                            .resolveImage(
-                                              surface: 'wardrobe_detail',
-                                            )
-                                            .url !=
-                                        null &&
-                                    item
-                                        .resolveImage(
-                                          surface: 'wardrobe_detail',
-                                        )
-                                        .url!
-                                        .isNotEmpty
+                                item.displayUrl != null &&
+                                    item.displayUrl!.isNotEmpty
                                 ? Image.network(
-                                    item
-                                        .resolveImage(
-                                          surface: 'wardrobe_detail',
-                                        )
-                                        .url!,
+                                    item.displayUrl!,
                                     fit: BoxFit.contain,
                                   )
                                 : const Icon(
@@ -811,14 +796,6 @@ class _ItemDetailModal extends StatelessWidget {
                           'board_items': direction['items'],
                         },
                         width: MediaQuery.sizeOf(ctx).width - 40,
-                        wardrobeById: buildWardrobeImageMap([
-                          for (final wardrobeItem in allItems)
-                            {
-                              ...wardrobeItem.raw,
-                              'id': wardrobeItem.id,
-                              r'$id': wardrobeItem.id,
-                            },
-                        ]),
                       ),
                     ),
                   ),
@@ -841,14 +818,6 @@ class _ItemDetailModal extends StatelessWidget {
                       'board_items': outfit['items'],
                     },
                     width: MediaQuery.sizeOf(ctx).width - 40,
-                    wardrobeById: buildWardrobeImageMap([
-                      for (final wardrobeItem in allItems)
-                        {
-                          ...wardrobeItem.raw,
-                          'id': wardrobeItem.id,
-                          r'$id': wardrobeItem.id,
-                        },
-                    ]),
                   ),
 
                 if (mode == 'build_outfit' &&
@@ -1077,24 +1046,10 @@ class _WorksWellWithCard extends StatelessWidget {
                               height: 32,
                               color: const Color(0xFFEFEFF7),
                               child:
-                                  (p
-                                              .resolveImage(
-                                                surface: 'works_well_with',
-                                              )
-                                              .url !=
-                                          null &&
-                                      p
-                                          .resolveImage(
-                                            surface: 'works_well_with',
-                                          )
-                                          .url!
-                                          .isNotEmpty)
+                                  (p.displayUrl != null &&
+                                      p.displayUrl!.isNotEmpty)
                                   ? Image.network(
-                                      p
-                                          .resolveImage(
-                                            surface: 'works_well_with',
-                                          )
-                                          .url!,
+                                      p.displayUrl!,
                                       fit: BoxFit.contain,
                                     )
                                   : const Icon(
@@ -1736,24 +1691,10 @@ class _AllPairingsSheet extends StatelessWidget {
                               height: 40,
                               color: const Color(0xFFEFEFF7),
                               child:
-                                  (p
-                                              .resolveImage(
-                                                surface: 'works_well_with',
-                                              )
-                                              .url !=
-                                          null &&
-                                      p
-                                          .resolveImage(
-                                            surface: 'works_well_with',
-                                          )
-                                          .url!
-                                          .isNotEmpty)
+                                  (p.displayUrl != null &&
+                                      p.displayUrl!.isNotEmpty)
                                   ? Image.network(
-                                      p
-                                          .resolveImage(
-                                            surface: 'works_well_with',
-                                          )
-                                          .url!,
+                                      p.displayUrl!,
                                       fit: BoxFit.contain,
                                     )
                                   : const Icon(

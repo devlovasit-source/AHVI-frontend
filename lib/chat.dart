@@ -8,7 +8,6 @@ import 'package:myapp/calendar.dart' as calendar_page;
 import 'package:myapp/daily_wear.dart' as daily_wear_page;
 import 'package:myapp/medi_tracker.dart' as medi_tracker_page;
 import 'package:myapp/app_localizations.dart';
-import 'package:myapp/models/calendar_actions.dart';
 import 'package:myapp/widgets/ahvi_chat_prompt_bar.dart';
 import 'package:myapp/widgets/ahvi_home_text.dart';
 import 'package:myapp/widgets/ahvi_header.dart';
@@ -20,7 +19,6 @@ import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/ahvi_response_parser.dart';
 import 'package:myapp/services/ahvi_speech_service.dart';
 import 'package:myapp/services/backend_service.dart';
-import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:myapp/skincare.dart' as skincare_page;
 import 'package:myapp/fitness_page.dart' as fitness_page;
 import 'package:myapp/diet_page.dart' as diet_page;
@@ -28,7 +26,6 @@ import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/models/ahvi_visual_board_model.dart';
 import 'package:myapp/widgets/ahvi_module_card.dart';
 import 'package:myapp/widgets/ahvi_visual_board.dart';
-import 'package:myapp/util/safe_text.dart';
 import 'package:provider/provider.dart';
 
 class _SavedBoardCategory {
@@ -1013,7 +1010,6 @@ class _ChatScreenState extends State<ChatScreen>
   // clarification; later board actions must not be sent as clarification answers.
   bool _clarificationResolvedByCards = false;
   bool _isTyping = false;
-  bool _calendarNavigationPending = false;
   bool _lastRequestWasWardrobe = false;
   String _userName = 'User';
   final Map<String, List<List<bool>>> _checklistChecksByTitle = {};
@@ -1161,11 +1157,9 @@ class _ChatScreenState extends State<ChatScreen>
           (m) => m['role'] == 'user',
       orElse: () => {'content': 'Chat'},
     );
-    final title = truncateSafeText(
-      firstUser['content'] ?? 'Chat',
-      40,
-      suffix: '…',
-    );
+    final title = (firstUser['content'] ?? 'Chat').length > 40
+        ? '${firstUser['content']!.substring(0, 40)}…'
+        : firstUser['content']!;
 
     // Greeting bubble is re-added on load, so skip persisting it here.
     final richMessages = _messages.where((m) => !m.isGreeting).toList();
@@ -1688,18 +1682,9 @@ class _ChatScreenState extends State<ChatScreen>
     }
   });
 
-  Future<void> _openOrganizePage(String pageKey) async {
+  void _openOrganizePage(String pageKey) {
     Widget? page;
-    final safePageKey = sanitizeUtf16(pageKey);
-    if (safePageKey != pageKey) {
-      debugPrint(
-        'AHVI_UTF16_SANITIZED surface=legacy_chat_route field=page_key',
-      );
-    }
-    final normalizedCalendarRoute = normalizeCalendarRoute(safePageKey);
-    final key = normalizedCalendarRoute != null
-        ? 'calendar'
-        : safePageKey.toLowerCase().trim();
+    final key = pageKey.toLowerCase().trim();
     switch (key) {
       case 'meal':
       case 'meals':
@@ -1712,7 +1697,6 @@ class _ChatScreenState extends State<ChatScreen>
       case 'meds':
       case 'medicine':
       case 'medicines':
-        debugPrint('AHVI_MEDI_NAV source=legacy_chat_organize_action');
         page = medi_tracker_page.MediTrackScreen(); // Medicine Tracker
         break;
       case 'bill':
@@ -1743,15 +1727,7 @@ class _ChatScreenState extends State<ChatScreen>
         Navigator.of(context).maybePop();
         return;
     }
-    if (page == null) {
-      debugPrint(
-        'AHVI_CALENDAR_ACTION action=open_module '
-        'outcome=ignored route=$safePageKey',
-      );
-      return;
-    }
-    if (normalizedCalendarRoute != null && _calendarNavigationPending) return;
-    if (normalizedCalendarRoute != null) _calendarNavigationPending = true;
+    if (page == null) return;
     // Close any active modal / bottom-sheet before navigating to a
     // full-screen route so no stale scrim leaks onto the destination
     // (see Daily Wear "permanent faded overlay" regression).
@@ -1765,14 +1741,7 @@ class _ChatScreenState extends State<ChatScreen>
       }
     }
     FocusManager.instance.primaryFocus?.unfocus();
-    if (normalizedCalendarRoute != null) {
-      debugPrint(
-        'AHVI_CALENDAR_ACTION action=view_events '
-        'outcome=navigated route=$normalizedCalendarRoute',
-      );
-    }
-    await nav.push(MaterialPageRoute(builder: (_) => page!));
-    if (normalizedCalendarRoute != null) _calendarNavigationPending = false;
+    nav.push(MaterialPageRoute(builder: (_) => page!));
   }
 
   @override
@@ -2433,13 +2402,6 @@ class _ChatScreenState extends State<ChatScreen>
       _generatedSavedBoardTitle(board, slotted, selectedCategory),
       existingTitles,
     );
-    final savedContent = buildSavedBoardContent(
-      board: board,
-      items: outfitItems,
-      selection: SavedBoardSelection(bucket: selectedCategory.key),
-      title: title,
-      originalOccasion: (board['occasion'] ?? '').toString(),
-    );
 
     final result = await appwrite.saveBoardToCollection(
       occasion: _savedCategoryOccasion(selectedCategory),
@@ -2477,7 +2439,6 @@ class _ChatScreenState extends State<ChatScreen>
         },
       },
       emoji: '✨',
-      content: savedContent,
     );
 
     if (!mounted) return;
@@ -2524,10 +2485,6 @@ class _ChatScreenState extends State<ChatScreen>
           .trim();
       final maskedUrl = (item['masked_url'] ?? item['maskedUrl'] ?? imageUrl)
           .toString();
-      final source =
-          (item['source'] ?? item['item_source'] ?? item['itemSource'] ?? '')
-              .toString()
-              .trim();
 
       items.add({
         if (id.isNotEmpty) 'id': id,
@@ -2541,7 +2498,6 @@ class _ChatScreenState extends State<ChatScreen>
         'masked_url': maskedUrl,
         'url': imageUrl,
         'thumbnailUrl': imageUrl,
-        if (source.isNotEmpty) 'source': source,
       });
     }
     return items;
