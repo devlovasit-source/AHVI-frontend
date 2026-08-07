@@ -1037,25 +1037,15 @@ class _ChatScreenState extends State<ChatScreen>
       ? 'plan'
       : widget.moduleContext.toLowerCase().trim();
 
-  /// Context-aware processing copy for the typing bubble, keyed off the active
-  /// chat module. Falls back to the general message.
-  String get _typingMessage {
-    switch (_module) {
-      case 'wardrobe':
-        return ahviProcessingMessage(AhviProcessingContext.wardrobe);
-      case 'style':
-      case 'daily_wear':
-        return ahviProcessingMessage(
-          AhviProcessingContext.styleRecommendation,
-        );
-      case 'plan':
-      case 'planner':
-      case 'calendar':
-        return ahviProcessingMessage(AhviProcessingContext.calendar);
-      default:
-        return ahviProcessingMessage(AhviProcessingContext.general);
-    }
-  }
+  /// P0: neutral pending copy shown before the backend has classified the
+  /// request. The previous per-module switch caused the "Curating your look"
+  /// loader to appear on every Style-module send — including text-only
+  /// advice, information, and bare "calendar" — because it keyed off the
+  /// current chat module, not off the response the backend would return.
+  /// Once the response arrives, the message widget itself owns any
+  /// domain-specific reveal (CurationReveal for visual boards, etc.).
+  String get _typingMessage =>
+      ahviProcessingMessage(AhviProcessingContext.general);
 
   @override
   void initState() {
@@ -1483,7 +1473,14 @@ class _ChatScreenState extends State<ChatScreen>
     final queryText = chipText ?? _chatController.text.trim();
     final visibleText = displayText ?? queryText;
     if (queryText.isEmpty || visibleText.isEmpty) return;
+    // P0: end-to-end request lifecycle. Invalidate every in-flight request
+    // for this session first — a second rapid send drops the older
+    // response instead of racing to overwrite state. Then capture a fresh
+    // token and generate a client-side request_id for the backend to echo.
+    _responseGuard.invalidate();
     final responseToken = _responseGuard.capture(_currentSessionId);
+    final requestId =
+        'req_${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
     _chatController.clear();
     setState(() {
       _messages.add(_ChatMessage(text: visibleText, isMe: true));
@@ -1602,6 +1599,7 @@ class _ChatScreenState extends State<ChatScreen>
           showClosestOption: isClosestAction,
           allowClosestOption: isClosestAction,
           closest: isClosestAction,
+          requestId: requestId,
         );
       } else if (isStyleModule) {
         response = await backend.sendModuleChat(
@@ -1609,6 +1607,7 @@ class _ChatScreenState extends State<ChatScreen>
           message: backendQueryText,
           context: styleContext.isEmpty ? null : styleContext,
           chatHistory: List<Map<String, String>>.from(_chatHistory),
+          requestId: requestId,
         );
       } else {
         response = await backend.sendModuleChat(
@@ -1616,6 +1615,7 @@ class _ChatScreenState extends State<ChatScreen>
           message: queryText,
           context: isPlanPackAction ? _lastPlanPackContext : const {},
           chatHistory: List<Map<String, String>>.from(_chatHistory),
+          requestId: requestId,
         );
       }
       if (!mounted ||

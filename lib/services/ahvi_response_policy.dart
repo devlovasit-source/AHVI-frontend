@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 const Set<String> ahviBoardAuthorizedRoutes = {
   'visual_inspiration',
   'wardrobe_style',
+  // P0 canonical response_mode alias for wardrobe_style.
+  'wardrobe_recommendation',
   'style_this',
   'build_outfit',
 };
@@ -17,6 +19,11 @@ const Set<String> ahviBoardSuppressedRoutes = {
   'general_chat',
   'clarification',
   'error',
+  // P0 canonical response_mode values that must never render Style boards.
+  'text_only',
+  'calendar_navigation',
+  'calendar_action',
+  'planner_action',
 };
 
 class AhviBoardCollection {
@@ -105,8 +112,18 @@ class AhviResponsePolicy {
 
     final signals = _asMap(value('conversation_signals'));
     final policy = value('board_policy');
-    var resolvedRoute = _normalize(value('route'));
-    if (resolvedRoute.isEmpty) {
+    // P0: canonical `response_mode` wins over everything. `route` remains
+    // navigation-only; `mode` and `intent` are legacy fallbacks.
+    var resolvedRoute = _normalize(value('response_mode'));
+    if (resolvedRoute.isEmpty ||
+        (!ahviBoardAuthorizedRoutes.contains(resolvedRoute) &&
+            !ahviBoardSuppressedRoutes.contains(resolvedRoute))) {
+      resolvedRoute = _normalize(value('route'));
+    }
+    if (resolvedRoute.isEmpty ||
+        (!ahviBoardAuthorizedRoutes.contains(resolvedRoute) &&
+            !ahviBoardSuppressedRoutes.contains(resolvedRoute))) {
+      resolvedRoute = '';
       for (final candidate in [value('mode'), value('intent')]) {
         final normalized = _normalize(candidate);
         if (ahviBoardAuthorizedRoutes.contains(normalized) ||
@@ -144,6 +161,7 @@ class AhviResponsePolicy {
 
   bool get textPrimary =>
       isSafetySensitive ||
+      route == 'text_only' ||
       route == 'style_advice' ||
       route == 'style_pairing' ||
       route == 'missing_pieces' ||

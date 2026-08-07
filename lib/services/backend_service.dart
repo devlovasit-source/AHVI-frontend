@@ -514,6 +514,9 @@ class BackendService {
     bool wardrobeFirst = false,
     String? assetPolicy,
     bool allowGenericAssetsInMainBoard = true,
+    // P0: client-generated correlation id echoed by backend for
+    // late-response rejection. Optional so old callers still work.
+    String? requestId,
   }) async {
     final startedAt = DateTime.now();
     final diagnosticCorrelationId = AhviStyleDiagnostics.nextCorrelationId();
@@ -562,6 +565,7 @@ class BackendService {
           'current_memory': _memoryPayload(currentMemory, lastStyleContext),
           'user_profile': {...?userProfile, 'user_id': authedUserId},
           'user_id': authedUserId,
+          if (requestId != null && requestId.isNotEmpty) 'request_id': requestId,
           ...extraContext,
           'module_context': moduleContext,
           // Chat style boards render from live wardrobe item cards.
@@ -800,6 +804,9 @@ class BackendService {
     Map<String, dynamic>? context,
     List<Map<String, String>> chatHistory = const [],
     Map<String, dynamic>? userProfile,
+    // P0: client-generated correlation id echoed by backend for late-response
+    // rejection. Optional so old callers keep working.
+    String? requestId,
   }) async {
     final module = canonicalModuleChatDomain(domain);
     final query = message.trim();
@@ -871,6 +878,7 @@ class BackendService {
           'history': historyForRequest,
           'context': context ?? const {},
           'context_data': context ?? const {},
+          if (requestId != null && requestId.isNotEmpty) 'request_id': requestId,
           'user_profile': {
             ...?userProfile,
             if (resolvedGender.isNotEmpty) 'gender': resolvedGender,
