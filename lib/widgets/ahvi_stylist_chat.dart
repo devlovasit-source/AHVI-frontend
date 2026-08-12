@@ -2592,18 +2592,22 @@ class _VisualDirectionCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = math.min(MediaQuery.sizeOf(context).width - 72, 318.0);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boardWidth = math.min(constraints.maxWidth - 24, 360.0);
 
-    return Transform.translate(
-      offset: const Offset(-46, 0),
-      child: SizedBox(
-        width: width,
-        child: VisualDirectionCarousel(
-          directions: payload.directions,
-          cardWidth: width,
-          onSendMessage: onPrompt,
-        ),
-      ),
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: SizedBox(
+            width: boardWidth,
+            child: VisualDirectionCarousel(
+              directions: payload.directions,
+              cardWidth: boardWidth,
+              onSendMessage: onPrompt,
+            ),
+          ),
+        );
+      },
     );
   }
 }
