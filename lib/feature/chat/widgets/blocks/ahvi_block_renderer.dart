@@ -57,10 +57,13 @@ class AhviBlockRenderer extends StatelessWidget {
         final coverMap = cover is Map
             ? Map<String, dynamic>.from(cover)
             : const <String, dynamic>{};
-        return VisualDirectionCarousel(
-          directions: directions,
-          editorialCover: coverMap,
-          onSendMessage: onSendMessage,
+        return Transform.translate(
+          offset: const Offset(-20, 0),
+          child: VisualDirectionCarousel(
+            directions: directions,
+            editorialCover: coverMap,
+            onSendMessage: onSendMessage,
+          ),
         );
       case AhviBlockType.styleBoards:
         final boards = block.data['boards'];
@@ -152,7 +155,14 @@ class StyleAdviceCard extends StatelessWidget {
           ),
           if (summary.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(summary, style: TextStyle(color: t.textPrimary, fontSize: 12.5, height: 1.4)),
+            Text(
+              summary,
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 12.5,
+                height: 1.4,
+              ),
+            ),
           ],
           const SizedBox(height: 8),
           ...sections.map((s) {
@@ -167,7 +177,12 @@ class StyleAdviceCard extends StatelessWidget {
                 children: [
                   Text(
                     s[0].toUpperCase(),
-                    style: TextStyle(color: t.mutedText, fontSize: 9.5, fontWeight: FontWeight.w700, letterSpacing: 0.6),
+                    style: TextStyle(
+                      color: t.mutedText,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   ...items.map(
@@ -176,9 +191,25 @@ class StyleAdviceCard extends StatelessWidget {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(s[2], style: TextStyle(color: color, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                          Text(
+                            s[2],
+                            style: TextStyle(
+                              color: color,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                           const SizedBox(width: 7),
-                          Expanded(child: Text(it, style: TextStyle(color: t.textPrimary, fontSize: 12.5, height: 1.3))),
+                          Expanded(
+                            child: Text(
+                              it,
+                              style: TextStyle(
+                                color: t.textPrimary,
+                                fontSize: 12.5,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -213,7 +244,9 @@ class TransitionPlanCard extends StatelessWidget {
         dinnerReady.isEmpty) {
       return const SizedBox.shrink();
     }
-    debugPrint('AHVI_TRANSITION_PLAN_RENDERED keep=${keep.length} swap=${swap.length} add=${add.length}');
+    debugPrint(
+      'AHVI_TRANSITION_PLAN_RENDERED keep=${keep.length} swap=${swap.length} add=${add.length}',
+    );
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 16, right: 20, left: 4),
@@ -260,7 +293,11 @@ class TransitionPlanCard extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               dinnerReady,
-              style: TextStyle(color: t.textPrimary, fontSize: 12.5, height: 1.3),
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 12.5,
+                height: 1.3,
+              ),
             ),
           ],
         ],
@@ -297,12 +334,23 @@ class TransitionPlanCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(glyph, style: TextStyle(color: color, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  Text(
+                    glyph,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(width: 7),
                   Expanded(
                     child: Text(
                       it,
-                      style: TextStyle(color: t.textPrimary, fontSize: 12.5, height: 1.3),
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontSize: 12.5,
+                        height: 1.3,
+                      ),
                     ),
                   ),
                 ],
@@ -373,7 +421,14 @@ class StylistReasoningCard extends StatelessWidget {
           ],
           if (why.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(why, style: TextStyle(color: t.textPrimary, fontSize: 12.5, height: 1.4)),
+            Text(
+              why,
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 12.5,
+                height: 1.4,
+              ),
+            ),
           ],
           if (dna.isNotEmpty) _reasonRow('Style DNA', dna, t),
           if (wardrobe.isNotEmpty) _reasonRow('Wardrobe', wardrobe, t),
@@ -390,12 +445,19 @@ class StylistReasoningCard extends StatelessWidget {
         children: [
           SizedBox(
             width: 64,
-            child: Text(label, style: TextStyle(color: t.mutedText, fontSize: 11)),
+            child: Text(
+              label,
+              style: TextStyle(color: t.mutedText, fontSize: 11),
+            ),
           ),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(color: t.textPrimary, fontSize: 12, height: 1.35),
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 12,
+                height: 1.35,
+              ),
             ),
           ),
         ],
@@ -503,7 +565,9 @@ class VisualInspirationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.themeTokens;
-    final title = _s(data['title']).isEmpty ? 'Style Inspiration' : _s(data['title']);
+    final title = _s(data['title']).isEmpty
+        ? 'Style Inspiration'
+        : _s(data['title']);
     final aesthetic = _s(data['aesthetic']);
     final mood = _s(data['mood']);
     final palette = _strList(data['palette']);
@@ -522,10 +586,7 @@ class VisualInspirationCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            t.panel,
-            t.accent.primary.withValues(alpha: 0.06),
-          ],
+          colors: [t.panel, t.accent.primary.withValues(alpha: 0.06)],
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: t.cardBorder),
@@ -589,7 +650,11 @@ class VisualInspirationCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               notes,
-              style: TextStyle(color: t.textPrimary, fontSize: 12.5, height: 1.4),
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 12.5,
+                height: 1.4,
+              ),
             ),
           ],
           if (_s(missing['name']).isNotEmpty) ...[
@@ -602,7 +667,9 @@ class VisualInspirationCard extends StatelessWidget {
             ),
           ],
           CompleteTheLookStrip(
-            items: _mapList(data['complete_the_look'] ?? data['completeTheLook']),
+            items: _mapList(
+              data['complete_the_look'] ?? data['completeTheLook'],
+            ),
           ),
         ],
       ),
@@ -665,7 +732,9 @@ class MissingPieceIntelligenceCard extends StatelessWidget {
           ),
           _wardrobeReality(t),
           CompleteTheLookStrip(
-            items: _mapList(data['complete_the_look'] ?? data['completeTheLook']),
+            items: _mapList(
+              data['complete_the_look'] ?? data['completeTheLook'],
+            ),
           ),
         ],
       ),
@@ -685,9 +754,26 @@ class MissingPieceIntelligenceCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: TextStyle(color: t.mutedText, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
+            Text(
+              label,
+              style: TextStyle(
+                color: t.mutedText,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+              ),
+            ),
             const SizedBox(height: 2),
-            ...xs.map((x) => Text('$glyph $x', style: TextStyle(color: t.textPrimary, fontSize: 12, height: 1.35))),
+            ...xs.map(
+              (x) => Text(
+                '$glyph $x',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontSize: 12,
+                  height: 1.35,
+                ),
+              ),
+            ),
           ],
         ),
       );
@@ -779,7 +865,11 @@ class _MissingPieceCallout extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               reason,
-              style: TextStyle(color: t.textPrimary, fontSize: 12, height: 1.35),
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 12,
+                height: 1.35,
+              ),
             ),
           ],
           if (unlocks.isNotEmpty) ...[
@@ -810,7 +900,8 @@ class _MissingPieceCallout extends StatelessWidget {
           ],
           const SizedBox(height: 10),
           GestureDetector(
-            onTap: () => onSendMessage?.call(_findThisMessage(missing, contextData)),
+            onTap: () =>
+                onSendMessage?.call(_findThisMessage(missing, contextData)),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
@@ -928,10 +1019,7 @@ class _PaletteChip extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(color: t.textPrimary, fontSize: 10.5),
-          ),
+          Text(label, style: TextStyle(color: t.textPrimary, fontSize: 10.5)),
         ],
       ),
     );
