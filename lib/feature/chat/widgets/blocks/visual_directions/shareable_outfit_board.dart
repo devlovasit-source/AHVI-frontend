@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// One garment for the share composition. [role] is a lowercase slot
 /// (top / bottom / footwear / dress / outerwear / accessory).
@@ -90,7 +89,8 @@ class ShareableOutfitBoard extends StatelessWidget {
                   ),
                   TextSpan(
                     text: 'AHVI',
-                    style: GoogleFonts.anton(
+                    style: const TextStyle(
+                      fontFamily: 'Anton',
                       color: _accent,
                       fontSize: 11,
                       letterSpacing: 0.4,
@@ -127,11 +127,13 @@ class ShareableOutfitBoard extends StatelessWidget {
       const SizedBox(width: 6),
       Text(
         'AHVI',
-        style: GoogleFonts.anton(
+        style: const TextStyle(
+          fontFamily: 'Anton',
           color: _ink,
           fontSize: 12,
           letterSpacing: 2,
           fontWeight: FontWeight.w400,
+          height: 1.0,
         ),
       ),
     ],

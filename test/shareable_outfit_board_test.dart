@@ -66,15 +66,28 @@ void main() {
       await _pump(tester);
       expect(find.text('Understated Ease'), findsOneWidget);
       expect(find.text('Office'), findsOneWidget);
-      expect(find.text('AHVI'), findsOneWidget);
-      expect(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is RichText &&
-              widget.text.toPlainText() == 'Styled on AHVI',
-        ),
-        findsOneWidget,
+      final headerAhvi = find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            widget.data == 'AHVI' &&
+            widget.style?.fontFamily == 'Anton',
       );
+      expect(headerAhvi, findsOneWidget);
+
+      final footerAhvi = find.byWidgetPredicate(
+        (widget) =>
+            widget is RichText &&
+            widget.text.toPlainText() == 'Styled on AHVI' &&
+            widget.text is TextSpan &&
+            (widget.text as TextSpan).children?.any(
+                  (span) =>
+                      span is TextSpan &&
+                      span.text == 'AHVI' &&
+                      span.style?.fontFamily == 'Anton',
+                ) ==
+                true,
+      );
+      expect(footerAhvi, findsOneWidget);
       // No why-it-works / styling-tip copy baked into the share image.
       expect(find.textContaining('why'), findsNothing);
       expect(find.textContaining('styling tip'), findsNothing);

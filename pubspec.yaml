@@ -71,3 +71,9 @@ flutter:
     - assets/style_assets/accessories/sets/
     - assets/style_assets/accessories/bags/
     - assets/style_assets/accessories/phone_slings/
+
+
+  fonts:
+    - family: Anton
+      fonts:
+        - asset: assets/fonts/Anton-Regular.ttf
