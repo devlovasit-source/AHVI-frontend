@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// One garment for the share composition. [role] is a lowercase slot
 /// (top / bottom / footwear / dress / outerwear / accessory).
@@ -91,51 +92,51 @@ class ShareableOutfitBoard extends StatelessWidget {
   }
 
   Widget _brandingRow() => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 20,
-            height: 20,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(color: _ink, shape: BoxShape.circle),
-            child: const Text(
-              'A',
-              style: TextStyle(
-                color: kShareBackground,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 20,
+        height: 20,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(color: _ink, shape: BoxShape.circle),
+        child: const Text(
+          'A',
+          style: TextStyle(
+            color: kShareBackground,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
           ),
-          const SizedBox(width: 6),
-          const Text(
-            'AHVI',
-            style: TextStyle(
-              color: _ink,
-              fontSize: 12,
-              letterSpacing: 2,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      );
+        ),
+      ),
+      const SizedBox(width: 6),
+      Text(
+        'AHVI',
+        style: GoogleFonts.anton(
+          color: _ink,
+          fontSize: 12,
+          letterSpacing: 2,
+          fontWeight: FontWeight.w400,
+        ),
+      ),
+    ],
+  );
 
   Widget _occasionChip(String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: _accent.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: _accent,
-            fontSize: 11.5,
-            letterSpacing: 0.3,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: _accent.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      label,
+      style: const TextStyle(
+        color: _accent,
+        fontSize: 11.5,
+        letterSpacing: 0.3,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
 }
 
 /// Tight three-piece flat-lay: top upper-left, bottom large on the right,
