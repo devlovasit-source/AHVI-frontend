@@ -44,7 +44,9 @@ Future<GlobalKey> _pump(
 }
 
 void main() {
-  testWidgets('exported board has an explicit opaque background', (tester) async {
+  testWidgets('exported board has an explicit opaque background', (
+    tester,
+  ) async {
     await _pump(tester);
     final opaque = find.byWidgetPredicate(
       (w) => w is Container && w.color == ShareableOutfitBoard.kShareBackground,
@@ -58,16 +60,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('title, occasion, branding and footer are visible; paragraphs excluded', (tester) async {
-    await _pump(tester);
-    expect(find.text('Understated Ease'), findsOneWidget);
-    expect(find.text('Office'), findsOneWidget);
-    expect(find.text('AHVI'), findsOneWidget);
-    expect(find.text('Styled on AHVI'), findsOneWidget);
-    // No why-it-works / styling-tip copy baked into the share image.
-    expect(find.textContaining('why'), findsNothing);
-    expect(find.textContaining('styling tip'), findsNothing);
-  });
+  testWidgets(
+    'title, occasion, branding and footer are visible; paragraphs excluded',
+    (tester) async {
+      await _pump(tester);
+      expect(find.text('Understated Ease'), findsOneWidget);
+      expect(find.text('Office'), findsOneWidget);
+      final headerAhvi = find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            widget.data == 'AHVI' &&
+            widget.style?.fontFamily == 'Anton',
+      );
+      expect(headerAhvi, findsOneWidget);
+
+      final footerAhvi = find.byWidgetPredicate(
+        (widget) =>
+            widget is RichText &&
+            widget.text.toPlainText() == 'Styled on AHVI' &&
+            widget.text is TextSpan &&
+            (widget.text as TextSpan).children?.any(
+                  (span) =>
+                      span is TextSpan &&
+                      span.text == 'AHVI' &&
+                      span.style?.fontFamily == 'Anton',
+                ) ==
+                true,
+      );
+      expect(footerAhvi, findsOneWidget);
+      // No why-it-works / styling-tip copy baked into the share image.
+      expect(find.textContaining('why'), findsNothing);
+      expect(find.textContaining('styling tip'), findsNothing);
+    },
+  );
 
   testWidgets('three garment roles render', (tester) async {
     await _pump(tester);
@@ -84,7 +109,8 @@ void main() {
   testWidgets('capture returns non-empty PNG bytes', (tester) async {
     final key = await _pump(tester);
     final bytes = await tester.runAsync(() async {
-      final ro = key.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      final ro =
+          key.currentContext!.findRenderObject() as RenderRepaintBoundary;
       final image = await ro.toImage(pixelRatio: 1.5);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       return data?.buffer.asUint8List();
@@ -97,7 +123,8 @@ void main() {
     await _pump(tester, items: const []);
     expect(
       find.byWidgetPredicate(
-        (w) => w is Container && w.color == ShareableOutfitBoard.kShareBackground,
+        (w) =>
+            w is Container && w.color == ShareableOutfitBoard.kShareBackground,
       ),
       findsOneWidget,
     );

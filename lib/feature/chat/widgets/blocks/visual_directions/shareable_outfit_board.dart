@@ -75,13 +75,30 @@ class ShareableOutfitBoard extends StatelessWidget {
             const SizedBox(height: 10),
             Expanded(child: _ShareCanvas(items: items)),
             const SizedBox(height: 6),
-            const Text(
-              'Styled on AHVI',
-              style: TextStyle(
-                color: _accent,
-                fontSize: 11,
-                letterSpacing: 0.4,
-                fontWeight: FontWeight.w600,
+            RichText(
+              text: TextSpan(
+                children: [
+                  const TextSpan(
+                    text: 'Styled on ',
+                    style: TextStyle(
+                      color: _accent,
+                      fontSize: 11,
+                      letterSpacing: 0.4,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextSpan(
+                    text: 'AHVI',
+                    style: const TextStyle(
+                      fontFamily: 'Anton',
+                      color: _accent,
+                      fontSize: 11,
+                      letterSpacing: 0.4,
+                      fontWeight: FontWeight.w400,
+                      height: 1.0,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -91,51 +108,53 @@ class ShareableOutfitBoard extends StatelessWidget {
   }
 
   Widget _brandingRow() => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 20,
-            height: 20,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(color: _ink, shape: BoxShape.circle),
-            child: const Text(
-              'A',
-              style: TextStyle(
-                color: kShareBackground,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 20,
+        height: 20,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(color: _ink, shape: BoxShape.circle),
+        child: const Text(
+          'A',
+          style: TextStyle(
+            color: kShareBackground,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
           ),
-          const SizedBox(width: 6),
-          const Text(
-            'AHVI',
-            style: TextStyle(
-              color: _ink,
-              fontSize: 12,
-              letterSpacing: 2,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      );
+        ),
+      ),
+      const SizedBox(width: 6),
+      Text(
+        'AHVI',
+        style: const TextStyle(
+          fontFamily: 'Anton',
+          color: _ink,
+          fontSize: 12,
+          letterSpacing: 2,
+          fontWeight: FontWeight.w400,
+          height: 1.0,
+        ),
+      ),
+    ],
+  );
 
   Widget _occasionChip(String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: _accent.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: _accent,
-            fontSize: 11.5,
-            letterSpacing: 0.3,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: _accent.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      label,
+      style: const TextStyle(
+        color: _accent,
+        fontSize: 11.5,
+        letterSpacing: 0.3,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
 }
 
 /// Tight three-piece flat-lay: top upper-left, bottom large on the right,
