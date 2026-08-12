@@ -27,7 +27,7 @@ import 'package:myapp/models/ahvi_visual_board_model.dart';
 import 'package:myapp/widgets/ahvi_module_card.dart';
 import 'package:myapp/widgets/ahvi_visual_board.dart';
 import 'package:provider/provider.dart';
-
+import 'dart:math' as math;
 class _SavedBoardCategory {
   final String key;
   final String label;
@@ -2357,13 +2357,20 @@ class _ChatScreenState extends State<ChatScreen>
     // (AhviOutfitBoardCard + EditorialBoardCanvas) — the same card every
     // surface uses. Replaces the fixed _OutfitBoardSwiper (empty/blob canvas).
     // curationReveal off so the board doesn't re-animate on every rebuild.
-    return Transform.translate(
-      offset: const Offset(-20, 0),
-      child: VisualDirectionCarousel(
-        directions: boards,
-        onSendMessage: (message) => _sendMessage(message),
-        curationReveal: false,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boardWidth = math.min(constraints.maxWidth - 24, 360.0);
+
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: VisualDirectionCarousel(
+            directions: boards,
+            cardWidth: boardWidth,
+            onSendMessage: (message) => _sendMessage(message),
+            curationReveal: false,
+          ),
+        );
+      },
     );
   }
 

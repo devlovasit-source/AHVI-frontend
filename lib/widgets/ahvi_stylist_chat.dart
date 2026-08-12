@@ -2593,6 +2593,7 @@ class _VisualDirectionCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = math.min(MediaQuery.sizeOf(context).width - 72, 318.0);
+
     return Transform.translate(
       offset: const Offset(-46, 0),
       child: SizedBox(
@@ -2767,30 +2768,43 @@ class _StyleBoardCarousel extends StatelessWidget {
     final boards = _StyleBoardViewModel.fromPayload(payload);
     if (boards.isEmpty) return const SizedBox.shrink();
 
-    final width = math.min(MediaQuery.sizeOf(context).width - 72, 318.0);
-    final height = width * 1.72;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = math.min(
+          constraints.maxWidth - 24,
+          360.0,
+        );
+        final height = width * 1.72;
 
-    return Container(
-      width: width,
-      height: height,
-      margin: const EdgeInsets.only(top: 4, bottom: 14),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: boards.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
-        itemBuilder: (_, index) {
-          final board = boards[index];
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: Container(
+            width: width,
+            height: height,
+            margin: const EdgeInsets.only(top: 4, bottom: 14),
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: boards.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (_, index) {
+                final board = boards[index];
 
-          debugPrint(
-            'AHVI_RENDER using=pinterest_board '
-            'title=${board.title} '
-            'items=${board.items.length}',
-          );
+                debugPrint(
+                  'AHVI_RENDER using=pinterest_board '
+                  'title=${board.title} '
+                  'items=${board.items.length}',
+                );
 
-          return _PinterestStyleBoardCard(board: board, width: width);
-        },
-      ),
+                return _PinterestStyleBoardCard(
+                  board: board,
+                  width: width,
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }

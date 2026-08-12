@@ -4,6 +4,7 @@ import 'package:myapp/feature/chat/widgets/blocks/visual_directions/visual_direc
 import 'package:myapp/models/ahvi_visual_board_model.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/widgets/ahvi_module_card.dart';
+import 'dart:math' as math;
 
 typedef StyleBoardsBuilder = Widget Function(List<dynamic> boards);
 typedef VisualBoardBuilder = Widget Function(AhviVisualBoard board);
@@ -57,13 +58,20 @@ class AhviBlockRenderer extends StatelessWidget {
         final coverMap = cover is Map
             ? Map<String, dynamic>.from(cover)
             : const <String, dynamic>{};
-        return Transform.translate(
-          offset: const Offset(-20, 0),
-          child: VisualDirectionCarousel(
-            directions: directions,
-            editorialCover: coverMap,
-            onSendMessage: onSendMessage,
-          ),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final boardWidth = math.min(constraints.maxWidth - 24, 360.0);
+
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: VisualDirectionCarousel(
+                directions: directions,
+                cardWidth: boardWidth,
+                editorialCover: coverMap,
+                onSendMessage: onSendMessage,
+              ),
+            );
+          },
         );
       case AhviBlockType.styleBoards:
         final boards = block.data['boards'];
