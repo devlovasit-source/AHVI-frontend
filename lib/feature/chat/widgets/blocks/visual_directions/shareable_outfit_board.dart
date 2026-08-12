@@ -76,13 +76,29 @@ class ShareableOutfitBoard extends StatelessWidget {
             const SizedBox(height: 10),
             Expanded(child: _ShareCanvas(items: items)),
             const SizedBox(height: 6),
-            const Text(
-              'Styled on AHVI',
-              style: TextStyle(
-                color: _accent,
-                fontSize: 11,
-                letterSpacing: 0.4,
-                fontWeight: FontWeight.w600,
+            RichText(
+              text: TextSpan(
+                children: [
+                  const TextSpan(
+                    text: 'Styled on ',
+                    style: TextStyle(
+                      color: _accent,
+                      fontSize: 11,
+                      letterSpacing: 0.4,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextSpan(
+                    text: 'AHVI',
+                    style: GoogleFonts.anton(
+                      color: _accent,
+                      fontSize: 11,
+                      letterSpacing: 0.4,
+                      fontWeight: FontWeight.w400,
+                      height: 1.0,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
