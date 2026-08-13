@@ -8,6 +8,8 @@ import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/profile.dart';
 import 'package:myapp/widgets/ahvi_home_text.dart';
+import 'package:flutter/services.dart';
+import 'package:myapp/widgets/country_dropdown.dart';
 
 void main() => runApp(const AhviApp());
 
@@ -633,15 +635,117 @@ class _SignUpPage extends StatefulWidget {
 
 class _SignUpPageState extends State<_SignUpPage> {
   final TextEditingController _phoneController = TextEditingController();
+  String _selectedCountryCode = '+91';
+  String _selectedCountryFlag = '🇮🇳';
+  String _selectedCountryName = 'India';
+  int _selectedCountryMaxDigits = 10;
+
+  static const List<Map<String, dynamic>> _countries = [
+    {'flag': '🇮🇳', 'name': 'India', 'code': '+91', 'digits': 10},
+    {'flag': '🇺🇸', 'name': 'United States', 'code': '+1', 'digits': 10},
+    {'flag': '🇬🇧', 'name': 'United Kingdom', 'code': '+44', 'digits': 10},
+    {'flag': '🇦🇺', 'name': 'Australia', 'code': '+61', 'digits': 9},
+    {'flag': '🇨🇦', 'name': 'Canada', 'code': '+1', 'digits': 10},
+    {'flag': '🇩🇪', 'name': 'Germany', 'code': '+49', 'digits': 11},
+    {'flag': '🇫🇷', 'name': 'France', 'code': '+33', 'digits': 9},
+    {'flag': '🇯🇵', 'name': 'Japan', 'code': '+81', 'digits': 10},
+    {'flag': '🇨🇳', 'name': 'China', 'code': '+86', 'digits': 11},
+    {'flag': '🇧🇷', 'name': 'Brazil', 'code': '+55', 'digits': 11},
+    {'flag': '🇲🇽', 'name': 'Mexico', 'code': '+52', 'digits': 10},
+    {'flag': '🇿🇦', 'name': 'South Africa', 'code': '+27', 'digits': 9},
+    {'flag': '🇳🇬', 'name': 'Nigeria', 'code': '+234', 'digits': 10},
+    {'flag': '🇰🇪', 'name': 'Kenya', 'code': '+254', 'digits': 9},
+    {'flag': '🇸🇬', 'name': 'Singapore', 'code': '+65', 'digits': 8},
+    {'flag': '🇦🇪', 'name': 'UAE', 'code': '+971', 'digits': 9},
+    {'flag': '🇸🇦', 'name': 'Saudi Arabia', 'code': '+966', 'digits': 9},
+    {'flag': '🇵🇰', 'name': 'Pakistan', 'code': '+92', 'digits': 10},
+    {'flag': '🇧🇩', 'name': 'Bangladesh', 'code': '+880', 'digits': 10},
+    {'flag': '🇱🇰', 'name': 'Sri Lanka', 'code': '+94', 'digits': 9},
+    {'flag': '🇳🇵', 'name': 'Nepal', 'code': '+977', 'digits': 10},
+    {'flag': '🇮🇩', 'name': 'Indonesia', 'code': '+62', 'digits': 11},
+    {'flag': '🇵🇭', 'name': 'Philippines', 'code': '+63', 'digits': 10},
+    {'flag': '🇲🇾', 'name': 'Malaysia', 'code': '+60', 'digits': 10},
+    {'flag': '🇹🇭', 'name': 'Thailand', 'code': '+66', 'digits': 9},
+    {'flag': '🇻🇳', 'name': 'Vietnam', 'code': '+84', 'digits': 10},
+    {'flag': '🇰🇷', 'name': 'South Korea', 'code': '+82', 'digits': 10},
+    {'flag': '🇮🇹', 'name': 'Italy', 'code': '+39', 'digits': 10},
+    {'flag': '🇪🇸', 'name': 'Spain', 'code': '+34', 'digits': 9},
+    {'flag': '🇵🇹', 'name': 'Portugal', 'code': '+351', 'digits': 9},
+    {'flag': '🇳🇱', 'name': 'Netherlands', 'code': '+31', 'digits': 9},
+    {'flag': '🇧🇪', 'name': 'Belgium', 'code': '+32', 'digits': 9},
+    {'flag': '🇨🇭', 'name': 'Switzerland', 'code': '+41', 'digits': 9},
+    {'flag': '🇸🇪', 'name': 'Sweden', 'code': '+46', 'digits': 9},
+    {'flag': '🇳🇴', 'name': 'Norway', 'code': '+47', 'digits': 8},
+    {'flag': '🇩🇰', 'name': 'Denmark', 'code': '+45', 'digits': 8},
+    {'flag': '🇫🇮', 'name': 'Finland', 'code': '+358', 'digits': 9},
+    {'flag': '🇷🇺', 'name': 'Russia', 'code': '+7', 'digits': 10},
+    {'flag': '🇺🇦', 'name': 'Ukraine', 'code': '+380', 'digits': 9},
+    {'flag': '🇵🇱', 'name': 'Poland', 'code': '+48', 'digits': 9},
+    {'flag': '🇦🇷', 'name': 'Argentina', 'code': '+54', 'digits': 10},
+    {'flag': '🇨🇱', 'name': 'Chile', 'code': '+56', 'digits': 9},
+    {'flag': '🇨🇴', 'name': 'Colombia', 'code': '+57', 'digits': 10},
+    {'flag': '🇵🇪', 'name': 'Peru', 'code': '+51', 'digits': 9},
+    {'flag': '🇹🇷', 'name': 'Turkey', 'code': '+90', 'digits': 10},
+    {'flag': '🇮🇱', 'name': 'Israel', 'code': '+972', 'digits': 9},
+    {'flag': '🇪🇬', 'name': 'Egypt', 'code': '+20', 'digits': 10},
+    {'flag': '🇲🇦', 'name': 'Morocco', 'code': '+212', 'digits': 9},
+    {'flag': '🇬🇭', 'name': 'Ghana', 'code': '+233', 'digits': 9},
+    {'flag': '🇳🇿', 'name': 'New Zealand', 'code': '+64', 'digits': 9},
+  ];
+
+  OverlayEntry? _countryDropdownOverlay;
+  final LayerLink _countryLayerLink = LayerLink();
+
+  void _showCountryPicker() {
+    if (_countryDropdownOverlay != null) {
+      _removeCountryDropdown();
+      return;
+    }
+
+    final overlay = Overlay.of(context);
+
+    _countryDropdownOverlay = OverlayEntry(
+      builder: (_) => CountryDropdownOverlay(
+        link: _countryLayerLink,
+        countries: _countries,
+        selectedCode: _selectedCountryCode,
+        selectedFlag: _selectedCountryFlag,
+        onSelected: (country) {
+          setState(() {
+            _selectedCountryCode = country['code'] as String;
+            _selectedCountryFlag = country['flag'] as String;
+            _selectedCountryName = country['name'] as String;
+            _selectedCountryMaxDigits = country['digits'] as int;
+            _phoneController.clear();
+          });
+
+          _removeCountryDropdown();
+        },
+        onDismiss: _removeCountryDropdown,
+      ),
+    );
+
+    overlay.insert(_countryDropdownOverlay!);
+  }
+
+  void _removeCountryDropdown() {
+    _countryDropdownOverlay?.remove();
+    _countryDropdownOverlay = null;
+  }
+
+  @override
+  void dispose() {
+    _removeCountryDropdown();
+    _phoneController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handlePhoneSignIn() async {
     final phone = _phoneController.text.trim();
 
-    if (phone.length != 10) {
+    if (phone.length != _selectedCountryMaxDigits) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid 10-digit phone number.'),
-        ),
+        const SnackBar(content: Text('Please enter a valid phone number.')),
       );
       return;
     }
@@ -652,13 +756,14 @@ class _SignUpPageState extends State<_SignUpPage> {
         listen: false,
       );
 
-      await appwriteService.sendPhoneOTP('+91$phone');
+      await appwriteService.sendPhoneOTP('$_selectedCountryCode$phone');
 
       if (!mounted) return;
 
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => _PhoneOtpPage(phoneNumber: '+91$phone'),
+          builder: (_) =>
+              _PhoneOtpPage(phoneNumber: '$_selectedCountryCode$phone'),
         ),
       );
 
@@ -681,79 +786,96 @@ class _SignUpPageState extends State<_SignUpPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const AhviHomeText(fontSize: 36, letterSpacing: 1),
-
           const SizedBox(height: 22),
-
           const _SectionTitle(
             line1: 'Your Personal Assistant',
             line2: 'Awaits.',
             italic: true,
           ),
-
           const SizedBox(height: 12),
-
           const _SectionSub(text: 'Sign in or create your account'),
-
           const SizedBox(height: 32),
 
-          Container(
-            height: 64,
-            decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFFD9DDEA), width: 1.5),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: 18),
+          CompositedTransformTarget(
+            link: _countryLayerLink,
+            child: Container(
+              height: 64,
+              decoration: BoxDecoration(
+                border: Border.all(color: const Color(0xFFD9DDEA), width: 1.5),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 18),
 
-                const Text('🇮🇳', style: TextStyle(fontSize: 22)),
-
-                const SizedBox(width: 10),
-
-                const Icon(
-                  Icons.keyboard_arrow_down,
-                  color: Color(0xFFB8BDCD),
-                  size: 20,
-                ),
-
-                const SizedBox(width: 8),
-
-                const Text(
-                  '+91',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF1A1D26),
+                  GestureDetector(
+                    onTap: _showCountryPicker,
+                    behavior: HitTestBehavior.opaque,
+                    child: Row(
+                      children: [
+                        Text(
+                          _selectedCountryFlag,
+                          style: const TextStyle(fontSize: 22),
+                        ),
+                        const SizedBox(width: 10),
+                        const Icon(
+                          Icons.keyboard_arrow_down,
+                          color: Color(0xFFB8BDCD),
+                          size: 20,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
 
-                const SizedBox(width: 16),
+                  const SizedBox(width: 8),
 
-                Container(width: 1, height: 32, color: const Color(0xFFD9DDEA)),
+                  Text(
+                    _selectedCountryCode,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF1A1D26),
+                    ),
+                  ),
 
-                const SizedBox(width: 16),
+                  const SizedBox(width: 16),
 
-                Expanded(
-                  child: TextField(
-                    controller: _phoneController,
-                    keyboardType: TextInputType.phone,
-                    maxLength: 10,
-                    decoration: const InputDecoration(
-                      hintText: 'Phone number',
-                      counterText: '',
-                      border: InputBorder.none,
-                      hintStyle: TextStyle(
-                        fontSize: 18,
-                        color: Color(0xFF9BA3B7),
+                  Container(
+                    width: 1,
+                    height: 32,
+                    color: const Color(0xFFD9DDEA),
+                  ),
+
+                  const SizedBox(width: 16),
+
+                  Expanded(
+                    child: TextField(
+                      controller: _phoneController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(
+                          _selectedCountryMaxDigits,
+                        ),
+                      ],
+                      decoration: const InputDecoration(
+                        hintText: 'Phone number',
+                        counterText: '',
+                        border: InputBorder.none,
+                        hintStyle: TextStyle(
+                          fontSize: 18,
+                          color: Color(0xFF9BA3B7),
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                const SizedBox(width: 16),
-              ],
+                  const SizedBox(width: 16),
+                ],
+              ),
             ),
           ),
+
           const SizedBox(height: 16),
 
           Container(
@@ -793,42 +915,40 @@ class _SignUpPageState extends State<_SignUpPage> {
             ),
           ),
 
-          const SizedBox(height: 16),
-
           const SizedBox(height: 24),
 
           Row(
             children: [
-              const Expanded(child: Divider(color: Color(0xFFE1E4EE))),
+              Expanded(
+                child: Container(height: 1, color: const Color(0xFFD9DDEA)),
+              ),
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
+                padding: EdgeInsets.symmetric(horizontal: 12),
                 child: Text(
                   'or continue with',
-                  style: TextStyle(fontSize: 16, color: Color(0xFF7D869B)),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w400,
+                    color: Color(0xFF66708A),
+                  ),
                 ),
               ),
-              const Expanded(child: Divider(color: Color(0xFFE1E4EE))),
+              Expanded(
+                child: Container(height: 1, color: const Color(0xFFD9DDEA)),
+              ),
             ],
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           _SocialButton(
             icon: _GoogleIcon(),
-            label: 'Sign in with Google',
+            label: 'Continue with Google',
             onTap: widget.onGoogleTap,
           ),
-
           const SizedBox(height: 12),
-
-          _SocialButton(label: 'Sign in with Apple', onTap: widget.onAppleTap),
-
-          const SizedBox(height: 24),
-
+          _SocialButton(label: 'Continue with Apple', onTap: widget.onAppleTap),
           const _Divider(),
-
-          const SizedBox(height: 16),
-
           GestureDetector(
             onTap: widget.onEmailTap,
             behavior: HitTestBehavior.opaque,
@@ -1365,46 +1485,27 @@ class _PhoneOtpPageState extends State<_PhoneOtpPage> {
       return;
     }
 
-    setState(() => _isLoading = true);
-
     debugPrint('🔐 Verifying phone OTP...');
 
-    try {
-      final appwriteService = Provider.of<AppwriteService>(
+    final appwriteService = Provider.of<AppwriteService>(
+      context,
+      listen: false,
+    );
+
+    final success = await appwriteService.verifyPhoneOTP(
+      widget.phoneNumber,
+      otp,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      debugPrint('✅ Phone OTP verified successfully');
+      Navigator.of(context).pop();
+    } else {
+      ScaffoldMessenger.of(
         context,
-        listen: false,
-      );
-
-      final success = await appwriteService.verifyPhoneOTP(
-        widget.phoneNumber,
-        otp,
-      );
-
-      if (!mounted) return;
-
-      if (success) {
-        debugPrint('✅ Phone OTP verified successfully');
-
-        Navigator.of(context).pop();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid or expired OTP.')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      debugPrint('❌ Phone OTP verification error: $e');
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to verify OTP. Please try again.'),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      ).showSnackBar(const SnackBar(content: Text('Invalid or expired OTP.')));
     }
   }
 
@@ -1428,7 +1529,6 @@ class _PhoneOtpPageState extends State<_PhoneOtpPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Back Button
                       GestureDetector(
                         onTap: () {
                           Navigator.of(context).pop();
@@ -1451,14 +1551,12 @@ class _PhoneOtpPageState extends State<_PhoneOtpPage> {
 
                       const SizedBox(height: 20),
 
-                      // AHVI wordmark
                       const Center(
                         child: AhviHomeText(fontSize: 36, letterSpacing: 1),
                       ),
 
                       const SizedBox(height: 18),
 
-                      // OTP heading
                       _AuthHeading(
                         title: 'Verify your phone',
                         subtitle:
@@ -1467,19 +1565,17 @@ class _PhoneOtpPageState extends State<_PhoneOtpPage> {
 
                       const SizedBox(height: 24),
 
-                      // OTP input
                       _InputField(
                         controller: _otpController,
                         hint: 'Enter 6-digit code',
                         icon: Icons.password,
                         keyboardType: TextInputType.number,
                         maxLength: 6,
-                        enabled: true,
+                        enabled: !_isLoading,
                       ),
 
                       const SizedBox(height: 24),
 
-                      // Sign In button
                       _PrimaryButton(
                         label: _isLoading ? 'Verifying...' : 'Sign In',
                         onTap: _isLoading ? null : _verifyOtp,
