@@ -18,11 +18,11 @@ import 'package:myapp/widgets/ahvi_home_text.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/feature/chat/widgets/blocks/ahvi_block_renderer.dart'
     show
-    VisualInspirationCard,
-    MissingPieceIntelligenceCard,
-    TransitionPlanCard,
-    StylistReasoningCard,
-    StyleAdviceCard;
+        VisualInspirationCard,
+        MissingPieceIntelligenceCard,
+        TransitionPlanCard,
+        StylistReasoningCard,
+        StyleAdviceCard;
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/visual_direction_carousel.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -98,15 +98,15 @@ bool _isPlanPackRequest(String value) {
   final text = value.toLowerCase().trim();
   final asksForPacking =
       text.contains('pack') ||
-          text.contains('packing') ||
-          text.contains('carry-on') ||
-          text.contains('carry on');
+      text.contains('packing') ||
+      text.contains('carry-on') ||
+      text.contains('carry on');
   final tripContext =
       text.contains('trip') ||
-          text.contains('travel') ||
-          text.contains('beach') ||
-          text.contains('vacation') ||
-          text.contains('destination');
+      text.contains('travel') ||
+      text.contains('beach') ||
+      text.contains('vacation') ||
+      text.contains('destination');
   return asksForPacking && (tripContext || text.contains('plan'));
 }
 
@@ -154,12 +154,8 @@ String _normalizeMedicineReminderTimeText(String value) {
   text = text.replaceAll(RegExp(r'\s+'), ' ');
 
   text = text.replaceAllMapped(
-    RegExp(
-      r'^(\d{1,2})\s+(\d{2})(\s*(?:am|pm))$',
-      caseSensitive: false,
-    ),
-    (match) =>
-        '${match.group(1)}:${match.group(2)}${match.group(3)}',
+    RegExp(r'^(\d{1,2})\s+(\d{2})(\s*(?:am|pm))$', caseSensitive: false),
+    (match) => '${match.group(1)}:${match.group(2)}${match.group(3)}',
   );
 
   return text.trim();
@@ -193,14 +189,9 @@ bool _isMedicineReminderCreateRequest(String value) {
   // Explicit creation intent wins over question form: polite phrasing is
   // still a command, so strip its framing before requiring an action phrase.
   text = text.replaceAll(RegExp(r'[?!.\s]+$'), '');
+  text = text.replaceFirst(RegExp(r'^(?:hey\s+)?ahvi[,\s]+'), '');
   text = text.replaceFirst(
-    RegExp(r'^(?:hey\s+)?ahvi[,\s]+'),
-    '',
-  );
-  text = text.replaceFirst(
-    RegExp(
-      r'^(?:can|could|will|would)\s+you\s+(?:please\s+)?',
-    ),
+    RegExp(r'^(?:can|could|will|would)\s+you\s+(?:please\s+)?'),
     '',
   );
   text = text.replaceFirst(RegExp(r'^please\s+'), '');
@@ -244,9 +235,7 @@ bool _asksForReminderCreationDetails(String value) {
       (text.contains('what time') && text.contains('remind you'));
 }
 
-_MedicineReminderIntent? _extractMedicineReminderIntent(
-  String value,
-) {
+_MedicineReminderIntent? _extractMedicineReminderIntent(String value) {
   final text = value.trim();
   if (text.isEmpty) return null;
 
@@ -255,8 +244,7 @@ _MedicineReminderIntent? _extractMedicineReminderIntent(
   final hasReminderWord =
       lower.contains('remind') || lower.contains('reminder');
 
-  if (!hasReminderWord ||
-      !_isMedicineReminderCreateRequest(text)) {
+  if (!hasReminderWord || !_isMedicineReminderCreateRequest(text)) {
     return null;
   }
 
@@ -326,17 +314,11 @@ DateTime? _nextMedicineReminderTime(String rawTime) {
 
   if (meridiemMatch != null) {
     hour = int.tryParse(meridiemMatch.group(1) ?? '');
-    minute =
-        int.tryParse(meridiemMatch.group(2) ?? '0') ?? 0;
+    minute = int.tryParse(meridiemMatch.group(2) ?? '0') ?? 0;
 
-    final suffix =
-        (meridiemMatch.group(3) ?? '').toLowerCase();
+    final suffix = (meridiemMatch.group(3) ?? '').toLowerCase();
 
-    if (hour == null ||
-        hour < 1 ||
-        hour > 12 ||
-        minute < 0 ||
-        minute > 59) {
+    if (hour == null || hour < 1 || hour > 12 || minute < 0 || minute > 59) {
       return null;
     }
 
@@ -348,31 +330,19 @@ DateTime? _nextMedicineReminderTime(String rawTime) {
       hour = 0;
     }
   } else {
-    final twentyFourMatch =
-        RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(text);
+    final twentyFourMatch = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(text);
 
     if (twentyFourMatch == null) return null;
 
     hour = int.tryParse(twentyFourMatch.group(1) ?? '');
-    minute =
-        int.tryParse(twentyFourMatch.group(2) ?? '0') ?? 0;
+    minute = int.tryParse(twentyFourMatch.group(2) ?? '0') ?? 0;
 
-    if (hour == null ||
-        hour < 0 ||
-        hour > 23 ||
-        minute < 0 ||
-        minute > 59) {
+    if (hour == null || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
       return null;
     }
   }
 
-  var scheduled = DateTime(
-    now.year,
-    now.month,
-    now.day,
-    hour,
-    minute,
-  );
+  var scheduled = DateTime(now.year, now.month, now.day, hour, minute);
 
   if (!scheduled.isAfter(now)) {
     scheduled = scheduled.add(const Duration(days: 1));
@@ -396,6 +366,7 @@ String _medicineReminderKeyTime(DateTime value) =>
     '${value.day.toString().padLeft(2, '0')}'
     '${value.hour.toString().padLeft(2, '0')}'
     '${value.minute.toString().padLeft(2, '0')}';
+
 class AhviModuleConfig {
   final String moduleContext;
   final String subtitle;
@@ -519,12 +490,12 @@ AhviModuleConfig _configFor(String moduleContext) =>
 ///   showAhviStylistChatSheet(context, moduleContext: 'skincare')
 ///   showAhviStylistChatSheet(context)  // default: 'style'
 Future<void> showAhviStylistChatSheet(
-    BuildContext context, {
-      String moduleContext = 'style',
-      Map<String, dynamic> contextData = const {},
-      Future<void> Function()? onRefresh,
-      String? initialPrompt,
-    }) {
+  BuildContext context, {
+  String moduleContext = 'style',
+  Map<String, dynamic> contextData = const {},
+  Future<void> Function()? onRefresh,
+  String? initialPrompt,
+}) {
   final normalizedModuleContext = moduleContext.trim().toLowerCase();
   if (normalizedModuleContext == 'style') {
     return Navigator.of(context, rootNavigator: true).push<void>(
@@ -773,14 +744,20 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     if (raw == null) return;
     try {
       final List decoded = jsonDecode(raw) as List;
-      final loaded = decoded
-          .map((e) => _ChatSession.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final loaded =
+          decoded
+              .map(
+                (e) =>
+                    _ChatSession.fromJson(Map<String, dynamic>.from(e as Map)),
+              )
+              .toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       if (!mounted) return;
-      setState(() => _history
-        ..clear()
-        ..addAll(loaded));
+      setState(
+        () => _history
+          ..clear()
+          ..addAll(loaded),
+      );
     } catch (_) {
       // Corrupt/old-shape data — ignore rather than crash the sheet.
     }
@@ -846,10 +823,10 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
           session.messages
               .map(
                 (m) => {
-              'role': m.isUser ? 'user' : 'assistant',
-              'content': m.resolve(context),
-            },
-          )
+                  'role': m.isUser ? 'user' : 'assistant',
+                  'content': m.resolve(context),
+                },
+              )
               .where((m) => (m['content'] ?? '').trim().isNotEmpty),
         );
       _chipsVisible = false;
@@ -1026,7 +1003,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
                     label: 'Search: "\$query"',
                     isWebSearch: true,
                     searchQuery:
-                    'https://www.google.com/search?q=${Uri.encodeComponent(query)}',
+                        'https://www.google.com/search?q=${Uri.encodeComponent(query)}',
                   ),
                 );
               },
@@ -1058,8 +1035,8 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       final text = (entry['content'] ?? '').toLowerCase();
       final isClarification =
           text.contains('what are we dressing') ||
-              text.contains('pick an occasion') ||
-              text.contains('what are you dressing for');
+          text.contains('pick an occasion') ||
+          text.contains('what are you dressing for');
       if (!isClarification) continue;
       for (var j = i - 1; j >= 0; j--) {
         final previous = _chatHistory[j];
@@ -1073,9 +1050,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     return '';
   }
 
-  Map<String, dynamic>? _findMedicineForReminder(
-    String query,
-  ) {
+  Map<String, dynamic>? _findMedicineForReminder(String query) {
     final medications = widget.contextData['medications'];
 
     if (medications is! Iterable) return null;
@@ -1088,11 +1063,9 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
 
       final data = Map<String, dynamic>.from(item);
 
-      final medName =
-          (data['name'] ?? data['medName'] ?? '').toString();
+      final medName = (data['name'] ?? data['medName'] ?? '').toString();
 
-      final normalizedName =
-          _normalizeMedicineName(medName);
+      final normalizedName = _normalizeMedicineName(medName);
 
       if (normalizedName.isEmpty) continue;
 
@@ -1111,22 +1084,15 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
 
     setState(() {
       _typing = false;
-      _messages.add(
-        _SheetMessage(text: text, isUser: false),
-      );
-      _chatHistory.add({
-        'role': 'assistant',
-        'content': text,
-      });
+      _messages.add(_SheetMessage(text: text, isUser: false));
+      _chatHistory.add({'role': 'assistant', 'content': text});
     });
 
     _scrollToBottom();
     _saveCurrentSession();
   }
 
-  Future<bool> _tryScheduleMedicineReminderFromChat(
-    String text,
-  ) async {
+  Future<bool> _tryScheduleMedicineReminderFromChat(String text) async {
     if (widget.moduleContext.toLowerCase() != 'medi') {
       return false;
     }
@@ -1134,8 +1100,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     final intent = _extractMedicineReminderIntent(text);
     if (intent == null) return false;
 
-    final med =
-        _findMedicineForReminder(intent.medicineName);
+    final med = _findMedicineForReminder(intent.medicineName);
 
     if (med == null) {
       _addAssistantReply(
@@ -1145,25 +1110,18 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       return true;
     }
 
-    final medId =
-        (med['id'] ?? med['medId'] ?? '').toString().trim();
+    final medId = (med['id'] ?? med['medId'] ?? '').toString().trim();
 
-    final medName =
-        (med['name'] ??
-                med['medName'] ??
-                intent.medicineName)
-            .toString()
-            .trim();
+    final medName = (med['name'] ?? med['medName'] ?? intent.medicineName)
+        .toString()
+        .trim();
 
     final dose = (med['dose'] ?? '').toString().trim();
 
-    final sendAt =
-        _nextMedicineReminderTime(intent.timeText);
+    final sendAt = _nextMedicineReminderTime(intent.timeText);
 
     if (sendAt == null) {
-      _addAssistantReply(
-        'I found $medName. What time should I remind you?',
-      );
+      _addAssistantReply('I found $medName. What time should I remind you?');
       return true;
     }
 
@@ -1176,13 +1134,9 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     }
 
     try {
-      final backend = Provider.of<BackendService>(
-        context,
-        listen: false,
-      );
+      final backend = Provider.of<BackendService>(context, listen: false);
 
-      final doseText =
-          dose.isEmpty ? '' : ' - $dose';
+      final doseText = dose.isEmpty ? '' : ' - $dose';
 
       debugPrint(
         'AHVI_CHAT_MED_REMINDER_PARSED '
@@ -1199,8 +1153,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
         sendAt: sendAt,
         message: 'Time to take $medName$doseText.',
         priority: 'normal',
-        notificationKey:
-            'medi:$medId:chat:${_medicineReminderKeyTime(sendAt)}',
+        notificationKey: 'medi:$medId:chat:${_medicineReminderKeyTime(sendAt)}',
       );
 
       if (ok) {
@@ -1215,9 +1168,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
         );
       }
     } catch (err) {
-      debugPrint(
-        'AHVI_MED_CHAT_REMINDER_SCHEDULE_ERROR $err',
-      );
+      debugPrint('AHVI_MED_CHAT_REMINDER_SCHEDULE_ERROR $err');
 
       _addAssistantReply(
         'I found $medName, but could not schedule the '
@@ -1227,6 +1178,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
 
     return true;
   }
+
   Future<void> _sendMessage(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty && _pendingAttachment == null) return;
@@ -1284,10 +1236,10 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       final isPlanPackRequest = _isPlanPackRequest(trimmed);
       final isClosestStyleAction =
           styleModules.contains(widget.moduleContext) &&
-              _isShowClosestStyleAction(trimmed);
+          _isShowClosestStyleAction(trimmed);
       final isBoardActionPhrase = _isBoardActionPhrase(trimmed);
       final pendingClarificationPrompt =
-      styleModules.contains(widget.moduleContext) &&
+          styleModules.contains(widget.moduleContext) &&
               !isClosestStyleAction &&
               !isBoardActionPhrase
           ? _pendingStyleClarificationPrompt()
@@ -1321,61 +1273,61 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
             }
           : widget.contextData;
       final response =
-      styleModules.contains(widget.moduleContext) || isPlanPackRequest
+          styleModules.contains(widget.moduleContext) || isPlanPackRequest
           ? await backend.sendChatQuery(
-        query,
-        '',
-        List<Map<String, String>>.from(_chatHistory),
-        _runningMemory,
-        moduleContext: isPlanPackRequest ? 'chat' : styleModuleContext,
-        styleAction: isClosestStyleAction ? 'show_closest_option' : null,
-        action: isClosestStyleAction
-            ? 'show_closest_option'
-            : (isClarificationAnswer ? 'clarification_selected' : null),
-        clarification: isClarificationAnswer ? trimmed : null,
-        previousPrompt: isClarificationAnswer
-            ? pendingClarificationPrompt
-            : isClosestStyleAction && originalStylePrompt.isNotEmpty
-            ? originalStylePrompt
-            : null,
-        resolvedPrompt: isClarificationAnswer
-            ? clarificationResolvedPrompt
-            : isClosestStyleAction && resolvedStylePrompt.isNotEmpty
-            ? resolvedStylePrompt
-            : null,
-        styleContext: isClarificationAnswer
-            ? {
-          'original_prompt': pendingClarificationPrompt,
-          'clarification': trimmed,
-          'resolved_prompt': clarificationResolvedPrompt,
-        }
-            : isClosestStyleAction
-            ? {
-          if (originalStylePrompt.isNotEmpty)
-            'original_prompt': originalStylePrompt,
-          if (resolvedStylePrompt.isNotEmpty)
-            'resolved_prompt': resolvedStylePrompt,
-          if (interpretedOccasion != null)
-            'interpreted_occasion': interpretedOccasion,
-        }
-            : null,
-        lastStyleContext: _lastStyleContext,
-        showClosestOption: isClosestStyleAction,
-        allowClosestOption: isClosestStyleAction,
-        closest: isClosestStyleAction,
-      )
+              query,
+              '',
+              List<Map<String, String>>.from(_chatHistory),
+              _runningMemory,
+              moduleContext: isPlanPackRequest ? 'chat' : styleModuleContext,
+              styleAction: isClosestStyleAction ? 'show_closest_option' : null,
+              action: isClosestStyleAction
+                  ? 'show_closest_option'
+                  : (isClarificationAnswer ? 'clarification_selected' : null),
+              clarification: isClarificationAnswer ? trimmed : null,
+              previousPrompt: isClarificationAnswer
+                  ? pendingClarificationPrompt
+                  : isClosestStyleAction && originalStylePrompt.isNotEmpty
+                  ? originalStylePrompt
+                  : null,
+              resolvedPrompt: isClarificationAnswer
+                  ? clarificationResolvedPrompt
+                  : isClosestStyleAction && resolvedStylePrompt.isNotEmpty
+                  ? resolvedStylePrompt
+                  : null,
+              styleContext: isClarificationAnswer
+                  ? {
+                      'original_prompt': pendingClarificationPrompt,
+                      'clarification': trimmed,
+                      'resolved_prompt': clarificationResolvedPrompt,
+                    }
+                  : isClosestStyleAction
+                  ? {
+                      if (originalStylePrompt.isNotEmpty)
+                        'original_prompt': originalStylePrompt,
+                      if (resolvedStylePrompt.isNotEmpty)
+                        'resolved_prompt': resolvedStylePrompt,
+                      if (interpretedOccasion != null)
+                        'interpreted_occasion': interpretedOccasion,
+                    }
+                  : null,
+              lastStyleContext: _lastStyleContext,
+              showClosestOption: isClosestStyleAction,
+              allowClosestOption: isClosestStyleAction,
+              closest: isClosestStyleAction,
+            )
           : await backend.sendModuleChat(
-        domain: widget.moduleContext,
-        message: query,
-        chatHistory: List<Map<String, String>>.from(_chatHistory),
-        context: moduleContextData,
-      );
+              domain: widget.moduleContext,
+              message: query,
+              chatHistory: List<Map<String, String>>.from(_chatHistory),
+              context: moduleContextData,
+            );
       if (!mounted) return;
       final refreshTarget =
-      (response['refresh'] ?? response['data']?['refresh'])
-          ?.toString()
-          .trim()
-          .toLowerCase();
+          (response['refresh'] ?? response['data']?['refresh'])
+              ?.toString()
+              .trim()
+              .toLowerCase();
       if (refreshTarget != null &&
           refreshTarget.isNotEmpty &&
           (refreshTarget == widget.moduleContext.toLowerCase() ||
@@ -1385,11 +1337,11 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
 
       final rawMessage = response['message'];
       final message =
-      (response['message_text'] ??
-          (rawMessage is Map ? rawMessage['content'] : rawMessage) ??
-          '')
-          .toString()
-          .trim();
+          (response['message_text'] ??
+                  (rawMessage is Map ? rawMessage['content'] : rawMessage) ??
+                  '')
+              .toString()
+              .trim();
       final aiText = message.isNotEmpty
           ? message
           : 'AHVI returned an empty response. Please try again.';
@@ -1411,7 +1363,8 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       // clarification; a fresh clarification response re-arms it.
       final bool renderedBoards =
           boardPayload.hasBoards || visualPayload.hasDirections;
-      final bool isClarificationResponse = !renderedBoards &&
+      final bool isClarificationResponse =
+          !renderedBoards &&
           ((response['type']?.toString().toLowerCase() == 'clarification') ||
               _looksLikeStyleClarification(guardedAiText));
       if (renderedBoards) {
@@ -1427,15 +1380,23 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
         response,
         'missing_piece_intelligence',
       );
-      final transitionPlan = _styleBlockFromResponse(response, 'transition_plan');
-      final rawStylistReasoning = _styleBlockFromResponse(response, 'stylist_reasoning');
-      final stylistReasoning = visualPayload.hasDirections || boardPayload.hasBoards
+      final transitionPlan = _styleBlockFromResponse(
+        response,
+        'transition_plan',
+      );
+      final rawStylistReasoning = _styleBlockFromResponse(
+        response,
+        'stylist_reasoning',
+      );
+      final stylistReasoning =
+          visualPayload.hasDirections || boardPayload.hasBoards
           ? null
           : rawStylistReasoning;
       final displayModuleCards = suppressReminderCreationResponse
           ? const <Map<String, dynamic>>[]
           : moduleCards;
-      final adviceBlock = _styleBlockFromResponse(response, 'body_proportion_advice') ??
+      final adviceBlock =
+          _styleBlockFromResponse(response, 'body_proportion_advice') ??
           _styleBlockFromResponse(response, 'color_advice') ??
           _styleBlockFromResponse(response, 'occasion_advice');
       final displayText = isClosestStyleAction && !boardPayload.hasBoards
@@ -1460,10 +1421,10 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
             stylistReasoning: stylistReasoning,
             adviceBlock: adviceBlock,
             boardPayload:
-            displayModuleCards.isEmpty &&
-                boardPayload.hasBoards &&
-                !gapPayload.hasContent &&
-                !visualPayload.hasDirections
+                displayModuleCards.isEmpty &&
+                    boardPayload.hasBoards &&
+                    !gapPayload.hasContent &&
+                    !visualPayload.hasDirections
                 ? boardPayload
                 : null,
             wardrobeGapPayload: displayModuleCards.isNotEmpty
@@ -1601,115 +1562,115 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
               Expanded(
                 child: _history.isEmpty
                     ? Center(
-                  child: Text(
-                    AppLocalizations.t(context, 'chat_no_history'),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: t.mutedText, fontSize: 13),
-                  ),
-                )
-                    : ListView.separated(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: _history.length,
-                  separatorBuilder: (_, _) => Divider(
-                    color: t.cardBorder,
-                    height: 1,
-                    indent: 16,
-                    endIndent: 16,
-                  ),
-                  itemBuilder: (ctx, i) {
-                    final session = _history[i];
-                    final isActive = session.id == _currentSessionId;
-                    return GestureDetector(
-                      onTap: () {
-                        _closeDrawer();
-                        _loadSession(session);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
+                        child: Text(
+                          AppLocalizations.t(context, 'chat_no_history'),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: t.mutedText, fontSize: 13),
                         ),
-                        color: isActive
-                            ? t.accent.primary.withValues(alpha: 0.08)
-                            : Colors.transparent,
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: isActive
-                                    ? t.accent.primary.withValues(
-                                  alpha: 0.15,
-                                )
-                                    : t.panel,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: isActive
-                                      ? t.accent.primary.withValues(
-                                    alpha: 0.4,
-                                  )
-                                      : t.cardBorder,
-                                ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: _history.length,
+                        separatorBuilder: (_, _) => Divider(
+                          color: t.cardBorder,
+                          height: 1,
+                          indent: 16,
+                          endIndent: 16,
+                        ),
+                        itemBuilder: (ctx, i) {
+                          final session = _history[i];
+                          final isActive = session.id == _currentSessionId;
+                          return GestureDetector(
+                            onTap: () {
+                              _closeDrawer();
+                              _loadSession(session);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
                               ),
-                              child: Center(
-                                child: Text(
-                                  '',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: isActive
-                                        ? t.accent.primary
-                                        : t.mutedText,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                              color: isActive
+                                  ? t.accent.primary.withValues(alpha: 0.08)
+                                  : Colors.transparent,
+                              child: Row(
                                 children: [
-                                  Text(
-                                    session.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: isActive
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
+                                  Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
                                       color: isActive
-                                          ? t.accent.primary
-                                          : t.textPrimary,
+                                          ? t.accent.primary.withValues(
+                                              alpha: 0.15,
+                                            )
+                                          : t.panel,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isActive
+                                            ? t.accent.primary.withValues(
+                                                alpha: 0.4,
+                                              )
+                                            : t.cardBorder,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: isActive
+                                              ? t.accent.primary
+                                              : t.mutedText,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${session.messages.length} messages',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: t.mutedText,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          session.title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: isActive
+                                                ? FontWeight.w700
+                                                : FontWeight.w500,
+                                            color: isActive
+                                                ? t.accent.primary
+                                                : t.textPrimary,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${session.messages.length} messages',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: t.mutedText,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
+                                  if (isActive)
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: t.accent.primary,
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
-                            if (isActive)
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: t.accent.primary,
-                                ),
-                              ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
             ],
           ),
@@ -1730,218 +1691,214 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     final double inputAreaH = promptBarH + chipsH + attachH + 8.0;
 
     final content = Container(
-        decoration: BoxDecoration(
-          color: t.backgroundPrimary,
-          borderRadius: widget.isFullScreen
-              ? null
-              : const BorderRadius.vertical(top: Radius.circular(28)),
-          border: widget.isFullScreen ? null : Border.all(color: t.cardBorder),
-        ),
-        child: Stack(
-          children: [
-            // ── Handle + Header + Messages (scrollable) ────────────
-            Column(
-              children: [
-                // ── Handle ─────────────────────────────────────────
-                if (!widget.isFullScreen) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    key: const ValueKey('ahvi-chat-modal-drag-handle'),
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: t.panelBorder,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ],
-                // ── Header ─────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          margin: const EdgeInsets.only(right: 12),
-                          decoration: BoxDecoration(
-                            color: t.panel,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: t.cardBorder, width: 1),
-                          ),
-                          child: Icon(
-                            Icons.arrow_back_ios_new_rounded,
-                            color: t.textPrimary,
-                            size: 15,
-                          ),
-                        ),
-                      ),
-                      AhviHomeText(
-                        color: t.textPrimary,
-                        fontSize: 30.0,
-                        letterSpacing: 3.2,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: _openDrawer,
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: t.panel,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: t.cardBorder, width: 1),
-                          ),
-                          child: Icon(
-                            Icons.history_rounded,
-                            color: t.mutedText,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // ── Messages — bottom pad clears the pinned input bar ─
-                Expanded(
-                  child: ListView(
-                    controller: _scrollController,
-                    padding: EdgeInsets.fromLTRB(16, 8, 16, inputAreaH + 12),
-                    children: [
-                      ..._messages.map(
-                            (msg) => _Bubble(msg: msg, onPrompt: _sendMessage),
-                      ),
-                      if (_typing) _TypingBubble(color: t.accent.secondary),
-                    ],
+      decoration: BoxDecoration(
+        color: t.backgroundPrimary,
+        borderRadius: widget.isFullScreen
+            ? null
+            : const BorderRadius.vertical(top: Radius.circular(28)),
+        border: widget.isFullScreen ? null : Border.all(color: t.cardBorder),
+      ),
+      child: Stack(
+        children: [
+          // ── Handle + Header + Messages (scrollable) ────────────
+          Column(
+            children: [
+              // ── Handle ─────────────────────────────────────────
+              if (!widget.isFullScreen) ...[
+                const SizedBox(height: 8),
+                Container(
+                  key: const ValueKey('ahvi-chat-modal-drag-handle'),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: t.panelBorder,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ],
-            ),
-
-            // ── Prompt bar — pinned to sheet bottom (sheet itself rises with keyboard) ────
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: t.phoneShellInner,
-                  borderRadius: widget.isFullScreen
-                      ? null
-                      : const BorderRadius.vertical(
-                          bottom: Radius.circular(28),
-                        ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+              // ── Header ─────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+                child: Row(
                   children: [
-                    // ── Quick Prompts ───────────────────────────────
-                    if (_chipsVisible) ...[
-                      const SizedBox(height: 6),
-                      SizedBox(
-                        height: 28,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          scrollDirection: Axis.horizontal,
-                          itemCount: quickPrompts.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 6),
-                          itemBuilder: (_, i) => GestureDetector(
-                            onTap: () => _sendMessage(quickPrompts[i]),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: t.panel,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: t.cardBorder),
-                              ),
-                              child: Text(
-                                quickPrompts[i],
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: t.accent.secondary,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        margin: const EdgeInsets.only(right: 12),
+                        decoration: BoxDecoration(
+                          color: t.panel,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: t.cardBorder, width: 1),
+                        ),
+                        child: Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          color: t.textPrimary,
+                          size: 15,
+                        ),
+                      ),
+                    ),
+                    AhviHomeText(
+                      color: t.textPrimary,
+                      fontSize: 30.0,
+                      letterSpacing: 3.2,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: _openDrawer,
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: t.panel,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: t.cardBorder, width: 1),
+                        ),
+                        child: Icon(
+                          Icons.history_rounded,
+                          color: t.mutedText,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // ── Messages — bottom pad clears the pinned input bar ─
+              Expanded(
+                child: ListView(
+                  controller: _scrollController,
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, inputAreaH + 12),
+                  children: [
+                    ..._messages.map(
+                      (msg) => _Bubble(msg: msg, onPrompt: _sendMessage),
+                    ),
+                    if (_typing) _TypingBubble(color: t.accent.secondary),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // ── Prompt bar — pinned to sheet bottom (sheet itself rises with keyboard) ────
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              decoration: BoxDecoration(
+                color: t.phoneShellInner,
+                borderRadius: widget.isFullScreen
+                    ? null
+                    : const BorderRadius.vertical(bottom: Radius.circular(28)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Quick Prompts ───────────────────────────────
+                  if (_chipsVisible) ...[
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      height: 28,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        scrollDirection: Axis.horizontal,
+                        itemCount: quickPrompts.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 6),
+                        itemBuilder: (_, i) => GestureDetector(
+                          onTap: () => _sendMessage(quickPrompts[i]),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: t.panel,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: t.cardBorder),
+                            ),
+                            child: Text(
+                              quickPrompts[i],
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: t.accent.secondary,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                    ],
-                    // ── Pending Attachment Chip ─────────────────────
-                    if (_pendingAttachment != null)
-                      _PendingAttachmentChip(
-                        attachment: _pendingAttachment!,
-                        onRemove: _clearPendingAttachment,
-                        onTap: () => _openAttachment(_pendingAttachment!),
-                        accent: context.themeTokens.accent.primary,
-                        panel: context.themeTokens.panel,
-                        cardBorder: context.themeTokens.cardBorder,
-                        textPrimary: context.themeTokens.textPrimary,
-                        mutedText: context.themeTokens.mutedText,
-                      ),
-                    // ── Input Bar ───────────────────────────────────
-                    AhviChatPromptBar(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                      controller: _inputController,
-                      focusNode: _inputFocusNode,
-                      hintText: AppLocalizations.t(
-                        context,
-                        _config.hintTextKey,
-                      ),
-                      hasText: _chatHasText,
-                      surface: t.phoneShellInner,
-                      border: t.cardBorder,
-                      accent: t.accent.primary,
-                      accentSecondary: t.accent.secondary,
-                      textHeading: t.textPrimary,
-                      textMuted: t.mutedText,
-                      shadowMedium: t.backgroundPrimary.withValues(alpha: 0.20),
-                      onAccent: Colors.white,
-                      themeTokens: t,
-                      onSendMessage: (message) => _sendMessage(message),
-                      onVisualSearch: null,
-                      onFindSimilar: null,
-                      onAddToWardrobe: null,
                     ),
+                    const SizedBox(height: 4),
                   ],
+                  // ── Pending Attachment Chip ─────────────────────
+                  if (_pendingAttachment != null)
+                    _PendingAttachmentChip(
+                      attachment: _pendingAttachment!,
+                      onRemove: _clearPendingAttachment,
+                      onTap: () => _openAttachment(_pendingAttachment!),
+                      accent: context.themeTokens.accent.primary,
+                      panel: context.themeTokens.panel,
+                      cardBorder: context.themeTokens.cardBorder,
+                      textPrimary: context.themeTokens.textPrimary,
+                      mutedText: context.themeTokens.mutedText,
+                    ),
+                  // ── Input Bar ───────────────────────────────────
+                  AhviChatPromptBar(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    controller: _inputController,
+                    focusNode: _inputFocusNode,
+                    hintText: AppLocalizations.t(context, _config.hintTextKey),
+                    hasText: _chatHasText,
+                    surface: t.phoneShellInner,
+                    border: t.cardBorder,
+                    accent: t.accent.primary,
+                    accentSecondary: t.accent.secondary,
+                    textHeading: t.textPrimary,
+                    textMuted: t.mutedText,
+                    shadowMedium: t.backgroundPrimary.withValues(alpha: 0.20),
+                    onAccent: Colors.white,
+                    themeTokens: t,
+                    onSendMessage: (message) => _sendMessage(message),
+                    onVisualSearch: null,
+                    onFindSimilar: null,
+                    onAddToWardrobe: null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // ── Scrim — dismiss panel on outside tap ─────────────
+          if (_drawerOpen)
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: _closeDrawer,
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 260),
+                  color: Colors.black.withValues(
+                    alpha: _drawerOpen ? 0.32 : 0.0,
+                  ),
                 ),
               ),
             ),
 
-            // ── Scrim — dismiss panel on outside tap ─────────────
-            if (_drawerOpen)
-              Positioned.fill(
-                child: GestureDetector(
-                  onTap: _closeDrawer,
-                  behavior: HitTestBehavior.opaque,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 260),
-                    color: Colors.black.withValues(
-                      alpha: _drawerOpen ? 0.32 : 0.0,
-                    ),
-                  ),
-                ),
-              ),
-
-            // ── History panel — slides in from left ───────────────
-            Positioned(top: 0, bottom: 0, left: 0, child: _historyPanel()),
-          ],
-        ),
-      );
+          // ── History panel — slides in from left ───────────────
+          Positioned(top: 0, bottom: 0, left: 0, child: _historyPanel()),
+        ],
+      ),
+    );
 
     return Scaffold(
-      backgroundColor:
-          widget.isFullScreen ? t.backgroundPrimary : Colors.transparent,
+      backgroundColor: widget.isFullScreen
+          ? t.backgroundPrimary
+          : Colors.transparent,
       resizeToAvoidBottomInset: widget.isFullScreen,
       body: widget.isFullScreen ? SafeArea(child: content) : content,
     );
@@ -2016,8 +1973,8 @@ class _SheetMessage {
           : null,
       visualDirectionPayload: j['visualDirectionPayload'] != null
           ? _VisualDirectionPayload.fromJson(
-        asMap(j['visualDirectionPayload'])!,
-      )
+              asMap(j['visualDirectionPayload'])!,
+            )
           : null,
       visualInspiration: asMap(j['visualInspiration']),
       missingPiece: asMap(j['missingPiece']),
@@ -2100,11 +2057,12 @@ class _VisualDirectionPayload {
 
     var raw =
         response['visual_directions'] ??
-            data['visual_directions'] ??
-            response['visualDirections'] ??
-            data['visualDirections'];
+        data['visual_directions'] ??
+        response['visualDirections'] ??
+        data['visualDirections'];
 
-    if ((raw == null || (raw is List && raw.isEmpty)) && !_isModuleResponse(response)) {
+    if ((raw == null || (raw is List && raw.isEmpty)) &&
+        !_isModuleResponse(response)) {
       raw = response['cards'] ?? data['cards'];
     }
 
@@ -2138,8 +2096,8 @@ bool _isModuleResponse(Map<String, dynamic> response) {
 }
 
 List<Map<String, dynamic>> _moduleCardsFromSheetResponse(
-    Map<String, dynamic> response,
-    ) {
+  Map<String, dynamic> response,
+) {
   if (!_isModuleResponse(response)) return const [];
   final cards = <Map<String, dynamic>>[];
   final card = response['card'];
@@ -2173,10 +2131,10 @@ class _WardrobeGapPayload {
 
   bool get hasContent =>
       active &&
-          (message.trim().isNotEmpty ||
-              missingItems.isNotEmpty ||
-              closestSafeBrief.trim().isNotEmpty ||
-              chips.isNotEmpty);
+      (message.trim().isNotEmpty ||
+          missingItems.isNotEmpty ||
+          closestSafeBrief.trim().isNotEmpty ||
+          chips.isNotEmpty);
 
   Map<String, dynamic> toJson() => {
     'active': active,
@@ -2205,7 +2163,7 @@ class _WardrobeGapPayload {
     final type = response['type']?.toString() ?? '';
     final isBackendGap =
         type == 'missing_occasion_wardrobe' ||
-            type == 'missing_core_wardrobe_slots';
+        type == 'missing_core_wardrobe_slots';
 
     final missing = _mapList(
       data['missing_items'] ?? data['find_this_recommendations'],
@@ -2213,28 +2171,28 @@ class _WardrobeGapPayload {
 
     final rawMessage = response['message'];
     var backendMessage =
-    (response['message_text'] ??
-        (rawMessage is Map ? rawMessage['content'] : rawMessage) ??
-        data['message'] ??
-        '')
-        .toString()
-        .trim();
+        (response['message_text'] ??
+                (rawMessage is Map ? rawMessage['content'] : rawMessage) ??
+                data['message'] ??
+                '')
+            .toString()
+            .trim();
 
     final lowerMessage = backendMessage.toLowerCase();
     final isCoreSlotCopy =
         lowerMessage.contains('top, bottom, and footwear') ||
-            lowerMessage.contains('complete style board from your wardrobe');
+        lowerMessage.contains('complete style board from your wardrobe');
 
     final occasionRaw =
-    (data['occasion'] ??
-        (data['wardrobe_gap'] is Map
-            ? (data['wardrobe_gap'] as Map)['occasion']
-            : null) ??
-        '')
-        .toString()
-        .toLowerCase()
-        .replaceAll('-', '_')
-        .replaceAll(' ', '_');
+        (data['occasion'] ??
+                (data['wardrobe_gap'] is Map
+                    ? (data['wardrobe_gap'] as Map)['occasion']
+                    : null) ??
+                '')
+            .toString()
+            .toLowerCase()
+            .replaceAll('-', '_')
+            .replaceAll(' ', '_');
 
     if (type == 'missing_occasion_wardrobe' &&
         (backendMessage.isEmpty || isCoreSlotCopy)) {
@@ -2242,22 +2200,22 @@ class _WardrobeGapPayload {
           occasionRaw == 'date_night' ||
           occasionRaw == 'datenight') {
         backendMessage =
-        "I don't see enough strong date-night options yet. I'd avoid forcing office styling into an evening brief.";
+            "I don't see enough strong date-night options yet. I'd avoid forcing office styling into an evening brief.";
       } else if (occasionRaw == 'beach' ||
           occasionRaw == 'beach_wear' ||
           occasionRaw == 'beachwear' ||
           occasionRaw == 'coastal') {
         backendMessage =
-        "I don't see enough beach-ready pieces yet. I'd rather not force formal trousers or loafers into a beach brief.";
+            "I don't see enough beach-ready pieces yet. I'd rather not force formal trousers or loafers into a beach brief.";
       } else {
         backendMessage =
-        "I don't see enough occasion-ready options yet. I'd rather not force a weak look.";
+            "I don't see enough occasion-ready options yet. I'd rather not force a weak look.";
       }
     }
 
     if (type == 'missing_core_wardrobe_slots' && backendMessage.isEmpty) {
       backendMessage =
-      "I can start with inspiration first, then suggest missing pieces from your wardrobe.";
+          "I can start with inspiration first, then suggest missing pieces from your wardrobe.";
     }
 
     // Soften the hard-fail copy even when the backend sends it verbatim — a
@@ -2267,16 +2225,19 @@ class _WardrobeGapPayload {
     if (lowerMsg.contains("build a complete style board") ||
         lowerMsg.contains("couldn't build a complete")) {
       backendMessage =
-      "I can start with inspiration first, then suggest missing pieces from your wardrobe.";
+          "I can start with inspiration first, then suggest missing pieces from your wardrobe.";
     }
 
     final backendChips = _mapList(response['chips']);
     final chips = (isBackendGap && backendChips.isEmpty)
         ? const <Map<String, dynamic>>[
-      {'label': 'Show visual inspiration', 'value': 'Show visual inspiration'},
-      {'label': 'Find missing pieces', 'value': 'Find missing pieces'},
-      {'label': 'Add wardrobe item', 'value': 'Add wardrobe item'},
-    ]
+            {
+              'label': 'Show visual inspiration',
+              'value': 'Show visual inspiration',
+            },
+            {'label': 'Find missing pieces', 'value': 'Find missing pieces'},
+            {'label': 'Add wardrobe item', 'value': 'Add wardrobe item'},
+          ]
         : backendChips;
 
     return _WardrobeGapPayload(
@@ -2300,9 +2261,9 @@ List<Map<String, dynamic>> _mapList(dynamic value) {
 
 /// Style V2: pull a typed block from response top-level, data, or blocks[].
 Map<String, dynamic>? _styleBlockFromResponse(
-    Map<String, dynamic> response,
-    String key,
-    ) {
+  Map<String, dynamic> response,
+  String key,
+) {
   final direct = response[key];
   if (direct is Map && direct.isNotEmpty) {
     return Map<String, dynamic>.from(direct);
@@ -2338,7 +2299,13 @@ bool _suppressDuplicateBubble(BuildContext context, _SheetMessage msg) {
   final a = _normForDup(msg.resolve(context));
   if (a.length < 12) return false;
   for (final card in msg.moduleCards) {
-    for (final key in const ['subtitle', 'summary', 'description', 'title', 'name']) {
+    for (final key in const [
+      'subtitle',
+      'summary',
+      'description',
+      'title',
+      'name',
+    ]) {
       final b = _normForDup((card[key] ?? '').toString());
       if (b.length < 12) continue;
       if (a == b || b.contains(a)) return true;
@@ -2413,7 +2380,9 @@ class _Bubble extends StatelessWidget {
         // reachable by tapping the board (AhviOutfitBoardDetailSheet). When no
         // board is present we keep the card so the content is never lost.
         if (msg.visualInspiration != null &&
-            !(kVisualBoard85Enabled && (msg.visualDirectionPayload != null || msg.boardPayload != null)))
+            !(kVisualBoard85Enabled &&
+                (msg.visualDirectionPayload != null ||
+                    msg.boardPayload != null)))
           VisualInspirationCard(
             data: msg.visualInspiration!,
             onSendMessage: onPrompt,
@@ -2443,23 +2412,10 @@ class _Bubble extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 6, right: 6),
-            child: Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [t.accent.secondary, t.accent.primary],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                shape: BoxShape.circle,
-              ),
-              child: const Center(
-                child: Text(
-                  '',
-                  style: TextStyle(fontSize: 11, color: Colors.white),
-                ),
-              ),
+            child: Icon(
+              Icons.auto_awesome_rounded,
+              size: 24,
+              color: t.accent.primary,
             ),
           ),
           aiContent,
@@ -2496,18 +2452,18 @@ class _SheetModuleCards extends StatelessWidget {
         final rawItems = card['items'];
         final items = rawItems is List
             ? rawItems
-            .map((item) => item.toString())
-            .where((item) => item.trim().isNotEmpty)
-            .toList()
+                  .map((item) => item.toString())
+                  .where((item) => item.trim().isNotEmpty)
+                  .toList()
             : const <String>[];
         final cta = card['cta'] is Map
             ? Map<String, dynamic>.from(card['cta'] as Map)
             : <String, dynamic>{};
         final ctaLabel = (cta['label'] ?? '').toString().trim();
         final ctaValue =
-        (cta['value'] ?? cta['module'] ?? cta['route'] ?? ctaLabel)
-            .toString()
-            .trim();
+            (cta['value'] ?? cta['module'] ?? cta['route'] ?? ctaLabel)
+                .toString()
+                .trim();
         return Container(
           width: 280,
           margin: const EdgeInsets.only(top: 4, bottom: 14),
@@ -2564,34 +2520,34 @@ class _SheetModuleCards extends StatelessWidget {
                     .take(6)
                     .map(
                       (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 7),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          margin: const EdgeInsets.only(top: 6),
-                          decoration: BoxDecoration(
-                            color: t.accent.secondary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            item,
-                            style: TextStyle(
-                              color: t.textPrimary,
-                              fontSize: 12,
-                              height: 1.32,
+                        padding: const EdgeInsets.only(bottom: 7),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              margin: const EdgeInsets.only(top: 6),
+                              decoration: BoxDecoration(
+                                color: t.accent.secondary,
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                item,
+                                style: TextStyle(
+                                  color: t.textPrimary,
+                                  fontSize: 12,
+                                  height: 1.32,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
               ],
               if (ctaLabel.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -2636,17 +2592,26 @@ class _VisualDirectionCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = math.min(MediaQuery.sizeOf(context).width - 72, 318.0);
-    return SizedBox(
-      width: width,
-      child: VisualDirectionCarousel(
-        directions: payload.directions,
-        cardWidth: width,
-        onSendMessage: onPrompt,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boardWidth = math.min(constraints.maxWidth - 24, 360.0);
+
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: SizedBox(
+            width: boardWidth,
+            child: VisualDirectionCarousel(
+              directions: payload.directions,
+              cardWidth: boardWidth,
+              onSendMessage: onPrompt,
+            ),
+          ),
+        );
+      },
     );
   }
 }
+
 class _WardrobeGapCard extends StatelessWidget {
   final _WardrobeGapPayload payload;
   final ValueChanged<String> onPrompt;
@@ -2711,8 +2676,8 @@ class _WardrobeGapCard extends StatelessWidget {
           ...payload.missingItems.take(4).map((item) {
             final label = (item['label'] ?? 'Occasion-ready piece').toString();
             final reason =
-            (item['reason'] ?? 'Adds the missing occasion signal')
-                .toString();
+                (item['reason'] ?? 'Adds the missing occasion signal')
+                    .toString();
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Row(
@@ -2807,30 +2772,43 @@ class _StyleBoardCarousel extends StatelessWidget {
     final boards = _StyleBoardViewModel.fromPayload(payload);
     if (boards.isEmpty) return const SizedBox.shrink();
 
-    final width = math.min(MediaQuery.sizeOf(context).width - 72, 318.0);
-    final height = width * 1.72;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = math.min(
+          constraints.maxWidth - 24,
+          360.0,
+        );
+        final height = width * 1.72;
 
-    return Container(
-      width: width,
-      height: height,
-      margin: const EdgeInsets.only(top: 4, bottom: 14),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: boards.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
-        itemBuilder: (_, index) {
-          final board = boards[index];
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: Container(
+            width: width,
+            height: height,
+            margin: const EdgeInsets.only(top: 4, bottom: 14),
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: boards.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (_, index) {
+                final board = boards[index];
 
-          debugPrint(
-            'AHVI_RENDER using=pinterest_board '
-                'title=${board.title} '
-                'items=${board.items.length}',
-          );
+                debugPrint(
+                  'AHVI_RENDER using=pinterest_board '
+                  'title=${board.title} '
+                  'items=${board.items.length}',
+                );
 
-          return _PinterestStyleBoardCard(board: board, width: width);
-        },
-      ),
+                return _PinterestStyleBoardCard(
+                  board: board,
+                  width: width,
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -2907,20 +2885,20 @@ class _StyleBoardViewModel {
 
     String boardSignature(String title, List<Map<String, dynamic>> items) {
       final names =
-      items
-          .map(
-            (item) => _text(
-          item['name'] ??
-              item['label'] ??
-              item['title'] ??
-              item['id'] ??
-              item[r'$id'],
-          '',
-        ).toLowerCase().trim(),
-      )
-          .where((name) => name.isNotEmpty)
-          .toList()
-        ..sort();
+          items
+              .map(
+                (item) => _text(
+                  item['name'] ??
+                      item['label'] ??
+                      item['title'] ??
+                      item['id'] ??
+                      item[r'$id'],
+                  '',
+                ).toLowerCase().trim(),
+              )
+              .where((name) => name.isNotEmpty)
+              .toList()
+            ..sort();
 
       if (names.isNotEmpty) return names.join('|');
       return title.toLowerCase().trim();
@@ -3199,14 +3177,14 @@ class _EditorialStyleBoardCard extends StatelessWidget {
               child: accessories.isEmpty
                   ? _EditorialEmptyHint(text: 'No accessory added')
                   : ListView.separated(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                itemCount: math.min(accessories.length, 4),
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (_, index) {
-                  return _EditorialMiniItem(item: accessories[index]);
-                },
-              ),
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: math.min(accessories.length, 4),
+                      separatorBuilder: (_, _) => const SizedBox(width: 8),
+                      itemBuilder: (_, index) {
+                        return _EditorialMiniItem(item: accessories[index]);
+                      },
+                    ),
             ),
             const SizedBox(height: 10),
             _EditorialSectionLabel(label: 'FOOTWEAR'),
@@ -3594,9 +3572,9 @@ class _EditorialEmptyHint extends StatelessWidget {
 }
 
 Map<String, dynamic>? _firstItemByRole(
-    List<Map<String, dynamic>> items,
-    List<String> tokens,
-    ) {
+  List<Map<String, dynamic>> items,
+  List<String> tokens,
+) {
   for (final item in items) {
     final text = _editorialItemText(item);
     for (final token in tokens) {
@@ -3620,8 +3598,8 @@ String _editorialItemText(Map<String, dynamic> item) {
 }
 
 List<Map<String, dynamic>> _dedupEditorialAccessories(
-    List<Map<String, dynamic>> items,
-    ) {
+  List<Map<String, dynamic>> items,
+) {
   final seen = <String>{};
   final output = <Map<String, dynamic>>[];
 
@@ -3640,10 +3618,10 @@ List<Map<String, dynamic>> _dedupEditorialAccessories(
 }
 
 String _editorialLookName(
-    _StyleBoardViewModel board,
-    Map<String, dynamic>? top,
-    Map<String, dynamic>? bottom,
-    ) {
+  _StyleBoardViewModel board,
+  Map<String, dynamic>? top,
+  Map<String, dynamic>? bottom,
+) {
   final existing = board.title.trim();
   if (existing.isNotEmpty && existing.toLowerCase() != 'styled look') {
     return existing;
@@ -3698,11 +3676,11 @@ String _editorialOccasion(_StyleBoardViewModel board) {
 }
 
 String _editorialWhyItWorks(
-    _StyleBoardViewModel board,
-    Map<String, dynamic>? top,
-    Map<String, dynamic>? bottom,
-    Map<String, dynamic>? footwear,
-    ) {
+  _StyleBoardViewModel board,
+  Map<String, dynamic>? top,
+  Map<String, dynamic>? bottom,
+  Map<String, dynamic>? footwear,
+) {
   final existing = board.vibe.trim();
   if (existing.isNotEmpty && existing.toLowerCase() != 'wardrobe ready') {
     return existing;
@@ -3867,10 +3845,10 @@ class _PinterestStyleBoardCard extends StatelessWidget {
                     children: chips
                         .map(
                           (chip) => _BoardChip(
-                        label: chip,
-                        color: t.accent.secondary,
-                      ),
-                    )
+                            label: chip,
+                            color: t.accent.secondary,
+                          ),
+                        )
                         .toList(),
                   ),
                 ],
@@ -4190,8 +4168,8 @@ String _itemLine(List<Map<String, dynamic>> items) {
   final names = items
       .map(
         (item) =>
-        _text(item['name'] ?? item['type'] ?? item['category'], 'Item'),
-  )
+            _text(item['name'] ?? item['type'] ?? item['category'], 'Item'),
+      )
       .take(4)
       .toList();
   if (names.isEmpty) return '';
@@ -4593,9 +4571,9 @@ class _WebSearchSheetState extends State<_WebSearchSheet> {
               fillColor: panel,
               suffixIcon: _ctrl.text.isNotEmpty
                   ? IconButton(
-                icon: Icon(Icons.clear, size: 18, color: mutedText),
-                onPressed: () => setState(() => _ctrl.clear()),
-              )
+                      icon: Icon(Icons.clear, size: 18, color: mutedText),
+                      onPressed: () => setState(() => _ctrl.clear()),
+                    )
                   : null,
             ),
             onChanged: (_) => setState(() {}),
