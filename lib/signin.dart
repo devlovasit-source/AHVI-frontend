@@ -239,7 +239,10 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
           if (_otpExpirationCountdown <= 0) {
             _otpExpired = true;
             timer.cancel();
-            _showSnackBar('OTP expired. Please request a new one.', isError: true);
+            _showSnackBar(
+              'OTP expired. Please request a new one.',
+              isError: true,
+            );
           }
         });
       }
@@ -286,7 +289,10 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
         _otpSent = true;
         _isLoading = false;
       });
-      _showSnackBar('OTP sent to your email. Expires in 60 seconds.', isError: false);
+      _showSnackBar(
+        'OTP sent to your email. Expires in 60 seconds.',
+        isError: false,
+      );
       _startOtpExpirationTimer();
       _startResendTimer();
     } on AppwriteException catch (e) {
@@ -343,7 +349,9 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
         } catch (_) {}
 
         try {
-          await AhviNotificationService.instance.registerForCurrentUser(appwrite);
+          await AhviNotificationService.instance.registerForCurrentUser(
+            appwrite,
+          );
         } catch (_) {}
 
         if (!mounted) return;
@@ -414,7 +422,10 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 24,
+                ),
                 child: _AuthCard(
                   padding: const EdgeInsets.fromLTRB(28, 28, 28, 36),
                   child: Column(
@@ -449,10 +460,7 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
 
                       // AHVI wordmark
                       const Center(
-                        child: AhviHomeText(
-                          fontSize: 36,
-                          letterSpacing: 1,
-                        ),
+                        child: AhviHomeText(fontSize: 36, letterSpacing: 1),
                       ),
                       const SizedBox(height: 18),
 
@@ -495,7 +503,9 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
                         const SizedBox(height: 24),
                         _PrimaryButton(
                           label: _isLoading ? 'Verifying...' : 'Sign In',
-                          onTap: (_isLoading || _otpExpired) ? null : _onVerifyOTP,
+                          onTap: (_isLoading || _otpExpired)
+                              ? null
+                              : _onVerifyOTP,
                           isLoading: _isLoading,
                         ),
                         const SizedBox(height: 16),
@@ -606,7 +616,7 @@ class _AuthHeading extends StatelessWidget {
 // ============================================================================
 // ORIGINAL SIGN UP PAGE (UPDATED - ONLY EMAIL OTP)
 // ============================================================================
-class _SignUpPage extends StatelessWidget {
+class _SignUpPage extends StatefulWidget {
   final VoidCallback onGoogleTap;
   final VoidCallback onAppleTap;
   final VoidCallback onEmailTap;
@@ -618,37 +628,209 @@ class _SignUpPage extends StatelessWidget {
   });
 
   @override
+  State<_SignUpPage> createState() => _SignUpPageState();
+}
+
+class _SignUpPageState extends State<_SignUpPage> {
+  final TextEditingController _phoneController = TextEditingController();
+
+  Future<void> _handlePhoneSignIn() async {
+    final phone = _phoneController.text.trim();
+
+    if (phone.length != 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid 10-digit phone number.'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final appwriteService = Provider.of<AppwriteService>(
+        context,
+        listen: false,
+      );
+
+      await appwriteService.sendPhoneOTP('+91$phone');
+
+      if (!mounted) return;
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => _PhoneOtpPage(phoneNumber: '+91$phone'),
+        ),
+      );
+
+      debugPrint('✅ Phone OTP request completed');
+    } catch (e) {
+      debugPrint('❌ Phone sign in error: $e');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to send OTP. Please try again.')),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return _AuthCard(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const AhviHomeText(
-            fontSize: 36,
-            letterSpacing: 1,
-          ),
+          const AhviHomeText(fontSize: 36, letterSpacing: 1),
+
           const SizedBox(height: 22),
+
           const _SectionTitle(
             line1: 'Your Personal Assistant',
             line2: 'Awaits.',
             italic: true,
           ),
+
           const SizedBox(height: 12),
+
           const _SectionSub(text: 'Sign in or create your account'),
+
           const SizedBox(height: 32),
+
+          Container(
+            height: 64,
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFFD9DDEA), width: 1.5),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 18),
+
+                const Text('🇮🇳', style: TextStyle(fontSize: 22)),
+
+                const SizedBox(width: 10),
+
+                const Icon(
+                  Icons.keyboard_arrow_down,
+                  color: Color(0xFFB8BDCD),
+                  size: 20,
+                ),
+
+                const SizedBox(width: 8),
+
+                const Text(
+                  '+91',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF1A1D26),
+                  ),
+                ),
+
+                const SizedBox(width: 16),
+
+                Container(width: 1, height: 32, color: const Color(0xFFD9DDEA)),
+
+                const SizedBox(width: 16),
+
+                Expanded(
+                  child: TextField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    maxLength: 10,
+                    decoration: const InputDecoration(
+                      hintText: 'Phone number',
+                      counterText: '',
+                      border: InputBorder.none,
+                      hintStyle: TextStyle(
+                        fontSize: 18,
+                        color: Color(0xFF9BA3B7),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 16),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Container(
+            width: double.infinity,
+            height: 58,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF9B5DE5), Color(0xFF5B6FE8)],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF7B61D9).withValues(alpha: 0.25),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: _handlePhoneSignIn,
+                child: const Center(
+                  child: Text(
+                    'Sign in',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          const SizedBox(height: 24),
+
+          Row(
+            children: [
+              const Expanded(child: Divider(color: Color(0xFFE1E4EE))),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'or continue with',
+                  style: TextStyle(fontSize: 16, color: Color(0xFF7D869B)),
+                ),
+              ),
+              const Expanded(child: Divider(color: Color(0xFFE1E4EE))),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
           _SocialButton(
             icon: _GoogleIcon(),
-            label: 'Continue with Google',
-            onTap: onGoogleTap,
+            label: 'Sign in with Google',
+            onTap: widget.onGoogleTap,
           ),
+
           const SizedBox(height: 12),
-          _SocialButton(
-            label: 'Continue with Apple',
-            onTap: onAppleTap,
-          ),
+
+          _SocialButton(label: 'Sign in with Apple', onTap: widget.onAppleTap),
+
+          const SizedBox(height: 24),
+
           const _Divider(),
+
+          const SizedBox(height: 16),
+
           GestureDetector(
-            onTap: onEmailTap,
+            onTap: widget.onEmailTap,
             behavior: HitTestBehavior.opaque,
             child: const _LinkText(prefix: 'Sign up with ', highlight: 'Email'),
           ),
@@ -657,7 +839,6 @@ class _SignUpPage extends StatelessWidget {
     );
   }
 }
-
 
 // ============================================================================
 // REUSABLE COMPONENTS
@@ -722,10 +903,7 @@ class _InputFieldState extends State<_InputField> {
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: Color(0xFF1A1D26),
-                ),
+                style: const TextStyle(fontSize: 15, color: Color(0xFF1A1D26)),
               ),
             ),
           ],
@@ -766,52 +944,54 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
         duration: const Duration(milliseconds: 200),
         width: double.infinity,
         height: 54,
-        transform: _pressed ? (Matrix4.identity()..scale(0.98)) : Matrix4.identity(),
+        transform: _pressed
+            ? (Matrix4.identity()..scale(0.98))
+            : Matrix4.identity(),
         decoration: BoxDecoration(
           gradient: isEnabled
               ? const LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [Color(0xFF9B6BE0), Color(0xFF6C72E0)],
-          )
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [Color(0xFF9B6BE0), Color(0xFF6C72E0)],
+                )
               : null,
           color: isEnabled ? null : const Color(0xFFCDD5EF),
           borderRadius: BorderRadius.circular(16),
           boxShadow: isEnabled
               ? [
-            const BoxShadow(
-              color: Color(0x4D6C72E0),
-              blurRadius: 16,
-              offset: Offset(0, 6),
-            ),
-          ]
+                  const BoxShadow(
+                    color: Color(0x4D6C72E0),
+                    blurRadius: 16,
+                    offset: Offset(0, 6),
+                  ),
+                ]
               : const [
-            BoxShadow(
-              color: Color(0x0D000000),
-              blurRadius: 8,
-              offset: Offset(0, 2),
-            ),
-          ],
+                  BoxShadow(
+                    color: Color(0x0D000000),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
         ),
         alignment: Alignment.center,
         child: widget.isLoading
             ? const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF5F7FF)),
-            strokeWidth: 2,
-          ),
-        )
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF5F7FF)),
+                  strokeWidth: 2,
+                ),
+              )
             : Text(
-          widget.label,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFFFFFFFF),
-            letterSpacing: -0.01 * 16,
-          ),
-        ),
+                widget.label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFFFFFFF),
+                  letterSpacing: -0.01 * 16,
+                ),
+              ),
       ),
     );
   }
@@ -821,11 +1001,7 @@ class _SocialButton extends StatefulWidget {
   final Widget? icon;
   final String label;
   final VoidCallback onTap;
-  const _SocialButton({
-    this.icon,
-    required this.label,
-    required this.onTap,
-  });
+  const _SocialButton({this.icon, required this.label, required this.onTap});
   @override
   State<_SocialButton> createState() => _SocialButtonState();
 }
@@ -861,19 +1037,19 @@ class _SocialButtonState extends State<_SocialButton> {
             border: Border.all(color: const Color(0xFFCDD5EF)),
             boxShadow: _hovered
                 ? [
-              const BoxShadow(
-                color: Color(0x1A000000),
-                blurRadius: 18,
-                offset: Offset(0, 6),
-              ),
-            ]
+                    const BoxShadow(
+                      color: Color(0x1A000000),
+                      blurRadius: 18,
+                      offset: Offset(0, 6),
+                    ),
+                  ]
                 : const [
-              BoxShadow(
-                color: Color(0x0D000000),
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ],
+                    BoxShadow(
+                      color: Color(0x0D000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1025,21 +1201,21 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     final titleStyle = italic
         ? GoogleFonts.cormorantGaramond(
-      fontSize: 30,
-      fontWeight: FontWeight.w500,
-      fontStyle: FontStyle.italic,
-      color: const Color(0xFF1A1D26),
-      letterSpacing: -0.02 * 30,
-      height: 1.25,
-    )
+            fontSize: 30,
+            fontWeight: FontWeight.w500,
+            fontStyle: FontStyle.italic,
+            color: const Color(0xFF1A1D26),
+            letterSpacing: -0.02 * 30,
+            height: 1.25,
+          )
         : const TextStyle(
-      fontFamily: 'Georgia',
-      fontSize: 30,
-      fontWeight: FontWeight.w400,
-      color: Color(0xFF1A1D26),
-      letterSpacing: -0.02 * 30,
-      height: 1.25,
-    );
+            fontFamily: 'Georgia',
+            fontSize: 30,
+            fontWeight: FontWeight.w400,
+            color: Color(0xFF1A1D26),
+            letterSpacing: -0.02 * 30,
+            height: 1.25,
+          );
 
     return Center(
       child: RichText(
@@ -1086,6 +1262,259 @@ class _AnimatedAppBackground extends StatelessWidget {
     return Container(
       color: const Color(0xFFFAFBFF),
       // Add your animated background here
+    );
+  }
+}
+
+class _PhoneOtpPage extends StatefulWidget {
+  final String phoneNumber;
+
+  const _PhoneOtpPage({required this.phoneNumber});
+
+  @override
+  State<_PhoneOtpPage> createState() => _PhoneOtpPageState();
+}
+
+class _PhoneOtpPageState extends State<_PhoneOtpPage> {
+  final TextEditingController _otpController = TextEditingController();
+
+  bool _isLoading = false;
+  bool _canResend = false;
+  int _resendCountdown = 60;
+  Timer? _resendTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startResendTimer();
+  }
+
+  @override
+  void dispose() {
+    _otpController.dispose();
+    _resendTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startResendTimer() {
+    _canResend = false;
+    _resendCountdown = 60;
+
+    _resendTimer?.cancel();
+
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      setState(() {
+        _resendCountdown--;
+
+        if (_resendCountdown <= 0) {
+          _canResend = true;
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  Future<void> _onResendOTP() async {
+    if (!_canResend) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final appwrite = Provider.of<AppwriteService>(context, listen: false);
+
+      await appwrite.sendPhoneOTP(widget.phoneNumber);
+
+      if (!mounted) return;
+
+      _otpController.clear();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('OTP resent to your phone.')),
+      );
+
+      _startResendTimer();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to resend OTP. Please try again.'),
+        ),
+      );
+
+      debugPrint('Resend phone OTP error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _verifyOtp() async {
+    final otp = _otpController.text.trim();
+
+    if (otp.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter the 6-digit OTP.')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    debugPrint('🔐 Verifying phone OTP...');
+
+    try {
+      final appwriteService = Provider.of<AppwriteService>(
+        context,
+        listen: false,
+      );
+
+      final success = await appwriteService.verifyPhoneOTP(
+        widget.phoneNumber,
+        otp,
+      );
+
+      if (!mounted) return;
+
+      if (success) {
+        debugPrint('✅ Phone OTP verified successfully');
+
+        Navigator.of(context).pop();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid or expired OTP.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      debugPrint('❌ Phone OTP verification error: $e');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to verify OTP. Please try again.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          const _AnimatedAppBackground(),
+
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 24,
+                ),
+                child: _AuthCard(
+                  padding: const EdgeInsets.fromLTRB(28, 28, 28, 36),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Back Button
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.of(context).pop();
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F4FF),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFCDD5EF)),
+                          ),
+                          child: const Icon(
+                            Icons.arrow_back,
+                            color: Color(0xFF1A1D26),
+                            size: 20,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // AHVI wordmark
+                      const Center(
+                        child: AhviHomeText(fontSize: 36, letterSpacing: 1),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      // OTP heading
+                      _AuthHeading(
+                        title: 'Verify your phone',
+                        subtitle:
+                            'Enter the code sent to ${widget.phoneNumber}',
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // OTP input
+                      _InputField(
+                        controller: _otpController,
+                        hint: 'Enter 6-digit code',
+                        icon: Icons.password,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        enabled: true,
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Sign In button
+                      _PrimaryButton(
+                        label: _isLoading ? 'Verifying...' : 'Sign In',
+                        onTap: _isLoading ? null : _verifyOtp,
+                        isLoading: _isLoading,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      Center(
+                        child: GestureDetector(
+                          onTap: (_canResend && !_isLoading)
+                              ? _onResendOTP
+                              : null,
+                          child: Text(
+                            _canResend
+                                ? 'Didn\'t receive code? Resend'
+                                : 'Resend code in $_resendCountdown seconds',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: _canResend
+                                  ? const Color(0xFF4B6FE0)
+                                  : const Color(0xFF66708A),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
