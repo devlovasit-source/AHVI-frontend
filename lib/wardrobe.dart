@@ -1039,7 +1039,13 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   Future<void> _showEditSavedItem(WardrobeItem item) async {
     final nameCtrl = TextEditingController(text: item.name);
     final notesCtrl = TextEditingController(text: item.notes);
-    final occCtrl = TextEditingController(text: item.occasions.join(', '));
+    // Same 9 review chips the upload flow uses, preselected from the
+    // saved item's occasions via the shared canonicalizer so a
+    // backend-derived value like "office" preselects the "Work" chip.
+    final selectedOccasions = item.occasions
+        .map((o) => canonicalizeOccasion(o))
+        .where((o) => _AddItemModalState._occs.contains(o))
+        .toSet();
     var selectedCat = item.cat.isNotEmpty ? item.cat : 'Tops';
     const cats = [
       'Tops',
@@ -1095,11 +1101,31 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
                   decoration: InputDecoration(labelText: AppLocalizations.t(context, 'wardrobe_input_notes')),
                 ),
                 const SizedBox(height: 10),
-                TextField(
-                  controller: occCtrl,
-                  decoration: InputDecoration(
-                    labelText: AppLocalizations.t(context, 'wardrobe_input_occasions'),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    AppLocalizations.t(context, 'wardrobe_input_occasions'),
+                    style: Theme.of(context).textTheme.labelMedium,
                   ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _AddItemModalState._occs.map((occ) {
+                    final active = selectedOccasions.contains(occ);
+                    return FilterChip(
+                      label: Text(occ),
+                      selected: active,
+                      onSelected: (value) => setDialogState(() {
+                        if (value) {
+                          selectedOccasions.add(occ);
+                        } else {
+                          selectedOccasions.remove(occ);
+                        }
+                      }),
+                    );
+                  }).toList(),
                 ),
               ],
             ),
@@ -1123,11 +1149,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
         ? item.name
         : nameCtrl.text.trim();
     final nextNotes = notesCtrl.text.trim();
-    final nextOccasions = occCtrl.text
-        .split(',')
-        .map((v) => v.trim())
-        .where((v) => v.isNotEmpty)
-        .toList();
+    final nextOccasions = selectedOccasions.toList();
     final nextPrivateWear = isPrivateWearText(
       '$nextName $selectedCat ${nextOccasions.join(' ')}',
     );
