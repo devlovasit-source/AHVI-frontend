@@ -296,7 +296,7 @@ class _ItemDetailModal extends StatelessWidget {
                         children: item.occasions
                             .map(
                               (o) => _Pill(
-                                label: o,
+                                label: canonicalizeOccasion(o),
                                 bg: const Color(0xFFF7F7FB),
                                 fg: const Color(0xFF3C3C43),
                                 border: const Color(0xFFE5E5EA),

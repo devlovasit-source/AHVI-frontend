@@ -244,6 +244,13 @@ class PairingEngine {
         ? const ['Tops', 'Dresses', 'Outerwear']
         : (_compatibleCategories[itemCat] ?? const []);
     final itemColor = _extractColor(item.name);
+    // Canonicalize through the same shared helper wardrobe.dart's review
+    // chips use, so "casual" (backend-derived) and "Casual" (user-edited)
+    // are recognized as the same occasion instead of silently failing to
+    // overlap in the Set intersection below.
+    final itemOccasionsCanonical = item.occasions
+        .map((o) => canonicalizeOccasion(o).toLowerCase())
+        .toSet();
 
     for (final other in candidates) {
       double score = 0;
@@ -279,10 +286,12 @@ class PairingEngine {
         }
       }
 
-      // 2. Occasion overlap
-      final overlap = item.occasions
-          .toSet()
-          .intersection(other.occasions.toSet())
+      // 2. Occasion overlap — both sides canonicalized (see above).
+      final otherOccasionsCanonical = other.occasions
+          .map((o) => canonicalizeOccasion(o).toLowerCase())
+          .toSet();
+      final overlap = itemOccasionsCanonical
+          .intersection(otherOccasionsCanonical)
           .length;
       score += overlap * 1.5;
 
