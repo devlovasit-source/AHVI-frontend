@@ -23,6 +23,7 @@ import 'package:myapp/widgets/ahvi_header.dart';
 import 'package:myapp/widgets/ahvi_stylist_chat.dart';
 import 'package:myapp/widgets/ahvi_item_detail_modal.dart';
 import 'package:myapp/util/wardrobe_image_resolver.dart';
+import 'package:myapp/util/occasion_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 export 'package:myapp/util/wardrobe_image_resolver.dart'
@@ -1044,7 +1045,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     // backend-derived value like "office" preselects the "Work" chip.
     final selectedOccasions = item.occasions
         .map((o) => canonicalizeOccasion(o))
-        .where((o) => _AddItemModalState._occs.contains(o))
+        .where((o) => kOccasionChipVocabulary.contains(o))
         .toSet();
     var selectedCat = item.cat.isNotEmpty ? item.cat : 'Tops';
     const cats = [
@@ -1112,7 +1113,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _AddItemModalState._occs.map((occ) {
+                  children: kOccasionChipVocabulary.map((occ) {
                     final active = selectedOccasions.contains(occ);
                     return FilterChip(
                       label: Text(occ),
@@ -2217,59 +2218,10 @@ bool isPrivateWearText(String value) {
   return aliases.any((alias) => clean.contains(alias));
 }
 
-/// Turns a raw occasion value (possibly an internal/localisation key like
-/// `upload_occasion_everyday`, or a snake_case backend value) into a
-/// human-readable label. Never renders raw keys in the review UI.
-@visibleForTesting
-String humanizeOccasion(String raw) {
-  var v = raw.trim();
-  if (v.isEmpty) return v;
-  v = v.replaceFirst(RegExp(r'^upload_occasion_', caseSensitive: false), '');
-  v = v.replaceAll(RegExp(r'[_\-]+'), ' ').trim();
-  if (v.isEmpty) return v;
-  return v
-      .split(' ')
-      .map(
-        (w) => w.isEmpty
-            ? w
-            : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}',
-      )
-      .join(' ');
-}
-
-/// Backend occasion tokens that mean the same thing as an existing review
-/// chip but use different wording — not just different casing/underscores,
-/// which humanizeOccasion already handles on its own. Only aliases we're
-/// certain of are listed here; anything else (client_meeting, business_lunch,
-/// home, private, lounge, ...) intentionally falls through to
-/// humanizeOccasion's plain formatting rather than being guessed at, so no
-/// occasion is ever silently discarded — it just isn't re-worded.
-const Map<String, String> _occasionAliases = {
-  'office': 'Work',
-  'work': 'Work',
-  'date': 'Dinner',
-  'dinner': 'Dinner',
-  'casual': 'Casual',
-  'travel': 'Travel',
-  'party': 'Party',
-  'festive': 'Festive',
-  'wedding': 'Wedding',
-};
-
-/// Single shared entry point for turning a raw backend/legacy occasion
-/// value into the label the review chips, item-detail pills, and
-/// PairingEngine's occasion matching all agree on. Checks the semantic
-/// alias map first, then falls back to humanizeOccasion's mechanical
-/// casing/underscore cleanup for anything not in the map — this is the
-/// only place occasion vocabulary gets reconciled anywhere in the app.
-String canonicalizeOccasion(String raw) {
-  var key = raw.trim().toLowerCase();
-  key = key.replaceFirst(RegExp(r'^upload_occasion_'), '');
-  key = key.replaceAll(RegExp(r'[_\-]+'), ' ').trim();
-  final alias = _occasionAliases[key];
-  if (alias != null) return alias;
-  return humanizeOccasion(raw);
-}
+// humanizeOccasion / canonicalizeOccasion / the occasion chip vocabulary
+// moved to package:myapp/util/occasion_utils.dart — that's now the single
+// shared occasion-vocabulary dependency for wardrobe review, saved-item
+// editing, PairingEngine, and item detail.
 
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ MODAL STEP ENUM ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 class _DetectedTaxonomy {
@@ -2500,17 +2452,7 @@ class _AddItemModalState extends State<_AddItemModal>
     'Accessories',
     'Needs Review',
   ];
-  static const _occs = [
-    'Everyday',
-    'Casual',
-    'Work',
-    'Dinner',
-    'Travel',
-    'Sport',
-    'Party',
-    'Festive',
-    'Wedding',
-  ];
+  static const _occs = kOccasionChipVocabulary;
 
   // Swipe navigation between review cards (one item per page).
   final PageController _reviewPageCtrl = PageController();

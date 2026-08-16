@@ -15,6 +15,7 @@
 // ============================================================
 
 import 'package:myapp/wardrobe.dart';
+import 'package:myapp/util/occasion_utils.dart';
 
 class PairingEngine {
   // ============================================================

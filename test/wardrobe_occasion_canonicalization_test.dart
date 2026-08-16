@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/wardrobe.dart';
 import 'package:myapp/widgets/pairing_engine.dart';
+import 'package:myapp/util/occasion_utils.dart';
 
 WardrobeItem _item(
   String id, {

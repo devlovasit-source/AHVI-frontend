@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/wardrobe.dart'; // WardrobeItem lives here
+import 'package:myapp/util/occasion_utils.dart'; // canonicalizeOccasion
 import 'package:myapp/services/backend_service.dart'; // styleWardrobeItem
 import 'package:myapp/services/ahvi_style_diagnostics.dart';
 import 'package:myapp/style_board/board_models.dart';
