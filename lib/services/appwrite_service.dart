@@ -228,7 +228,11 @@ class AppwriteService extends ChangeNotifier {
   static const String _otpUserIdKey = 'ahvi_otp_user_id';
   static const String _otpEmailKey = 'ahvi_otp_email';
   static const String _otpTimestampKey = 'ahvi_otp_timestamp';
-  static const Duration _otpTimeout = Duration(minutes: 10);
+  static const Duration _otpTimeout = Duration(minutes: 15);
+
+  static const String _phoneOtpUserIdKey = 'ahvi_phone_otp_user_id';
+  static const String _phoneOtpNumberKey = 'ahvi_phone_otp_number';
+  static const String _phoneOtpTimestampKey = 'ahvi_phone_otp_timestamp';
 
   /// Send OTP to user's email
   ///
@@ -263,6 +267,169 @@ class AppwriteService extends ChangeNotifier {
     }
   }
 
+  Future<void> sendPhoneOTP(String phoneNumber) async {
+    try {
+      final normalizedPhone = phoneNumber.trim();
+
+      debugPrint('📱 Sending phone OTP');
+
+      // Get the currently authenticated Appwrite user.
+      final currentUser = await account.get();
+
+      debugPrint('📱 Sending phone OTP for authenticated user');
+
+      // IMPORTANT:
+      // Use the EXISTING user's Appwrite ID.
+      // Do NOT use ID.unique(), because that creates a separate account.
+      final token = await account.createPhoneToken(
+        userId: currentUser.$id,
+        phone: normalizedPhone,
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setString(_phoneOtpUserIdKey, token.userId);
+      await prefs.setString(_phoneOtpNumberKey, normalizedPhone);
+      await prefs.setInt(
+        _phoneOtpTimestampKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+
+      debugPrint('✅ Phone OTP sent');
+    } catch (e) {
+      debugPrint('❌ Phone OTP send failed');
+      rethrow;
+    }
+  }
+
+  Future<void> _linkPhoneToCurrentUser(String phone) async {
+    final jwt = await account.createJWT();
+    final token = jwt.jwt;
+
+    if (token.isEmpty) {
+      throw Exception('Could not create Appwrite JWT');
+    }
+
+    final response = await http
+        .post(
+          Uri.parse('${Env.backendApiUrl}/api/auth/phone/link'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({'phone': phone}),
+        )
+        .timeout(const Duration(seconds: 20));
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      String detail = 'Failed to link phone number';
+
+      try {
+        final data = jsonDecode(response.body);
+
+        if (data is Map && data['detail'] != null) {
+          detail = data['detail'].toString();
+        }
+      } catch (_) {}
+
+      throw Exception(detail);
+    }
+  }
+
+  Future<bool> verifyPhoneOTP(String phoneNumber, String otp) async {
+    try {
+      final normalizedPhone = phoneNumber.trim();
+
+      debugPrint('🔐 Verifying phone OTP');
+
+      // Retrieve persisted phone OTP information.
+      final prefs = await SharedPreferences.getInstance();
+
+      final savedUserId = prefs.getString(_phoneOtpUserIdKey);
+
+      final savedPhone = prefs.getString(_phoneOtpNumberKey);
+
+      final savedTimestamp = prefs.getInt(_phoneOtpTimestampKey);
+
+      // Check if OTP request exists.
+      if (savedUserId == null || savedPhone == null || savedTimestamp == null) {
+        debugPrint('❌ Verify phone OTP error: no pending OTP request');
+        return false;
+      }
+
+      // Validate phone consistency.
+      if (normalizedPhone != savedPhone) {
+        debugPrint(
+          '❌ Verify phone OTP error: phone mismatch '
+          '(got: $normalizedPhone, expected: $savedPhone)',
+        );
+
+        await _clearPhoneOTPState();
+        return false;
+      }
+
+      // Check OTP expiry.
+      final otpAge = DateTime.now().difference(
+        DateTime.fromMillisecondsSinceEpoch(savedTimestamp),
+      );
+
+      if (otpAge > _otpTimeout) {
+        debugPrint(
+          '❌ Verify phone OTP error: OTP expired '
+          '(${otpAge.inSeconds}s old, max ${_otpTimeout.inSeconds}s)',
+        );
+
+        await _clearPhoneOTPState();
+        return false;
+      }
+
+      // Create the Appwrite session using the OTP.
+      debugPrint('🔑 Creating phone session');
+
+      clearUserCache();
+
+      await account.createSession(userId: savedUserId, secret: otp);
+
+      debugPrint('✅ Phone session created successfully');
+
+      // Link the verified phone to the authenticated Appwrite user.
+      await _linkPhoneToCurrentUser(normalizedPhone);
+
+      // Same AHVI user/profile flow as email OTP.
+      await cacheCurrentUser();
+      await ensureCurrentUserProfile();
+      await refreshCurrentUserProfile();
+
+      // Clean up after successful verification.
+      await _clearPhoneOTPState();
+
+      notifyListeners();
+
+      debugPrint('✅ Phone OTP verification successful!');
+
+      return true;
+    } catch (e) {
+      debugPrint('❌ Phone OTP verification failed');
+
+      // Keep OTP state so the user can retry with the correct code.
+      return false;
+    }
+  }
+
+  Future<void> _clearPhoneOTPState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.remove(_phoneOtpUserIdKey);
+      await prefs.remove(_phoneOtpNumberKey);
+      await prefs.remove(_phoneOtpTimestampKey);
+
+      debugPrint('🗑️ Phone OTP state cleared');
+    } catch (e) {
+      debugPrint('⚠️ Error clearing phone OTP state: $e');
+    }
+  }
+
   /// Verify OTP code entered by user
   ///
   /// Retrieves the persisted userId and validates the OTP.
@@ -272,7 +439,9 @@ class AppwriteService extends ChangeNotifier {
       // Normalize email
       final normalizedEmail = email.toLowerCase().trim();
 
-      debugPrint('🔐 Verifying OTP for: $normalizedEmail, code: ${otp.substring(0, 2)}***');
+      debugPrint(
+        '🔐 Verifying OTP for: $normalizedEmail, code: ${otp.substring(0, 2)}***',
+      );
 
       // ✅ Retrieve from persistent storage
       final prefs = await SharedPreferences.getInstance();
@@ -288,7 +457,9 @@ class AppwriteService extends ChangeNotifier {
 
       // Validate email consistency
       if (normalizedEmail != savedEmail) {
-        debugPrint("❌ Verify OTP error: email mismatch (got: $normalizedEmail, expected: $savedEmail)");
+        debugPrint(
+          "❌ Verify OTP error: email mismatch (got: $normalizedEmail, expected: $savedEmail)",
+        );
         await _clearOTPState();
         return false;
       }
@@ -298,7 +469,9 @@ class AppwriteService extends ChangeNotifier {
         DateTime.fromMillisecondsSinceEpoch(savedTimestamp),
       );
       if (otpAge > _otpTimeout) {
-        debugPrint("❌ Verify OTP error: OTP expired (${otpAge.inSeconds}s old, max ${_otpTimeout.inSeconds}s)");
+        debugPrint(
+          "❌ Verify OTP error: OTP expired (${otpAge.inSeconds}s old, max ${_otpTimeout.inSeconds}s)",
+        );
         await _clearOTPState();
         return false;
       }
@@ -404,10 +577,10 @@ class AppwriteService extends ChangeNotifier {
   // ================= EMAIL OTP LOGIN END (FIXED) ======================
 
   Future<User> registerEmailPassword(
-      String email,
-      String password,
-      String name,
-      ) async {
+    String email,
+    String password,
+    String name,
+  ) async {
     final cleanEmail = email.trim();
     final cleanName = name.trim();
     try {
@@ -558,10 +731,10 @@ class AppwriteService extends ChangeNotifier {
         ? user.email.toString().split('@').first
         : user.email.toString();
     final raw =
-    (user.name.toString().trim().isNotEmpty
-        ? user.name.toString()
-        : emailPrefix)
-        .toLowerCase();
+        (user.name.toString().trim().isNotEmpty
+                ? user.name.toString()
+                : emailPrefix)
+            .toLowerCase();
 
     final cleaned = raw
         .replaceAll(RegExp(r'[^a-z0-9_]+'), '_')
@@ -617,17 +790,17 @@ class AppwriteService extends ChangeNotifier {
 
     final done =
         profile?['onboarding1'] == true &&
-            profile?['onboarding2'] == true &&
-            profile?['onboarding3'] == true &&
-            gender.isNotEmpty;
+        profile?['onboarding2'] == true &&
+        profile?['onboarding3'] == true &&
+        gender.isNotEmpty;
 
     debugPrint(
       'AHVI_ONBOARDING_PROFILE '
-          'gender=${profile?['gender']} '
-          'onboarding1=${profile?['onboarding1']} '
-          'onboarding2=${profile?['onboarding2']} '
-          'onboarding3=${profile?['onboarding3']} '
-          'done=$done',
+      'gender=${profile?['gender']} '
+      'onboarding1=${profile?['onboarding1']} '
+      'onboarding2=${profile?['onboarding2']} '
+      'onboarding3=${profile?['onboarding3']} '
+      'done=$done',
     );
 
     return done;
@@ -659,7 +832,9 @@ class AppwriteService extends ChangeNotifier {
     final Map<String, dynamic> cleaned = Map<String, dynamic>.from(data);
 
     if (cleaned.containsKey('skinTone')) {
-      final sanitizedSkinTone = _sanitizeSkinToneForAppwrite(cleaned['skinTone']);
+      final sanitizedSkinTone = _sanitizeSkinToneForAppwrite(
+        cleaned['skinTone'],
+      );
       if (sanitizedSkinTone != null) {
         cleaned['skinTone'] = sanitizedSkinTone;
       } else {
@@ -720,7 +895,9 @@ class AppwriteService extends ChangeNotifier {
         retryWithSkinToneZero = true;
       }
 
-      if (!retryWithSkinToneZero && (fallback.isEmpty || fallback.length == cleaned.length)) rethrow;
+      if (!retryWithSkinToneZero &&
+          (fallback.isEmpty || fallback.length == cleaned.length))
+        rethrow;
 
       debugPrint(
         'AHVI_PROFILE_UPDATE_SCHEMA_RETRY error=${e.message} keys=${fallback.keys.toList()}',
@@ -761,7 +938,9 @@ class AppwriteService extends ChangeNotifier {
         retryWithSkinToneZero = true;
       }
 
-      if (!retryWithSkinToneZero && (fallback.isEmpty || fallback.length == cleaned.length)) rethrow;
+      if (!retryWithSkinToneZero &&
+          (fallback.isEmpty || fallback.length == cleaned.length))
+        rethrow;
 
       debugPrint(
         'AHVI_PROFILE_CREATE_SCHEMA_RETRY error=${e.message} keys=${fallback.keys.toList()}',
@@ -811,7 +990,7 @@ class AppwriteService extends ChangeNotifier {
         final delay = _initialRetryDelay * (retryCount + 1);
         debugPrint(
           'AHVI_PROFILE_UPDATE_RETRY attempt=${retryCount + 1} '
-              'delay=${delay.inMilliseconds}ms error=$e',
+          'delay=${delay.inMilliseconds}ms error=$e',
         );
         await Future.delayed(delay);
         return _updateProfileDocumentWithFallbackRetry(
@@ -859,7 +1038,7 @@ class AppwriteService extends ChangeNotifier {
         final delay = _initialRetryDelay * (retryCount + 1);
         debugPrint(
           'AHVI_PROFILE_CREATE_RETRY attempt=${retryCount + 1} '
-              'delay=${delay.inMilliseconds}ms error=$e',
+          'delay=${delay.inMilliseconds}ms error=$e',
         );
         await Future.delayed(delay);
         return _createProfileDocumentWithFallbackRetry(
@@ -896,7 +1075,7 @@ class AppwriteService extends ChangeNotifier {
       final updated = await _updateProfileDocumentWithFallbackRetry(
         usersCollectionId: usersCollectionId,
         documentId: user.$id,
-        payload: data,  // Don't add updatedAt - let Appwrite handle it
+        payload: data, // Don't add updatedAt - let Appwrite handle it
       );
 
       _cachedUserProfileData = Map<String, dynamic>.from(updated.data);
@@ -935,13 +1114,19 @@ class AppwriteService extends ChangeNotifier {
       final displayName = user.name.toString().trim().isNotEmpty
           ? user.name.toString().trim()
           : (user.email.toString().contains('@')
-          ? user.email.toString().split('@').first
-          : user.email.toString());
+                ? user.email.toString().split('@').first
+                : user.email.toString());
+
+      final userEmail = user.email.toString().trim();
+
+      final hasValidEmail =
+          userEmail.isNotEmpty &&
+          RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(userEmail);
 
       final createData = <String, dynamic>{
         'name': displayName,
         'username': _safeUsernameFromUser(user),
-        'email': user.email,
+        if (hasValidEmail) 'email': userEmail,
         // Keep onboarding/profile fields persistent in Appwrite.
         // These are defaults only for first-time users; existing users are never reset.
         'gender': '',
@@ -974,8 +1159,7 @@ class AppwriteService extends ChangeNotifier {
           payload: {
             'name': displayName,
             'username': _safeUsernameFromUser(user),
-            'email': user.email,
-            // ✅ REMOVED: 'updatedAt' - Appwrite manages this as $updatedAt
+            if (hasValidEmail) 'email': userEmail,
           },
         );
 
@@ -1097,7 +1281,7 @@ class AppwriteService extends ChangeNotifier {
           "pattern": doc.data['pattern'],
           "occasions": doc.data['occasions'],
           "image_url":
-          doc.data['normalized_url'] ??
+              doc.data['normalized_url'] ??
               doc.data['masked_url'] ??
               doc.data['image_url'] ??
               doc.data['raw_url'],
@@ -1109,8 +1293,10 @@ class AppwriteService extends ChangeNotifier {
           // without a separate query. Both keys are checked because the
           // field name may vary by collection schema version.
           "isLiked": doc.data['isLiked'] ?? doc.data['isFavourite'] ?? false,
-          "isFavourite": doc.data['isFavourite'] ?? doc.data['isLiked'] ?? false,
-          "imageUrl": doc.data['imageUrl'] ??
+          "isFavourite":
+              doc.data['isFavourite'] ?? doc.data['isLiked'] ?? false,
+          "imageUrl":
+              doc.data['imageUrl'] ??
               doc.data['normalized_url'] ??
               doc.data['masked_url'] ??
               doc.data['image_url'] ??
@@ -1125,9 +1311,9 @@ class AppwriteService extends ChangeNotifier {
 
   /// ✅ NEW: Update a wardrobe item (e.g., toggle isLiked/isFavourite flag)
   Future<Document> updateWardrobeItem(
-      String itemId,
-      Map<String, dynamic> updates,
-      ) async {
+    String itemId,
+    Map<String, dynamic> updates,
+  ) async {
     try {
       final user = await getCurrentUser();
       if (user == null) throw Exception("User not authenticated");
@@ -1295,9 +1481,9 @@ class AppwriteService extends ChangeNotifier {
       final rawItemIds = extra?['itemIds'] ?? extra?['item_ids'] ?? <dynamic>[];
       final itemIds = rawItemIds is Iterable
           ? rawItemIds
-          .map((e) => e.toString())
-          .where((e) => e.isNotEmpty)
-          .toList()
+                .map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList()
           : <String>[];
       final outfitItems = _savedBoardItemList(extra?['outfitItems']);
       final items = _savedBoardItemList(extra?['items']);
@@ -1407,18 +1593,18 @@ class AppwriteService extends ChangeNotifier {
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .where((item) {
-      final url =
-          (item['imageUrl'] ??
-              item['image_url'] ??
-              item['masked_url'] ??
-              item['maskedUrl'] ??
-              item['url'] ??
-              item['thumbnailUrl'])
-              ?.toString()
-              .trim() ??
+          final url =
+              (item['imageUrl'] ??
+                      item['image_url'] ??
+                      item['masked_url'] ??
+                      item['maskedUrl'] ??
+                      item['url'] ??
+                      item['thumbnailUrl'])
+                  ?.toString()
+                  .trim() ??
               '';
-      return url.isNotEmpty;
-    })
+          return url.isNotEmpty;
+        })
         .toList();
   }
 
@@ -1552,10 +1738,7 @@ class AppwriteService extends ChangeNotifier {
         databaseId: Env.appwriteDatabaseId,
         collectionId: Env.savedBoardsCollection,
         documentId: documentId,
-        data: {
-          'isFavourite': false,
-          'favouriteAddedAt': null,
-        },
+        data: {'isFavourite': false, 'favouriteAddedAt': null},
       );
       debugPrint("Board removed from favourites: $documentId");
     } catch (e) {
@@ -1918,8 +2101,8 @@ class AppwriteService extends ChangeNotifier {
 
       debugPrint(
         'AHVI_MEDLOG_CREATE userId=${user.$id} '
-            'medId=${data['medId']} status=${data['status']} '
-            'collection=${Env.medLogsCollection}',
+        'medId=${data['medId']} status=${data['status']} '
+        'collection=${Env.medLogsCollection}',
       );
 
       final doc = await databases.createDocument(
@@ -2092,7 +2275,9 @@ class _ProfileSyncCircuitBreaker {
   void recordFailure() {
     _failureCount++;
     _failureResetTime = DateTime.now();
-    debugPrint('❌ Profile sync failure recorded ($_failureCount/$_maxConsecutiveFailures)');
+    debugPrint(
+      '❌ Profile sync failure recorded ($_failureCount/$_maxConsecutiveFailures)',
+    );
   }
 
   void recordSuccess() {

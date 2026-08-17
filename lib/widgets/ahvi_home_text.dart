@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:myapp/app_routes.dart';
 
 class AhviHomeText extends StatelessWidget {
@@ -33,14 +32,14 @@ class AhviHomeText extends StatelessWidget {
             MaterialType.transparency, // inherited elevation/shadow తీసేస్తుంది
         child: Text(
           'AHVI',
-          style: GoogleFonts.anton(
+          style: TextStyle(
+            fontFamily: 'Anton',
             color: textColor,
             fontSize: fontSize,
             fontWeight: fontWeight,
             letterSpacing: letterSpacing,
             height: 1.0,
-            // Shadows & underlines పూర్తిగా తీసేయడం
-            shadows: [],
+            shadows: const [],
             decoration: TextDecoration.none,
             decorationColor: Colors.transparent,
           ),

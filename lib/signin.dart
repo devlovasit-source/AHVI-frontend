@@ -8,6 +8,8 @@ import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/profile.dart';
 import 'package:myapp/widgets/ahvi_home_text.dart';
+import 'package:flutter/services.dart';
+import 'package:myapp/widgets/country_dropdown.dart';
 
 void main() => runApp(const AhviApp());
 
@@ -239,7 +241,10 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
           if (_otpExpirationCountdown <= 0) {
             _otpExpired = true;
             timer.cancel();
-            _showSnackBar('OTP expired. Please request a new one.', isError: true);
+            _showSnackBar(
+              'OTP expired. Please request a new one.',
+              isError: true,
+            );
           }
         });
       }
@@ -286,7 +291,10 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
         _otpSent = true;
         _isLoading = false;
       });
-      _showSnackBar('OTP sent to your email. Expires in 60 seconds.', isError: false);
+      _showSnackBar(
+        'OTP sent to your email. Expires in 60 seconds.',
+        isError: false,
+      );
       _startOtpExpirationTimer();
       _startResendTimer();
     } on AppwriteException catch (e) {
@@ -343,7 +351,9 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
         } catch (_) {}
 
         try {
-          await AhviNotificationService.instance.registerForCurrentUser(appwrite);
+          await AhviNotificationService.instance.registerForCurrentUser(
+            appwrite,
+          );
         } catch (_) {}
 
         if (!mounted) return;
@@ -414,7 +424,10 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 24,
+                ),
                 child: _AuthCard(
                   padding: const EdgeInsets.fromLTRB(28, 28, 28, 36),
                   child: Column(
@@ -449,10 +462,7 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
 
                       // AHVI wordmark
                       const Center(
-                        child: AhviHomeText(
-                          fontSize: 36,
-                          letterSpacing: 1,
-                        ),
+                        child: AhviHomeText(fontSize: 36, letterSpacing: 1),
                       ),
                       const SizedBox(height: 18),
 
@@ -495,7 +505,9 @@ class _EmailOTPLoginScreenState extends State<EmailOTPLoginScreen> {
                         const SizedBox(height: 24),
                         _PrimaryButton(
                           label: _isLoading ? 'Verifying...' : 'Sign In',
-                          onTap: (_isLoading || _otpExpired) ? null : _onVerifyOTP,
+                          onTap: (_isLoading || _otpExpired)
+                              ? null
+                              : _onVerifyOTP,
                           isLoading: _isLoading,
                         ),
                         const SizedBox(height: 16),
@@ -606,7 +618,7 @@ class _AuthHeading extends StatelessWidget {
 // ============================================================================
 // ORIGINAL SIGN UP PAGE (UPDATED - ONLY EMAIL OTP)
 // ============================================================================
-class _SignUpPage extends StatelessWidget {
+class _SignUpPage extends StatefulWidget {
   final VoidCallback onGoogleTap;
   final VoidCallback onAppleTap;
   final VoidCallback onEmailTap;
@@ -618,15 +630,171 @@ class _SignUpPage extends StatelessWidget {
   });
 
   @override
+  State<_SignUpPage> createState() => _SignUpPageState();
+}
+
+class _SignUpPageState extends State<_SignUpPage> {
+  final TextEditingController _phoneController = TextEditingController();
+  String _selectedCountryCode = '+91';
+  String _selectedCountryFlag = '🇮🇳';
+  String _selectedCountryName = 'India';
+  int _selectedCountryMaxDigits = 10;
+  bool _isPhoneOtpSending = false;
+
+  static const List<Map<String, dynamic>> _countries = [
+    {'flag': '🇮🇳', 'name': 'India', 'code': '+91', 'digits': 10},
+    {'flag': '🇺🇸', 'name': 'United States', 'code': '+1', 'digits': 10},
+    {'flag': '🇬🇧', 'name': 'United Kingdom', 'code': '+44', 'digits': 10},
+    {'flag': '🇦🇺', 'name': 'Australia', 'code': '+61', 'digits': 9},
+    {'flag': '🇨🇦', 'name': 'Canada', 'code': '+1', 'digits': 10},
+    {'flag': '🇩🇪', 'name': 'Germany', 'code': '+49', 'digits': 11},
+    {'flag': '🇫🇷', 'name': 'France', 'code': '+33', 'digits': 9},
+    {'flag': '🇯🇵', 'name': 'Japan', 'code': '+81', 'digits': 10},
+    {'flag': '🇨🇳', 'name': 'China', 'code': '+86', 'digits': 11},
+    {'flag': '🇧🇷', 'name': 'Brazil', 'code': '+55', 'digits': 11},
+    {'flag': '🇲🇽', 'name': 'Mexico', 'code': '+52', 'digits': 10},
+    {'flag': '🇿🇦', 'name': 'South Africa', 'code': '+27', 'digits': 9},
+    {'flag': '🇳🇬', 'name': 'Nigeria', 'code': '+234', 'digits': 10},
+    {'flag': '🇰🇪', 'name': 'Kenya', 'code': '+254', 'digits': 9},
+    {'flag': '🇸🇬', 'name': 'Singapore', 'code': '+65', 'digits': 8},
+    {'flag': '🇦🇪', 'name': 'UAE', 'code': '+971', 'digits': 9},
+    {'flag': '🇸🇦', 'name': 'Saudi Arabia', 'code': '+966', 'digits': 9},
+    {'flag': '🇵🇰', 'name': 'Pakistan', 'code': '+92', 'digits': 10},
+    {'flag': '🇧🇩', 'name': 'Bangladesh', 'code': '+880', 'digits': 10},
+    {'flag': '🇱🇰', 'name': 'Sri Lanka', 'code': '+94', 'digits': 9},
+    {'flag': '🇳🇵', 'name': 'Nepal', 'code': '+977', 'digits': 10},
+    {'flag': '🇮🇩', 'name': 'Indonesia', 'code': '+62', 'digits': 11},
+    {'flag': '🇵🇭', 'name': 'Philippines', 'code': '+63', 'digits': 10},
+    {'flag': '🇲🇾', 'name': 'Malaysia', 'code': '+60', 'digits': 10},
+    {'flag': '🇹🇭', 'name': 'Thailand', 'code': '+66', 'digits': 9},
+    {'flag': '🇻🇳', 'name': 'Vietnam', 'code': '+84', 'digits': 10},
+    {'flag': '🇰🇷', 'name': 'South Korea', 'code': '+82', 'digits': 10},
+    {'flag': '🇮🇹', 'name': 'Italy', 'code': '+39', 'digits': 10},
+    {'flag': '🇪🇸', 'name': 'Spain', 'code': '+34', 'digits': 9},
+    {'flag': '🇵🇹', 'name': 'Portugal', 'code': '+351', 'digits': 9},
+    {'flag': '🇳🇱', 'name': 'Netherlands', 'code': '+31', 'digits': 9},
+    {'flag': '🇧🇪', 'name': 'Belgium', 'code': '+32', 'digits': 9},
+    {'flag': '🇨🇭', 'name': 'Switzerland', 'code': '+41', 'digits': 9},
+    {'flag': '🇸🇪', 'name': 'Sweden', 'code': '+46', 'digits': 9},
+    {'flag': '🇳🇴', 'name': 'Norway', 'code': '+47', 'digits': 8},
+    {'flag': '🇩🇰', 'name': 'Denmark', 'code': '+45', 'digits': 8},
+    {'flag': '🇫🇮', 'name': 'Finland', 'code': '+358', 'digits': 9},
+    {'flag': '🇷🇺', 'name': 'Russia', 'code': '+7', 'digits': 10},
+    {'flag': '🇺🇦', 'name': 'Ukraine', 'code': '+380', 'digits': 9},
+    {'flag': '🇵🇱', 'name': 'Poland', 'code': '+48', 'digits': 9},
+    {'flag': '🇦🇷', 'name': 'Argentina', 'code': '+54', 'digits': 10},
+    {'flag': '🇨🇱', 'name': 'Chile', 'code': '+56', 'digits': 9},
+    {'flag': '🇨🇴', 'name': 'Colombia', 'code': '+57', 'digits': 10},
+    {'flag': '🇵🇪', 'name': 'Peru', 'code': '+51', 'digits': 9},
+    {'flag': '🇹🇷', 'name': 'Turkey', 'code': '+90', 'digits': 10},
+    {'flag': '🇮🇱', 'name': 'Israel', 'code': '+972', 'digits': 9},
+    {'flag': '🇪🇬', 'name': 'Egypt', 'code': '+20', 'digits': 10},
+    {'flag': '🇲🇦', 'name': 'Morocco', 'code': '+212', 'digits': 9},
+    {'flag': '🇬🇭', 'name': 'Ghana', 'code': '+233', 'digits': 9},
+    {'flag': '🇳🇿', 'name': 'New Zealand', 'code': '+64', 'digits': 9},
+  ];
+
+  OverlayEntry? _countryDropdownOverlay;
+  final LayerLink _countryLayerLink = LayerLink();
+
+  void _showCountryPicker() {
+    if (_countryDropdownOverlay != null) {
+      _removeCountryDropdown();
+      return;
+    }
+
+    final overlay = Overlay.of(context);
+
+    _countryDropdownOverlay = OverlayEntry(
+      builder: (_) => CountryDropdownOverlay(
+        link: _countryLayerLink,
+        countries: _countries,
+        selectedCode: _selectedCountryCode,
+        selectedFlag: _selectedCountryFlag,
+        onSelected: (country) {
+          setState(() {
+            _selectedCountryCode = country['code'] as String;
+            _selectedCountryFlag = country['flag'] as String;
+            _selectedCountryName = country['name'] as String;
+            _selectedCountryMaxDigits = country['digits'] as int;
+            _phoneController.clear();
+          });
+
+          _removeCountryDropdown();
+        },
+        onDismiss: _removeCountryDropdown,
+      ),
+    );
+
+    overlay.insert(_countryDropdownOverlay!);
+  }
+
+  void _removeCountryDropdown() {
+    _countryDropdownOverlay?.remove();
+    _countryDropdownOverlay = null;
+  }
+
+  @override
+  void dispose() {
+    _removeCountryDropdown();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handlePhoneSignIn() async {
+    if (_isPhoneOtpSending) return;
+
+    final phone = _phoneController.text.trim();
+
+    if (phone.length != _selectedCountryMaxDigits) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid phone number.')),
+      );
+      return;
+    }
+
+    setState(() => _isPhoneOtpSending = true);
+
+    try {
+      final appwriteService = Provider.of<AppwriteService>(
+        context,
+        listen: false,
+      );
+
+      await appwriteService.sendPhoneOTP('$_selectedCountryCode$phone');
+
+      if (!mounted) return;
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              _PhoneOtpPage(phoneNumber: '$_selectedCountryCode$phone'),
+        ),
+      );
+
+      debugPrint('✅ Phone OTP request completed');
+    } catch (e) {
+      debugPrint('❌ Phone sign in error: $e');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to send OTP. Please try again.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isPhoneOtpSending = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return _AuthCard(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const AhviHomeText(
-            fontSize: 36,
-            letterSpacing: 1,
-          ),
+          const AhviHomeText(fontSize: 36, letterSpacing: 1),
           const SizedBox(height: 22),
           const _SectionTitle(
             line1: 'Your Personal Assistant',
@@ -636,19 +804,162 @@ class _SignUpPage extends StatelessWidget {
           const SizedBox(height: 12),
           const _SectionSub(text: 'Sign in or create your account'),
           const SizedBox(height: 32),
+
+          CompositedTransformTarget(
+            link: _countryLayerLink,
+            child: Container(
+              height: 64,
+              decoration: BoxDecoration(
+                border: Border.all(color: const Color(0xFFD9DDEA), width: 1.5),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 18),
+
+                  GestureDetector(
+                    onTap: _showCountryPicker,
+                    behavior: HitTestBehavior.opaque,
+                    child: Row(
+                      children: [
+                        Text(
+                          _selectedCountryFlag,
+                          style: const TextStyle(fontSize: 22),
+                        ),
+                        const SizedBox(width: 10),
+                        const Icon(
+                          Icons.keyboard_arrow_down,
+                          color: Color(0xFFB8BDCD),
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 8),
+
+                  Text(
+                    _selectedCountryCode,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF1A1D26),
+                    ),
+                  ),
+
+                  const SizedBox(width: 16),
+
+                  Container(
+                    width: 1,
+                    height: 32,
+                    color: const Color(0xFFD9DDEA),
+                  ),
+
+                  const SizedBox(width: 16),
+
+                  Expanded(
+                    child: TextField(
+                      controller: _phoneController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(
+                          _selectedCountryMaxDigits,
+                        ),
+                      ],
+                      decoration: const InputDecoration(
+                        hintText: 'Phone number',
+                        counterText: '',
+                        border: InputBorder.none,
+                        hintStyle: TextStyle(
+                          fontSize: 18,
+                          color: Color(0xFF9BA3B7),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 16),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          Container(
+            width: double.infinity,
+            height: 58,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF9B5DE5), Color(0xFF5B6FE8)],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF7B61D9).withValues(alpha: 0.25),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: _isPhoneOtpSending ? null : _handlePhoneSignIn,
+                child: Center(
+                  child: Text(
+                    _isPhoneOtpSending ? 'Sending OTP...' : 'Sign in',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          Row(
+            children: [
+              Expanded(
+                child: Container(height: 1, color: const Color(0xFFD9DDEA)),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  'or continue with',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w400,
+                    color: Color(0xFF66708A),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Container(height: 1, color: const Color(0xFFD9DDEA)),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
           _SocialButton(
             icon: _GoogleIcon(),
             label: 'Continue with Google',
-            onTap: onGoogleTap,
+            onTap: widget.onGoogleTap,
           ),
           const SizedBox(height: 12),
-          _SocialButton(
-            label: 'Continue with Apple',
-            onTap: onAppleTap,
-          ),
+          _SocialButton(label: 'Continue with Apple', onTap: widget.onAppleTap),
           const _Divider(),
           GestureDetector(
-            onTap: onEmailTap,
+            onTap: widget.onEmailTap,
             behavior: HitTestBehavior.opaque,
             child: const _LinkText(prefix: 'Sign up with ', highlight: 'Email'),
           ),
@@ -657,7 +968,6 @@ class _SignUpPage extends StatelessWidget {
     );
   }
 }
-
 
 // ============================================================================
 // REUSABLE COMPONENTS
@@ -722,10 +1032,7 @@ class _InputFieldState extends State<_InputField> {
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: Color(0xFF1A1D26),
-                ),
+                style: const TextStyle(fontSize: 15, color: Color(0xFF1A1D26)),
               ),
             ),
           ],
@@ -766,52 +1073,54 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
         duration: const Duration(milliseconds: 200),
         width: double.infinity,
         height: 54,
-        transform: _pressed ? (Matrix4.identity()..scale(0.98)) : Matrix4.identity(),
+        transform: _pressed
+            ? (Matrix4.identity()..scale(0.98))
+            : Matrix4.identity(),
         decoration: BoxDecoration(
           gradient: isEnabled
               ? const LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [Color(0xFF9B6BE0), Color(0xFF6C72E0)],
-          )
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [Color(0xFF9B6BE0), Color(0xFF6C72E0)],
+                )
               : null,
           color: isEnabled ? null : const Color(0xFFCDD5EF),
           borderRadius: BorderRadius.circular(16),
           boxShadow: isEnabled
               ? [
-            const BoxShadow(
-              color: Color(0x4D6C72E0),
-              blurRadius: 16,
-              offset: Offset(0, 6),
-            ),
-          ]
+                  const BoxShadow(
+                    color: Color(0x4D6C72E0),
+                    blurRadius: 16,
+                    offset: Offset(0, 6),
+                  ),
+                ]
               : const [
-            BoxShadow(
-              color: Color(0x0D000000),
-              blurRadius: 8,
-              offset: Offset(0, 2),
-            ),
-          ],
+                  BoxShadow(
+                    color: Color(0x0D000000),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
         ),
         alignment: Alignment.center,
         child: widget.isLoading
             ? const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF5F7FF)),
-            strokeWidth: 2,
-          ),
-        )
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF5F7FF)),
+                  strokeWidth: 2,
+                ),
+              )
             : Text(
-          widget.label,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFFFFFFFF),
-            letterSpacing: -0.01 * 16,
-          ),
-        ),
+                widget.label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFFFFFFF),
+                  letterSpacing: -0.01 * 16,
+                ),
+              ),
       ),
     );
   }
@@ -821,11 +1130,7 @@ class _SocialButton extends StatefulWidget {
   final Widget? icon;
   final String label;
   final VoidCallback onTap;
-  const _SocialButton({
-    this.icon,
-    required this.label,
-    required this.onTap,
-  });
+  const _SocialButton({this.icon, required this.label, required this.onTap});
   @override
   State<_SocialButton> createState() => _SocialButtonState();
 }
@@ -861,19 +1166,19 @@ class _SocialButtonState extends State<_SocialButton> {
             border: Border.all(color: const Color(0xFFCDD5EF)),
             boxShadow: _hovered
                 ? [
-              const BoxShadow(
-                color: Color(0x1A000000),
-                blurRadius: 18,
-                offset: Offset(0, 6),
-              ),
-            ]
+                    const BoxShadow(
+                      color: Color(0x1A000000),
+                      blurRadius: 18,
+                      offset: Offset(0, 6),
+                    ),
+                  ]
                 : const [
-              BoxShadow(
-                color: Color(0x0D000000),
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ],
+                    BoxShadow(
+                      color: Color(0x0D000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1025,21 +1330,21 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     final titleStyle = italic
         ? GoogleFonts.cormorantGaramond(
-      fontSize: 30,
-      fontWeight: FontWeight.w500,
-      fontStyle: FontStyle.italic,
-      color: const Color(0xFF1A1D26),
-      letterSpacing: -0.02 * 30,
-      height: 1.25,
-    )
+            fontSize: 30,
+            fontWeight: FontWeight.w500,
+            fontStyle: FontStyle.italic,
+            color: const Color(0xFF1A1D26),
+            letterSpacing: -0.02 * 30,
+            height: 1.25,
+          )
         : const TextStyle(
-      fontFamily: 'Georgia',
-      fontSize: 30,
-      fontWeight: FontWeight.w400,
-      color: Color(0xFF1A1D26),
-      letterSpacing: -0.02 * 30,
-      height: 1.25,
-    );
+            fontFamily: 'Georgia',
+            fontSize: 30,
+            fontWeight: FontWeight.w400,
+            color: Color(0xFF1A1D26),
+            letterSpacing: -0.02 * 30,
+            height: 1.25,
+          );
 
     return Center(
       child: RichText(
@@ -1086,6 +1391,273 @@ class _AnimatedAppBackground extends StatelessWidget {
     return Container(
       color: const Color(0xFFFAFBFF),
       // Add your animated background here
+    );
+  }
+}
+
+class _PhoneOtpPage extends StatefulWidget {
+  final String phoneNumber;
+
+  const _PhoneOtpPage({required this.phoneNumber});
+
+  @override
+  State<_PhoneOtpPage> createState() => _PhoneOtpPageState();
+}
+
+class _PhoneOtpPageState extends State<_PhoneOtpPage> {
+  final TextEditingController _otpController = TextEditingController();
+
+  bool _isLoading = false;
+  bool _canResend = false;
+  int _resendCountdown = 60;
+  Timer? _resendTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startResendTimer();
+  }
+
+  @override
+  void dispose() {
+    _otpController.dispose();
+    _resendTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startResendTimer() {
+    _canResend = false;
+    _resendCountdown = 60;
+
+    _resendTimer?.cancel();
+
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      setState(() {
+        _resendCountdown--;
+
+        if (_resendCountdown <= 0) {
+          _canResend = true;
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  Future<void> _onResendOTP() async {
+    if (!_canResend || _isLoading) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final appwrite = Provider.of<AppwriteService>(context, listen: false);
+
+      await appwrite.sendPhoneOTP(widget.phoneNumber);
+
+      if (!mounted) return;
+
+      _otpController.clear();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('OTP resent to your phone.')),
+      );
+
+      _startResendTimer();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to resend OTP. Please try again.'),
+        ),
+      );
+
+      debugPrint('Resend phone OTP error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _verifyOtp() async {
+    final otp = _otpController.text.trim();
+
+    if (_isLoading) return;
+
+    if (otp.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter the 6-digit OTP.')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      debugPrint('🔐 Verifying phone OTP...');
+
+      final appwriteService = Provider.of<AppwriteService>(
+        context,
+        listen: false,
+      );
+
+      final success = await appwriteService.verifyPhoneOTP(
+        widget.phoneNumber,
+        otp,
+      );
+
+      if (!mounted) return;
+
+      if (success) {
+        debugPrint('✅ Phone OTP verified successfully');
+
+        final account = await appwriteService.account.get();
+
+        if (mounted) {
+          context.read<ProfileController>().loadFromAccount(
+            name: account.name,
+            email: account.email,
+          );
+        }
+
+        try {
+          await AhviNotificationService.instance.registerForCurrentUser(
+            appwriteService,
+          );
+        } catch (_) {}
+
+        if (!mounted) return;
+
+        await _routeAfterSignIn(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid or expired OTP.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      debugPrint('Phone OTP verification failed');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to verify OTP. Please try again.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          const _AnimatedAppBackground(),
+
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 24,
+                ),
+                child: _AuthCard(
+                  padding: const EdgeInsets.fromLTRB(28, 28, 28, 36),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.of(context).pop();
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F4FF),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFCDD5EF)),
+                          ),
+                          child: const Icon(
+                            Icons.arrow_back,
+                            color: Color(0xFF1A1D26),
+                            size: 20,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      const Center(
+                        child: AhviHomeText(fontSize: 36, letterSpacing: 1),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      _AuthHeading(
+                        title: 'Verify your phone',
+                        subtitle:
+                            'Enter the code sent to ${widget.phoneNumber}',
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      _InputField(
+                        controller: _otpController,
+                        hint: 'Enter 6-digit code',
+                        icon: Icons.password,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        enabled: !_isLoading,
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      _PrimaryButton(
+                        label: _isLoading ? 'Verifying...' : 'Sign In',
+                        onTap: _isLoading ? null : _verifyOtp,
+                        isLoading: _isLoading,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      Center(
+                        child: GestureDetector(
+                          onTap: (_canResend && !_isLoading)
+                              ? _onResendOTP
+                              : null,
+                          child: Text(
+                            _canResend
+                                ? 'Didn\'t receive code? Resend'
+                                : 'Resend code in $_resendCountdown seconds',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: _canResend
+                                  ? const Color(0xFF4B6FE0)
+                                  : const Color(0xFF66708A),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
