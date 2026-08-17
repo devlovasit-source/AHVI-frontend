@@ -2215,6 +2215,27 @@ String humanizeOccasion(String raw) {
       .join(' ');
 }
 
+const _occasionAliases = {
+  'office': 'Work',
+  'work': 'Work',
+  'date': 'Dinner',
+  'dinner': 'Dinner',
+};
+
+/// Maps a raw occasion value onto the review-chip vocabulary so
+/// backend/upload tokens that mean the same thing as a chip (e.g. `office`
+/// vs the `Work` chip) preselect it. Unmapped tokens fall through to
+/// [humanizeOccasion]'s plain formatting rather than being guessed at.
+@visibleForTesting
+String canonicalizeOccasion(String raw) {
+  var v = raw.trim();
+  if (v.isEmpty) return v;
+  v = v.replaceFirst(RegExp(r'^upload_occasion_', caseSensitive: false), '');
+  final alias = _occasionAliases[v.toLowerCase()];
+  if (alias != null) return alias;
+  return humanizeOccasion(raw);
+}
+
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ MODAL STEP ENUM ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 class _DetectedTaxonomy {
   final String name;
@@ -4516,7 +4537,8 @@ class _AddItemModalState extends State<_AddItemModal>
               children: _occs.map((occ) {
                 final active = item.occasions.any(
                   (o) =>
-                      humanizeOccasion(o).toLowerCase() == occ.toLowerCase(),
+                      canonicalizeOccasion(o).toLowerCase() ==
+                      occ.toLowerCase(),
                 );
                 final disabled =
                     privateWear &&
@@ -4536,7 +4558,7 @@ class _AddItemModalState extends State<_AddItemModal>
                             item.occasions = item.occasions
                                 .where(
                                   (o) =>
-                                      humanizeOccasion(o).toLowerCase() !=
+                                      canonicalizeOccasion(o).toLowerCase() !=
                                       occ.toLowerCase(),
                                 )
                                 .toList();
