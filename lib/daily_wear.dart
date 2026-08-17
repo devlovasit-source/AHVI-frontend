@@ -27,6 +27,64 @@ import 'package:myapp/widgets/ahvi_unified_outfit_grid.dart';
 
 enum _TryOnStage { preview, loading, camera, captured }
 
+/// Extracts canonical ids from a list of displayed-item maps, or null if
+/// any entry is malformed or lacks a canonical id (`id`/`$id`/`item_id`).
+/// Called only on a non-empty list, so a null here means "fail safely",
+/// never "nothing to record". Exposed (non-underscore) and
+/// [visibleForTesting] so the wear-memory identity precedence can be
+/// tested directly against real outfit maps.
+@visibleForTesting
+List<String>? canonicalIdsFromEntries(List rawItems, {String outfitId = ''}) {
+  final ids = <String>{};
+  for (final entry in rawItems) {
+    if (entry is! Map) return null;
+    final id = (entry['id'] ?? entry['\$id'] ?? entry['item_id'] ?? '')
+        .toString()
+        .trim();
+    if (id.isEmpty) {
+      debugPrint('daily_wear.wear_skipped_partial_ids outfit=$outfitId');
+      return null;
+    }
+    ids.add(id);
+  }
+  return ids.isEmpty ? null : ids.toList(growable: false);
+}
+
+/// Canonical wardrobe item ids AHVI can durably record a wear for, or null
+/// when there's nothing safe to record. Sources are checked in strict
+/// precedence — `items` (what the user actually saw), then
+/// `used_wardrobe_items`, then legacy `item_ids` — and never merged: once
+/// a source is non-empty it is authoritative, even if it turns out
+/// partially malformed. Falling through on a partial match could record a
+/// different outfit than the one displayed, so a partial `items` list
+/// fails safely instead of falling back to `used_wardrobe_items`.
+@visibleForTesting
+List<String>? wearableItemIdsForOutfit(Map<String, dynamic> outfit) {
+  final outfitId = (outfit['id'] ?? '').toString();
+
+  final items = outfit['items'];
+  if (items is List && items.isNotEmpty) {
+    return canonicalIdsFromEntries(items, outfitId: outfitId);
+  }
+
+  final usedWardrobeItems = outfit['used_wardrobe_items'];
+  if (usedWardrobeItems is List && usedWardrobeItems.isNotEmpty) {
+    return canonicalIdsFromEntries(usedWardrobeItems, outfitId: outfitId);
+  }
+
+  final legacyIds = outfit['item_ids'];
+  if (legacyIds is List) {
+    final ids = legacyIds
+        .whereType<String>()
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    return ids.isEmpty ? null : ids;
+  }
+  return null; // demo outfit — nothing real to record.
+}
+
 class DailyWearScreen extends StatefulWidget {
   const DailyWearScreen({super.key});
 
@@ -79,6 +137,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   Map<String, bool> _savedOptionById = {};
 
   String? _wornOutfitId;
+  bool _isRecordingWear = false;
   Timer? _autoPlayTimer;
   bool _userScrolling = false;
   final List<_ChatMessage> _messages = [];
@@ -1078,9 +1137,36 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     });
   }
 
-  void _wearOutfit(String outfitId, {bool closeModal = false}) {
+  List<String>? _wearableItemIds(Map<String, dynamic> outfit) =>
+      wearableItemIdsForOutfit(outfit);
+
+  /// "Wear Today" is confirmation-driven: local UI only flips to worn after
+  /// the backend durably records the wear. A failed request never marks the
+  /// outfit worn locally, so the user can see the failure and retry.
+  Future<void> _wearOutfit(String outfitId, {bool closeModal = false}) async {
+    if (_isRecordingWear) return; // in-flight guard — one request at a time.
     final outfit = _outfitById(outfitId);
+    final ids = _wearableItemIds(outfit);
+    if (ids == null) return; // nothing durable to record for this outfit.
+
     HapticFeedback.lightImpact();
+    setState(() => _isRecordingWear = true);
+    final ok = await BackendService().wearToday(
+      itemIds: ids,
+      boardId: (outfit['id'] ?? '').toString(),
+      occasion: (outfit['occasion'] ?? '').toString(),
+    );
+    if (!mounted) return;
+    setState(() => _isRecordingWear = false);
+
+    if (!ok) {
+      _showToast(
+        AppLocalizations.t(context, 'daily_wear_toast_update_failed'),
+        green: false,
+      );
+      return; // do not mark worn locally; the button stays tappable to retry.
+    }
+
     setState(() => _wornOutfitId = outfitId);
     if (closeModal) {
       setState(() => _tryOnOpen = false);
@@ -1092,9 +1178,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       ),
       green: true,
     );
-    // Record the wear so AHVI learns. Best-effort: only fires when the outfit
-    // carries real wardrobe item ids; demo outfits without ids are skipped.
-    _recordWear(outfit);
     // 🆕 Push to Home: marks the "Wear" routine bubble/card as done today,
     // with this outfit's name as the subtitle. Home's routine cards section
     // already watches HomeCardSummaryProvider, so this updates it live —
@@ -1114,45 +1197,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       // HomeCardSummaryProvider not found above this screen in the tree —
       // fail silently so wearing an outfit never breaks on this alone.
     }
-  }
-
-  void _recordWear(Map<String, dynamic> outfit) {
-    final ids = <String>[];
-    void addFrom(dynamic v) {
-      if (v is List) {
-        for (final e in v) {
-          if (e is Map) {
-            final id = (e['id'] ?? e['\$id'] ?? e['item_id'] ?? '')
-                .toString()
-                .trim();
-            if (id.isNotEmpty) ids.add(id);
-          } else if (e is String && e.trim().isNotEmpty) {
-            ids.add(e.trim());
-          }
-        }
-      }
-    }
-
-    addFrom(outfit['items']);
-    addFrom(outfit['used_wardrobe_items']);
-    addFrom(outfit['item_ids']);
-    if (ids.isEmpty) return; // demo outfit — nothing real to record.
-
-    BackendService()
-        .wearToday(
-      itemIds: ids,
-      boardId: (outfit['id'] ?? '').toString(),
-      occasion: (outfit['occasion'] ?? '').toString(),
-    )
-        .then((ok) {
-      if (!mounted) return;
-      _showToast(
-        ok
-            ? AppLocalizations.t(context, 'daily_wear_toast_style_history_added')
-            : AppLocalizations.t(context, 'daily_wear_toast_update_failed'),
-        green: ok,
-      );
-    });
   }
 
   void _openChat() {
