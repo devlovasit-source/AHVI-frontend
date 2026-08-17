@@ -639,6 +639,7 @@ class _SignUpPageState extends State<_SignUpPage> {
   String _selectedCountryFlag = '🇮🇳';
   String _selectedCountryName = 'India';
   int _selectedCountryMaxDigits = 10;
+  bool _isPhoneOtpSending = false;
 
   static const List<Map<String, dynamic>> _countries = [
     {'flag': '🇮🇳', 'name': 'India', 'code': '+91', 'digits': 10},
@@ -741,6 +742,8 @@ class _SignUpPageState extends State<_SignUpPage> {
   }
 
   Future<void> _handlePhoneSignIn() async {
+    if (_isPhoneOtpSending) return;
+
     final phone = _phoneController.text.trim();
 
     if (phone.length != _selectedCountryMaxDigits) {
@@ -749,6 +752,8 @@ class _SignUpPageState extends State<_SignUpPage> {
       );
       return;
     }
+
+    setState(() => _isPhoneOtpSending = true);
 
     try {
       final appwriteService = Provider.of<AppwriteService>(
@@ -776,6 +781,10 @@ class _SignUpPageState extends State<_SignUpPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to send OTP. Please try again.')),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isPhoneOtpSending = false);
+      }
     }
   }
 
@@ -900,10 +909,10 @@ class _SignUpPageState extends State<_SignUpPage> {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(18),
-                onTap: _handlePhoneSignIn,
-                child: const Center(
+                onTap: _isPhoneOtpSending ? null : _handlePhoneSignIn,
+                child: Center(
                   child: Text(
-                    'Sign in',
+                    _isPhoneOtpSending ? 'Sending OTP...' : 'Sign in',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -1440,7 +1449,7 @@ class _PhoneOtpPageState extends State<_PhoneOtpPage> {
   }
 
   Future<void> _onResendOTP() async {
-    if (!_canResend) return;
+    if (!_canResend || _isLoading) return;
 
     setState(() => _isLoading = true);
 
@@ -1478,6 +1487,8 @@ class _PhoneOtpPageState extends State<_PhoneOtpPage> {
   Future<void> _verifyOtp() async {
     final otp = _otpController.text.trim();
 
+    if (_isLoading) return;
+
     if (otp.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter the 6-digit OTP.')),
@@ -1485,27 +1496,63 @@ class _PhoneOtpPageState extends State<_PhoneOtpPage> {
       return;
     }
 
-    debugPrint('🔐 Verifying phone OTP...');
+    setState(() => _isLoading = true);
 
-    final appwriteService = Provider.of<AppwriteService>(
-      context,
-      listen: false,
-    );
+    try {
+      debugPrint('🔐 Verifying phone OTP...');
 
-    final success = await appwriteService.verifyPhoneOTP(
-      widget.phoneNumber,
-      otp,
-    );
-
-    if (!mounted) return;
-
-    if (success) {
-      debugPrint('✅ Phone OTP verified successfully');
-      Navigator.of(context).pop();
-    } else {
-      ScaffoldMessenger.of(
+      final appwriteService = Provider.of<AppwriteService>(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Invalid or expired OTP.')));
+        listen: false,
+      );
+
+      final success = await appwriteService.verifyPhoneOTP(
+        widget.phoneNumber,
+        otp,
+      );
+
+      if (!mounted) return;
+
+      if (success) {
+        debugPrint('✅ Phone OTP verified successfully');
+
+        final account = await appwriteService.account.get();
+
+        if (mounted) {
+          context.read<ProfileController>().loadFromAccount(
+            name: account.name,
+            email: account.email,
+          );
+        }
+
+        try {
+          await AhviNotificationService.instance.registerForCurrentUser(
+            appwriteService,
+          );
+        } catch (_) {}
+
+        if (!mounted) return;
+
+        await _routeAfterSignIn(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid or expired OTP.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      debugPrint('Phone OTP verification failed');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to verify OTP. Please try again.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

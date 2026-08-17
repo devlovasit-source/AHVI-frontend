@@ -228,7 +228,7 @@ class AppwriteService extends ChangeNotifier {
   static const String _otpUserIdKey = 'ahvi_otp_user_id';
   static const String _otpEmailKey = 'ahvi_otp_email';
   static const String _otpTimestampKey = 'ahvi_otp_timestamp';
-  static const Duration _otpTimeout = Duration(minutes: 10);
+  static const Duration _otpTimeout = Duration(minutes: 15);
 
   static const String _phoneOtpUserIdKey = 'ahvi_phone_otp_user_id';
   static const String _phoneOtpNumberKey = 'ahvi_phone_otp_number';
@@ -271,28 +271,68 @@ class AppwriteService extends ChangeNotifier {
     try {
       final normalizedPhone = phoneNumber.trim();
 
-      debugPrint('📱 Sending phone OTP to: $normalizedPhone');
+      debugPrint('📱 Sending phone OTP');
 
+      // Get the currently authenticated Appwrite user.
+      final currentUser = await account.get();
+
+      debugPrint('📱 Sending phone OTP for authenticated user');
+
+      // IMPORTANT:
+      // Use the EXISTING user's Appwrite ID.
+      // Do NOT use ID.unique(), because that creates a separate account.
       final token = await account.createPhoneToken(
-        userId: ID.unique(),
+        userId: currentUser.$id,
         phone: normalizedPhone,
       );
 
       final prefs = await SharedPreferences.getInstance();
 
       await prefs.setString(_phoneOtpUserIdKey, token.userId);
-
       await prefs.setString(_phoneOtpNumberKey, normalizedPhone);
-
       await prefs.setInt(
         _phoneOtpTimestampKey,
         DateTime.now().millisecondsSinceEpoch,
       );
 
-      debugPrint('✅ Phone OTP sent & persisted: userId=${token.userId}');
+      debugPrint('✅ Phone OTP sent');
     } catch (e) {
-      debugPrint('❌ Send phone OTP error: $e');
+      debugPrint('❌ Phone OTP send failed');
       rethrow;
+    }
+  }
+
+  Future<void> _linkPhoneToCurrentUser(String phone) async {
+    final jwt = await account.createJWT();
+    final token = jwt.jwt;
+
+    if (token.isEmpty) {
+      throw Exception('Could not create Appwrite JWT');
+    }
+
+    final response = await http
+        .post(
+          Uri.parse('${Env.backendApiUrl}/api/auth/phone/link'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({'phone': phone}),
+        )
+        .timeout(const Duration(seconds: 20));
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      String detail = 'Failed to link phone number';
+
+      try {
+        final data = jsonDecode(response.body);
+
+        if (data is Map && data['detail'] != null) {
+          detail = data['detail'].toString();
+        }
+      } catch (_) {}
+
+      throw Exception(detail);
     }
   }
 
@@ -300,10 +340,7 @@ class AppwriteService extends ChangeNotifier {
     try {
       final normalizedPhone = phoneNumber.trim();
 
-      debugPrint(
-        '🔐 Verifying phone OTP for: $normalizedPhone, '
-        'code: ${otp.length >= 2 ? '${otp.substring(0, 2)}***' : '***'}',
-      );
+      debugPrint('🔐 Verifying phone OTP');
 
       // Retrieve persisted phone OTP information.
       final prefs = await SharedPreferences.getInstance();
@@ -346,14 +383,17 @@ class AppwriteService extends ChangeNotifier {
         return false;
       }
 
-      // Create the new Appwrite session using the OTP.
-      debugPrint('🔑 Creating phone session with userId: $savedUserId');
+      // Create the Appwrite session using the OTP.
+      debugPrint('🔑 Creating phone session');
 
       clearUserCache();
 
       await account.createSession(userId: savedUserId, secret: otp);
 
       debugPrint('✅ Phone session created successfully');
+
+      // Link the verified phone to the authenticated Appwrite user.
+      await _linkPhoneToCurrentUser(normalizedPhone);
 
       // Same AHVI user/profile flow as email OTP.
       await cacheCurrentUser();
@@ -369,7 +409,7 @@ class AppwriteService extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      debugPrint('❌ Verify phone OTP error: $e');
+      debugPrint('❌ Phone OTP verification failed');
 
       // Keep OTP state so the user can retry with the correct code.
       return false;
