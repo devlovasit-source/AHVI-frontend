@@ -97,7 +97,7 @@ void main() {
     final source = File('lib/daily_wear.dart').readAsStringSync();
     final optCard = source.substring(
       source.indexOf('Widget _buildOptCard'),
-      source.indexOf('Widget _buildOptCard') + 6000,
+      source.indexOf('Widget _buildOptCard') + 9000,
     );
 
     // Same button widget, same 115px card height, same disabled-when-worn

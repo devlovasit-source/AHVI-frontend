@@ -85,6 +85,53 @@ List<String>? wearableItemIdsForOutfit(Map<String, dynamic> outfit) {
   return null; // demo outfit — nothing real to record.
 }
 
+/// Same source precedence as [wearableItemIdsForOutfit] (items, then
+/// used_wardrobe_items, never merged, fail-safe on a populated-but-partial
+/// source), but returns the raw item maps rather than just ids. "Change it"
+/// needs the descriptive fields (name/category/etc) so the backend can
+/// resolve a canonical role — plain ids alone aren't enough for that. Legacy
+/// item_ids (bare strings, no descriptive fields) come back as minimal
+/// `{'id': ...}` maps; role resolution on those will typically fail safely
+/// server-side rather than guess, which is the correct behavior.
+@visibleForTesting
+List<Map<String, dynamic>>? rawItemEntriesForOutfit(
+  Map<String, dynamic> outfit,
+) {
+  final items = outfit['items'];
+  if (items is List && items.isNotEmpty) {
+    return _rawMapsOrNull(items);
+  }
+
+  final usedWardrobeItems = outfit['used_wardrobe_items'];
+  if (usedWardrobeItems is List && usedWardrobeItems.isNotEmpty) {
+    return _rawMapsOrNull(usedWardrobeItems);
+  }
+
+  final legacyIds = outfit['item_ids'];
+  if (legacyIds is List) {
+    final maps = legacyIds
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .map((id) => <String, dynamic>{'id': id})
+        .toList(growable: false);
+    return maps.isEmpty ? null : maps;
+  }
+  return null;
+}
+
+List<Map<String, dynamic>>? _rawMapsOrNull(List rawItems) {
+  final maps = <Map<String, dynamic>>[];
+  for (final entry in rawItems) {
+    if (entry is! Map) return null;
+    final id = (entry['id'] ?? entry['\$id'] ?? entry['item_id'] ?? '')
+        .toString()
+        .trim();
+    if (id.isEmpty) return null; // same fail-safe as canonicalIdsFromEntries.
+    maps.add(Map<String, dynamic>.from(entry));
+  }
+  return maps.isEmpty ? null : maps;
+}
+
 class DailyWearScreen extends StatefulWidget {
   const DailyWearScreen({super.key});
 
@@ -138,6 +185,9 @@ class _DailyWearScreenState extends State<DailyWearScreen>
 
   String? _wornOutfitId;
   bool _isRecordingWear = false;
+  final Set<String> _feedbackInFlightIds = {};
+  final Set<String> _changeItemInFlightIds = {};
+  final Map<String, int> _boardRevisionByOutfitId = {};
   Timer? _autoPlayTimer;
   bool _userScrolling = false;
   final List<_ChatMessage> _messages = [];
@@ -1197,6 +1247,169 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       // HomeCardSummaryProvider not found above this screen in the tree —
       // fail silently so wearing an outfit never breaks on this alone.
     }
+  }
+
+  String _canonicalEntryId(Map entry) =>
+      (entry['id'] ?? entry['\$id'] ?? entry['item_id'] ?? '')
+          .toString()
+          .trim();
+
+  /// "Not for me": outfit-level rejection. Never disables/removes individual
+  /// garments — only tells AHVI to avoid this exact combination again soon.
+  /// Confirmation-driven like Wear Today: the card only advances after the
+  /// backend confirms the feedback was durably recorded, never before.
+  Future<void> _notForMe(String outfitId) async {
+    if (_feedbackInFlightIds.contains(outfitId)) return;
+    final outfit = _outfitById(outfitId);
+    if (outfit.isEmpty) return;
+    final ids = wearableItemIdsForOutfit(outfit);
+    if (ids == null) return; // nothing durable to reject — fail safe.
+
+    HapticFeedback.lightImpact();
+    setState(() => _feedbackInFlightIds.add(outfitId));
+    final ok = await BackendService().sendBoardFeedback(
+      action: 'dislike',
+      board: {
+        'board': (outfit['id'] ?? '').toString(),
+        'type': 'daily_wear_outfit',
+      },
+      itemIds: ids,
+      occasion: (outfit['occasion'] ?? '').toString(),
+    );
+    if (!mounted) return;
+    setState(() => _feedbackInFlightIds.remove(outfitId));
+
+    if (!ok) {
+      _showToast(
+        AppLocalizations.t(context, 'daily_wear_toast_update_failed'),
+        green: false,
+      );
+      return; // board stays as-is; never fake "learned" on a failed write.
+    }
+
+    _showToast(AppLocalizations.t(context, 'daily_wear_toast_not_for_me'));
+    // Feedback is durably confirmed (ok == true) before the board is ever
+    // touched — rejecting never removes the card first and hopes the
+    // backend agrees.
+    setState(() {
+      _displayedOutfits.removeWhere(
+        (o) => (o['id'] ?? '').toString() == outfitId,
+      );
+    });
+    if (_displayedOutfits.isEmpty && !_isLoading) {
+      // Rejecting the last loaded recommendation must never leave DailyWear
+      // empty — fall back to the same fetch path used on initial load.
+      // _isLoading guards against overlapping fetches; _fetchDailyBoard is
+      // a single one-shot request, so this can't loop.
+      await _fetchDailyBoard();
+    }
+  }
+
+  /// "Change it": localized, role-scoped replacement via the existing board
+  /// mutation engine (adapted server-side — no client-side item picking).
+  /// The user only picks WHICH piece to change; the backend resolves its
+  /// role and sources eligible replacements from the user's own canonical
+  /// wardrobe (not from whatever happens to be rendered on screen), so a
+  /// swap can succeed even when no other loaded card shows an alternative.
+  Future<void> _changeIt(String outfitId) async {
+    if (_changeItemInFlightIds.contains(outfitId)) return;
+    final outfit = _outfitById(outfitId);
+    if (outfit.isEmpty) return;
+    final items = rawItemEntriesForOutfit(outfit);
+    if (items == null) return; // nothing durably identified to change.
+
+    final oldItemId = await _pickItemToChange(items);
+    if (oldItemId == null || !mounted) return;
+
+    HapticFeedback.lightImpact();
+    setState(() => _changeItemInFlightIds.add(outfitId));
+    final result = await BackendService().changeOutfitItem(
+      boardId: outfitId,
+      revision: _boardRevisionByOutfitId[outfitId] ?? 1,
+      items: items,
+      oldItemId: oldItemId,
+      occasion: (outfit['occasion'] ?? '').toString(),
+    );
+    if (!mounted) return;
+    setState(() => _changeItemInFlightIds.remove(outfitId));
+
+    final success = result['success'] == true;
+    if (!success) {
+      _showToast(
+        AppLocalizations.t(context, 'daily_wear_toast_change_it_failed'),
+        green: false,
+      );
+      return; // nothing persisted, nothing changed on screen.
+    }
+
+    final data = (result['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final revision = data['revision'];
+    if (revision is int) {
+      _boardRevisionByOutfitId[outfitId] = revision;
+    } else if (revision != null) {
+      final parsed = int.tryParse(revision.toString());
+      if (parsed != null) _boardRevisionByOutfitId[outfitId] = parsed;
+    }
+    final changedIds = (data['changed_item_ids'] as List?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        const [];
+    if (changedIds.isEmpty) return; // engine reported success with no delta — nothing to show.
+
+    // The mutation engine is authoritative for the resulting board — read
+    // the updated items back from its own response rather than guessing
+    // client-side which item the id now refers to.
+    final boards = (result['cards'] as List?) ?? (result['style_boards'] as List?);
+    final updatedBoard = (boards != null && boards.isNotEmpty && boards.first is Map)
+        ? Map<String, dynamic>.from(boards.first as Map)
+        : null;
+    final updatedItems = (updatedBoard?['items'] as List?)
+        ?.whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    if (updatedItems == null || updatedItems.isEmpty) return;
+
+    setState(() {
+      final idx = _displayedOutfits.indexWhere(
+        (o) => (o['id'] ?? '').toString() == outfitId,
+      );
+      if (idx == -1) return;
+      _displayedOutfits[idx] = {
+        ..._displayedOutfits[idx],
+        'items': updatedItems,
+      };
+    });
+  }
+
+  Future<String?> _pickItemToChange(List<Map<String, dynamic>> items) {
+    return showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                AppLocalizations.t(context, 'daily_wear_change_it_sheet_title'),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+            ),
+            for (final item in items)
+              ListTile(
+                title: Text(
+                  (item['name'] ?? item['title'] ?? item['category'] ?? '')
+                      .toString(),
+                ),
+                onTap: () => Navigator.of(sheetContext).pop(_canonicalEntryId(item)),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   void _openChat() {
@@ -2978,6 +3191,18 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                       _smallShare(
                         AppLocalizations.t(context, card['nameKey'] as String),
                       ),
+                      const SizedBox(width: 5),
+                      _smallActionIcon(
+                        Icons.thumb_down_alt_outlined,
+                        AppLocalizations.t(context, 'daily_wear_not_for_me'),
+                        () => _notForMe(outfitId),
+                      ),
+                      const SizedBox(width: 5),
+                      _smallActionIcon(
+                        Icons.checkroom_outlined,
+                        AppLocalizations.t(context, 'daily_wear_change_it'),
+                        () => _changeIt(outfitId),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -3023,6 +3248,33 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       ),
     ),
   );
+
+  /// Compact icon-only action (Flutter icon, not emoji, so its meaning is
+  /// unambiguous — e.g. never reads as Shuffle). Label is exposed via
+  /// [Tooltip] and [Semantics] since the small card footer doesn't have
+  /// room for a visible text label alongside Save/Share.
+  Widget _smallActionIcon(IconData iconData, String label, VoidCallback onTap) =>
+      Tooltip(
+        message: label,
+        child: Semantics(
+          button: true,
+          label: label,
+          child: _PressScaleButton(
+            scaleDown: 0.92,
+            onTap: onTap,
+            child: Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: panelColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: cardBorderColor),
+              ),
+              child: Center(child: Icon(iconData, size: 15, color: mutedColor)),
+            ),
+          ),
+        ),
+      );
 
   Widget _smallShare(String text) => _PressScaleButton(
     scaleDown: 0.92,

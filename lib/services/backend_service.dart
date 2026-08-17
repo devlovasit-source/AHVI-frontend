@@ -1024,17 +1024,24 @@ class BackendService {
     }
   }
 
-  /// Fire-and-forget board feedback for the unified style card's
-  /// Like / Dislike (and Save / Shuffle / Share) actions. POSTs the backend
-  /// feedback endpoint; failures are swallowed so the UI never blocks on it.
+  /// Board feedback for the unified style card's Like / Dislike (and Save /
+  /// Shuffle / Share) actions, and for DailyWear's "Not for me". POSTs the
+  /// backend feedback endpoint and returns whether it was durably recorded;
+  /// existing fire-and-forget callers can still ignore the return value.
   /// This is also the training signal for the adaptive stylist brain.
-  Future<void> sendBoardFeedback({
+  /// [itemIds]/[occasion]/[reason] are optional, additive fields the
+  /// backend uses to compute an exact-outfit rejection signature — omit
+  /// them to keep the original untyped like/dislike behavior unchanged.
+  Future<bool> sendBoardFeedback({
     required String action,
     required Map<String, dynamic> board,
+    List<String> itemIds = const [],
+    String occasion = '',
+    String? reason,
   }) async {
     try {
       final userId = await _currentUserId();
-      await http
+      final response = await http
           .post(
             Uri.parse('$baseUrl/api/feedback/board'),
             headers: await _authHeaders(),
@@ -1042,12 +1049,74 @@ class BackendService {
               'user_id': userId,
               'action': action,
               'board_payload': board,
+              'item_ids': itemIds,
+              'occasion': occasion,
+              if (reason != null) 'reason': reason,
             }),
           )
           .timeout(const Duration(seconds: 12));
-      debugPrint('AHVI_BOARD_FEEDBACK_SENT action=$action');
+      final success = response.statusCode >= 200 && response.statusCode < 300;
+      if (success) {
+        debugPrint('AHVI_BOARD_FEEDBACK_SENT action=$action');
+      } else {
+        debugPrint(
+          'AHVI_BOARD_FEEDBACK_FAIL_STATUS action=$action status=${response.statusCode}',
+        );
+      }
+      return success;
     } catch (e) {
-      debugPrint('AHVI_BOARD_FEEDBACK_FAIL action=$action error=$e');
+      debugPrint('AHVI_BOARD_FEEDBACK_FAIL_STATUS action=$action status=error');
+      return false;
+    }
+  }
+
+  /// "Change it": requests a role-scoped item replacement through the
+  /// existing board-mutation engine (adapted server-side, not a second
+  /// engine). Returns the raw response envelope — callers check `success`
+  /// and, on success, `data.changed_item_ids`/`revision`. Never throws;
+  /// a network/parsing failure surfaces as `{'success': false}` so the UI
+  /// can show a failure state without a fake "changed" result.
+  Future<Map<String, dynamic>> changeOutfitItem({
+    required String boardId,
+    required int revision,
+    required List<Map<String, dynamic>> items,
+    required String oldItemId,
+    String occasion = '',
+  }) async {
+    try {
+      final userId = await _currentUserId();
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/style/change-item'),
+            headers: await _authHeaders(),
+            body: jsonEncode({
+              'user_id': userId,
+              'board_id': boardId,
+              'revision': revision,
+              'items': items,
+              'old_item_id': oldItemId,
+              'occasion': occasion,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+      Map<String, dynamic> data;
+      try {
+        data = _parseJsonMap(response.body);
+      } catch (_) {
+        return {'success': false, 'error': {'code': 'MALFORMED_RESPONSE'}};
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final detail = data['detail'];
+        if (detail is Map) return {'success': false, 'error': detail};
+        return {
+          'success': false,
+          'error': {'code': 'REQUEST_FAILED', 'status': response.statusCode},
+        };
+      }
+      return data;
+    } catch (e) {
+      debugPrint('AHVI_CHANGE_ITEM_FAIL error=$e');
+      return {'success': false, 'error': {'code': 'NETWORK_ERROR'}};
     }
   }
 
