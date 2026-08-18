@@ -1047,7 +1047,7 @@
   "style_boards_legend_ai": "AI ಶಿಫಾರಸು ಮಾಡಿದ",
   "style_boards_legend_wardrobe": "ನಿಮ್ಮ ವಾರ್ಡ್‌ರೋಬ್‌ನಿಂದ",
   "style_boards_load_error": "ಸ್ಟೈಲ್ ಬೋರ್ಡ್‌ಗಳನ್ನು ರಚಿಸಲಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
-  "style_boards_loading": "ನಿಮ್ಮ ಉಡುಗೆಯನ್ನು ಸ್ಟೈಲ್ ಮಾಡಲಾಗುತ್ತಿದೆ…",
+  "style_boards_loading_subtitle": "ನಿಮ್ಮ ವಾರ್ಡ್ರೋಬ್‌ನಿಂದ ಉತ್ತಮ ವಸ್ತುಗಳನ್ನು ಹುಡುಕುತ್ತಿದ್ದೇವೆ...",
   "style_boards_locked_badge": "Locked",
   "style_boards_locked_items_desc": "Locked items stay unchanged",
   "style_boards_locked_items_explain": "These items won't change when you shuffle",

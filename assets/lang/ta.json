@@ -1047,7 +1047,7 @@
   "style_boards_legend_ai": "AI பரிந்துரைக்கப்பட்டது",
   "style_boards_legend_wardrobe": "உங்கள் அலமாரியிலிருந்து",
   "style_boards_load_error": "ஸ்டைல் போர்டுகளை உருவாக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
-  "style_boards_loading": "உங்கள் உடையை அலங்கரிக்கிறது…",
+  "style_boards_loading_subtitle": "உங்கள் அலமாரியிலிருந்து சிறந்த உடைகளைத் தேடுகிறோம்...",
   "style_boards_locked_badge": "Locked",
   "style_boards_locked_items_desc": "Locked items stay unchanged",
   "style_boards_locked_items_explain": "These items won't change when you shuffle",

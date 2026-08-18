@@ -1047,7 +1047,7 @@
   "style_boards_legend_ai": "AI Recommended",
   "style_boards_legend_wardrobe": "From Your Wardrobe",
   "style_boards_load_error": "Could not generate style boards. Please try again.",
-  "style_boards_loading": "Styling your outfit…",
+  "style_boards_loading_subtitle": "Finding the best pieces from your wardrobe...",
   "style_boards_locked_badge": "Locked",
   "style_boards_locked_items_desc": "Locked items stay unchanged",
   "style_boards_locked_items_explain": "These items won't change when you shuffle",

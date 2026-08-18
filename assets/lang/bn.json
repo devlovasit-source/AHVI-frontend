@@ -1047,7 +1047,7 @@
   "style_boards_legend_ai": "AI সুপারিশকৃত",
   "style_boards_legend_wardrobe": "আপনার ওয়ার্ডরোব থেকে",
   "style_boards_load_error": "স্টাইল বোর্ড তৈরি করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।",
-  "style_boards_loading": "আপনার পোশাক স্টাইল করা হচ্ছে…",
+  "style_boards_loading_subtitle": "আপনার ওয়্যারড্রোব থেকে সেরা জিনিসগুলো খুঁজছি...",
   "style_boards_locked_badge": "Locked",
   "style_boards_locked_items_desc": "Locked items stay unchanged",
   "style_boards_locked_items_explain": "These items won't change when you shuffle",

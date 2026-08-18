@@ -1047,7 +1047,7 @@
   "style_boards_legend_ai": "AI ശുപാർശ ചെയ്തത്",
   "style_boards_legend_wardrobe": "നിങ്ങളുടെ വാർഡ്‌റോബിൽ നിന്ന്",
   "style_boards_load_error": "സ്റ്റൈൽ ബോർഡുകൾ ഉണ്ടാക്കാൻ കഴിഞ്ഞില്ല. വീണ്ടും ശ്രമിക്കുക.",
-  "style_boards_loading": "നിങ്ങളുടെ വേഷം സ്റ്റൈൽ ചെയ്യുന്നു…",
+  "style_boards_loading_subtitle": "നിങ്ങളുടെ വാർഡ്രോബിൽ നിന്ന് മികച്ച ഇനങ്ങൾ കണ്ടെത്തുന്നു...",
   "style_boards_locked_badge": "Locked",
   "style_boards_locked_items_desc": "Locked items stay unchanged",
   "style_boards_locked_items_explain": "These items won't change when you shuffle",

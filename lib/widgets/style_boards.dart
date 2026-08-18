@@ -41,12 +41,12 @@ import 'package:myapp/app_localizations.dart';
 // PUBLIC ENTRY POINT
 // ============================================================
 void showStyleBoardsSheet(
-    BuildContext context, {
-      required WardrobeItem selectedItem,
-      required List<WardrobeItem> allItems,
-      VoidCallback? onStyleSelected,
-      VoidCallback? onItemReplaced,
-    }) {
+  BuildContext context, {
+  required WardrobeItem selectedItem,
+  required List<WardrobeItem> allItems,
+  VoidCallback? onStyleSelected,
+  VoidCallback? onItemReplaced,
+}) {
   showDialog(
     context: context,
     useRootNavigator: true,
@@ -185,7 +185,16 @@ class BoardHistory {
 // real to score against. Swap for real tagged wardrobe metadata
 // (color, season, occasion fields on WardrobeItem) when available.
 // ============================================================
-enum ClothingSlot { top, bottom, dress, outerwear, footwear, bag, accessory, other }
+enum ClothingSlot {
+  top,
+  bottom,
+  dress,
+  outerwear,
+  footwear,
+  bag,
+  accessory,
+  other,
+}
 
 class ItemAttributes {
   final ClothingSlot slot;
@@ -199,22 +208,68 @@ class ItemAttributes {
   });
 
   static const List<String> _knownColors = [
-    'black', 'white', 'grey', 'gray', 'navy', 'blue', 'red', 'pink',
-    'green', 'yellow', 'beige', 'brown', 'tan', 'cream', 'maroon',
-    'purple', 'orange', 'gold', 'silver', 'olive',
+    'black',
+    'white',
+    'grey',
+    'gray',
+    'navy',
+    'blue',
+    'red',
+    'pink',
+    'green',
+    'yellow',
+    'beige',
+    'brown',
+    'tan',
+    'cream',
+    'maroon',
+    'purple',
+    'orange',
+    'gold',
+    'silver',
+    'olive',
   ];
 
   static const Map<String, List<String>> _occasionKeywords = {
-    'casual': ['casual', 'denim', 'tshirt', 't-shirt', 'sneaker', 'hoodie', 'jeans', 'everyday'],
-    'office': ['formal', 'office', 'blazer', 'trouser', 'shirt', 'pencil', 'loafer', 'work'],
-    'evening': ['evening', 'party', 'gown', 'heel', 'silk', 'sequin', 'cocktail', 'dress'],
+    'casual': [
+      'casual',
+      'denim',
+      'tshirt',
+      't-shirt',
+      'sneaker',
+      'hoodie',
+      'jeans',
+      'everyday',
+    ],
+    'office': [
+      'formal',
+      'office',
+      'blazer',
+      'trouser',
+      'shirt',
+      'pencil',
+      'loafer',
+      'work',
+    ],
+    'evening': [
+      'evening',
+      'party',
+      'gown',
+      'heel',
+      'silk',
+      'sequin',
+      'cocktail',
+      'dress',
+    ],
   };
 
   static ItemAttributes analyze(String? rawName, String rawCat) {
     final text = '${(rawName ?? '').toLowerCase()} ${rawCat.toLowerCase()}';
 
     final ClothingSlot slot;
-    if (text.contains('dress') || text.contains('gown') || text.contains('jumpsuit')) {
+    if (text.contains('dress') ||
+        text.contains('gown') ||
+        text.contains('jumpsuit')) {
       slot = ClothingSlot.dress;
     } else if (text.contains('shirt') ||
         text.contains('blouse') ||
@@ -268,14 +323,26 @@ class ItemAttributes {
       if (keywords.any((k) => text.contains(k))) occasionTags.add(occasion);
     });
 
-    return ItemAttributes(slot: slot, colors: colors, occasionTags: occasionTags);
+    return ItemAttributes(
+      slot: slot,
+      colors: colors,
+      occasionTags: occasionTags,
+    );
   }
 }
 
 /// Step 2 + Step 3 of the AI flow: compatibility search + ranking.
 class StyleCompatibility {
   static const Set<String> _neutrals = {
-    'black', 'white', 'grey', 'gray', 'navy', 'beige', 'tan', 'cream', 'brown'
+    'black',
+    'white',
+    'grey',
+    'gray',
+    'navy',
+    'beige',
+    'tan',
+    'cream',
+    'brown',
   };
 
   static double colorHarmonyScore(Set<String> a, Set<String> b) {
@@ -312,9 +379,26 @@ class StyleBoardAIService {
   static const List<String> occasions = ['casual', 'office', 'evening'];
 
   static const Map<String, List<ClothingSlot>> _slotPlan = {
-    'casual': [ClothingSlot.top, ClothingSlot.bottom, ClothingSlot.footwear, ClothingSlot.bag, ClothingSlot.accessory],
-    'office': [ClothingSlot.top, ClothingSlot.bottom, ClothingSlot.outerwear, ClothingSlot.footwear, ClothingSlot.bag],
-    'evening': [ClothingSlot.dress, ClothingSlot.footwear, ClothingSlot.bag, ClothingSlot.accessory],
+    'casual': [
+      ClothingSlot.top,
+      ClothingSlot.bottom,
+      ClothingSlot.footwear,
+      ClothingSlot.bag,
+      ClothingSlot.accessory,
+    ],
+    'office': [
+      ClothingSlot.top,
+      ClothingSlot.bottom,
+      ClothingSlot.outerwear,
+      ClothingSlot.footwear,
+      ClothingSlot.bag,
+    ],
+    'evening': [
+      ClothingSlot.dress,
+      ClothingSlot.footwear,
+      ClothingSlot.bag,
+      ClothingSlot.accessory,
+    ],
   };
 
   static const int minItemsPerBoard = 6;
@@ -372,26 +456,31 @@ class StyleBoardAIService {
     final neededSlots = List<ClothingSlot>.from(_slotPlan[occasion]!);
     neededSlots.remove(anchorAttrs.slot); // anchor already fills its own slot
 
-    final entries = <BoardDisplayItem>[WardrobeBoardItem(anchorItem, matchScore: 1.0)];
+    final entries = <BoardDisplayItem>[
+      WardrobeBoardItem(anchorItem, matchScore: 1.0),
+    ];
     final usedIds = <String>{anchorItem.id};
 
     // Step 2 (search) + Step 3 (rank) per remaining slot.
     for (final slot in neededSlots) {
       if (entries.length >= maxItemsPerBoard) break;
 
-      final ranked = pool
-          .where((i) => !usedIds.contains(i.id))
-          .where((i) => ItemAttributes.analyze(i.name, i.cat).slot == slot)
-          .map((i) => MapEntry(
-        i,
-        StyleCompatibility.scoreCandidate(
-          anchor: anchorAttrs,
-          candidate: ItemAttributes.analyze(i.name, i.cat),
-          targetOccasion: occasion,
-        ),
-      ))
-          .toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
+      final ranked =
+          pool
+              .where((i) => !usedIds.contains(i.id))
+              .where((i) => ItemAttributes.analyze(i.name, i.cat).slot == slot)
+              .map(
+                (i) => MapEntry(
+                  i,
+                  StyleCompatibility.scoreCandidate(
+                    anchor: anchorAttrs,
+                    candidate: ItemAttributes.analyze(i.name, i.cat),
+                    targetOccasion: occasion,
+                  ),
+                ),
+              )
+              .toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
 
       if (ranked.isNotEmpty) {
         final best = ranked.first;
@@ -399,13 +488,15 @@ class StyleBoardAIService {
         usedIds.add(best.key.id);
       } else {
         // Step 4 (missing-item handling): fill the gap, clearly tagged.
-        entries.add(_aiFillFor(
-          slot,
-          occasion,
-          slotLabelFor: slotLabelFor,
-          aiFillNameFor: aiFillNameFor,
-          aiFillReasonFor: aiFillReasonFor,
-        ));
+        entries.add(
+          _aiFillFor(
+            slot,
+            occasion,
+            slotLabelFor: slotLabelFor,
+            aiFillNameFor: aiFillNameFor,
+            aiFillReasonFor: aiFillReasonFor,
+          ),
+        );
       }
     }
 
@@ -430,12 +521,12 @@ class StyleBoardAIService {
   }
 
   static AiRecommendedBoardItem _aiFillFor(
-      ClothingSlot slot,
-      String occasion, {
-        required String Function(ClothingSlot slot) slotLabelFor,
-        required String Function(String label) aiFillNameFor,
-        required String Function(String label) aiFillReasonFor,
-      }) {
+    ClothingSlot slot,
+    String occasion, {
+    required String Function(ClothingSlot slot) slotLabelFor,
+    required String Function(String label) aiFillNameFor,
+    required String Function(String label) aiFillReasonFor,
+  }) {
     final label = slotLabelFor(slot);
     return AiRecommendedBoardItem(
       id: 'ai_${occasion}_${slot.name}_${DateTime.now().microsecondsSinceEpoch}',
@@ -521,15 +612,19 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   /// Localized name for an AI-recommended placeholder card, e.g.
   /// "Top pick" — [label] is the already-localized slot label.
   String _aiFillNameFor(BuildContext context, String label) {
-    return AppLocalizations.t(context, 'style_boards_ai_fill_name')
-        .replaceAll('{slot}', label);
+    return AppLocalizations.t(
+      context,
+      'style_boards_ai_fill_name',
+    ).replaceAll('{slot}', label);
   }
 
   /// Localized reason text for an AI-recommended placeholder card,
   /// e.g. "No matching Top in your wardrobe for this look".
   String _aiFillReasonFor(BuildContext context, String label) {
-    return AppLocalizations.t(context, 'style_boards_ai_fill_reason')
-        .replaceAll('{slot}', label);
+    return AppLocalizations.t(
+      context,
+      'style_boards_ai_fill_reason',
+    ).replaceAll('{slot}', label);
   }
 
   // ── Data fetching (AI flow) ──────────────────────────────────
@@ -565,12 +660,14 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
         selectedBoardIndex = 0;
         lockedItemIds.clear();
         boardHistory = boards
-            .map((b) => BoardHistory(
-          id: 'h_${b.occasion}_${DateTime.now().millisecondsSinceEpoch}',
-          occasion: b.occasion,
-          items: b.items,
-          createdAt: DateTime.now(),
-        ))
+            .map(
+              (b) => BoardHistory(
+                id: 'h_${b.occasion}_${DateTime.now().millisecondsSinceEpoch}',
+                occasion: b.occasion,
+                items: b.items,
+                createdAt: DateTime.now(),
+              ),
+            )
             .toList();
         _isLoading = false;
       });
@@ -598,29 +695,39 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   void _shuffleUnlockedPieces() {
     setState(() {
       final board = styleBoards[selectedBoardIndex];
-      final anchorAttrs =
-      ItemAttributes.analyze(widget.selectedItem.name, widget.selectedItem.cat);
+      final anchorAttrs = ItemAttributes.analyze(
+        widget.selectedItem.name,
+        widget.selectedItem.cat,
+      );
       final usedIds = board.items.map((e) => e.id).toSet();
-      final pool = widget.allItems.where((i) => i.id != widget.selectedItem.id).toList();
+      final pool = widget.allItems
+          .where((i) => i.id != widget.selectedItem.id)
+          .toList();
 
       final updated = board.items.map((entry) {
         if (lockedItemIds.contains(entry.id)) return entry;
-        if (entry.id == widget.selectedItem.id) return entry; // never touch the anchor
+        if (entry.id == widget.selectedItem.id)
+          return entry; // never touch the anchor
 
         final slot = ItemAttributes.analyze(entry.name, entry.cat).slot;
-        final ranked = pool
-            .where((i) => !usedIds.contains(i.id))
-            .where((i) => ItemAttributes.analyze(i.name, i.cat).slot == slot)
-            .map((i) => MapEntry(
-          i,
-          StyleCompatibility.scoreCandidate(
-            anchor: anchorAttrs,
-            candidate: ItemAttributes.analyze(i.name, i.cat),
-            targetOccasion: board.occasion,
-          ),
-        ))
-            .toList()
-          ..sort((a, b) => b.value.compareTo(a.value));
+        final ranked =
+            pool
+                .where((i) => !usedIds.contains(i.id))
+                .where(
+                  (i) => ItemAttributes.analyze(i.name, i.cat).slot == slot,
+                )
+                .map(
+                  (i) => MapEntry(
+                    i,
+                    StyleCompatibility.scoreCandidate(
+                      anchor: anchorAttrs,
+                      candidate: ItemAttributes.analyze(i.name, i.cat),
+                      targetOccasion: board.occasion,
+                    ),
+                  ),
+                )
+                .toList()
+              ..sort((a, b) => b.value.compareTo(a.value));
 
         if (ranked.isEmpty) return entry; // nothing else fits this slot
 
@@ -684,9 +791,9 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   }
 
   void _showItemDetailsPanel() {
-    final item = styleBoards[selectedBoardIndex]
-        .items
-        .firstWhere((i) => i.id == selectedItemId);
+    final item = styleBoards[selectedBoardIndex].items.firstWhere(
+      (i) => i.id == selectedItemId,
+    );
 
     showModalBottomSheet(
       context: context,
@@ -749,8 +856,12 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   }
 
   void _openItemPicker(BoardDisplayItem current, {required bool similarOnly}) {
-    final usedIds = styleBoards[selectedBoardIndex].items.map((i) => i.id).toSet();
-    var candidates = widget.allItems.where((i) => !usedIds.contains(i.id)).toList();
+    final usedIds = styleBoards[selectedBoardIndex].items
+        .map((i) => i.id)
+        .toSet();
+    var candidates = widget.allItems
+        .where((i) => !usedIds.contains(i.id))
+        .toList();
     if (similarOnly) {
       candidates = candidates.where((i) => i.cat == current.cat).toList();
     }
@@ -787,40 +898,43 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
           : _loadError != null
           ? _buildErrorState(context, t)
           : SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildOccasionTabs(context, t),
-                  const SizedBox(height: 12),
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: t.cardBorder, width: 1.0),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    padding: const EdgeInsets.all(10),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                     child: Column(
                       children: [
-                        _buildSourceLegend(context, t),
-                        _buildUnifiedGrid(
-                            context, t, styleBoards[selectedBoardIndex].items),
+                        _buildOccasionTabs(context, t),
+                        const SizedBox(height: 12),
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: t.cardBorder, width: 1.0),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          padding: const EdgeInsets.all(10),
+                          child: Column(
+                            children: [
+                              _buildSourceLegend(context, t),
+                              _buildUnifiedGrid(
+                                context,
+                                t,
+                                styleBoards[selectedBoardIndex].items,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        _buildControlButtons(context, t),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  _buildControlButtons(context, t),
+                  const SizedBox(height: 28),
+                  _buildBoardHistorySection(context, t),
+                  const SizedBox(height: 28),
                 ],
               ),
             ),
-            const SizedBox(height: 28),
-            _buildBoardHistorySection(context, t),
-            const SizedBox(height: 28),
-          ],
-        ),
-      ),
     );
   }
 
@@ -873,16 +987,76 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
 
   Widget _buildLoadingState(BuildContext context, AppThemeTokens t) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircularProgressIndicator(color: t.accent.primary),
-          const SizedBox(height: 16),
-          Text(
-            AppLocalizations.t(context, 'style_boards_loading'),
-            style: GoogleFonts.inter(fontSize: 13, color: t.mutedText),
-          ),
-        ],
+      child: Container(
+        width: 300,
+        padding: const EdgeInsets.fromLTRB(24, 22, 24, 26),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.14),
+              blurRadius: 30,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.auto_awesome, size: 14, color: t.accent.primary),
+                const SizedBox(width: 6),
+                Text(
+                  'AHVI',
+                  style: TextStyle(
+                    fontFamily: 'Anton',
+                    fontSize: 13,
+                    color: t.accent.primary,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text.rich(
+              TextSpan(
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A1D26),
+                ),
+                children: [
+                  const TextSpan(text: 'Styling your '),
+                  TextSpan(
+                    text: widget.selectedItem.name,
+                    style: TextStyle(color: t.accent.primary),
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 14),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: SizedBox(
+                height: 6,
+                child: LinearProgressIndicator(
+                  backgroundColor: t.accent.primary.withValues(alpha: 0.12),
+                  valueColor: AlwaysStoppedAnimation<Color>(t.accent.primary),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              AppLocalizations.t(context, 'style_boards_loading_subtitle'),
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontSize: 12.5, color: t.mutedText),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -906,7 +1080,10 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
               onTap: _loadStyleBoards,
               borderRadius: BorderRadius.circular(8),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Text(
                   AppLocalizations.t(context, 'style_boards_retry'),
                   style: GoogleFonts.inter(
@@ -931,7 +1108,9 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
         final isSelected = i == selectedBoardIndex;
         return Expanded(
           child: Padding(
-            padding: EdgeInsets.only(right: i == styleBoards.length - 1 ? 0 : 8),
+            padding: EdgeInsets.only(
+              right: i == styleBoards.length - 1 ? 0 : 8,
+            ),
             child: GestureDetector(
               onTap: () => setState(() {
                 selectedBoardIndex = i;
@@ -966,7 +1145,9 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   // ── Wardrobe vs AI-recommended legend ───────────────────────────
 
   Widget _buildSourceLegend(BuildContext context, AppThemeTokens t) {
-    final hasAiItems = styleBoards[selectedBoardIndex].items.any((i) => i.isAiRecommended);
+    final hasAiItems = styleBoards[selectedBoardIndex].items.any(
+      (i) => i.isAiRecommended,
+    );
     if (!hasAiItems) return const SizedBox.shrink();
 
     return Padding(
@@ -1017,7 +1198,10 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   }
 
   Widget _buildUnifiedGrid(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
     if (items.isEmpty) return const SizedBox.shrink();
 
     switch (items.length) {
@@ -1041,30 +1225,35 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
 
   // ─── 1–2 items: equal columns ─────────────────────────────────────────
   Widget _layoutSmall(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final n = items.length;
-      final cw = _cappedCellWidth(box.maxWidth, _kGap, n);
-      final gridWidth = cw * n + _kGap * (n - 1);
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final n = items.length;
+        final cw = _cappedCellWidth(box.maxWidth, _kGap, n);
+        final gridWidth = cw * n + _kGap * (n - 1);
 
-      return Center(
-        child: SizedBox(
-          width: gridWidth,
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: n,
-              crossAxisSpacing: _kGap,
-              mainAxisSpacing: _kGap,
-              childAspectRatio: 1.15,
+        return Center(
+          child: SizedBox(
+            width: gridWidth,
+            child: GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: n,
+                crossAxisSpacing: _kGap,
+                mainAxisSpacing: _kGap,
+                childAspectRatio: 1.15,
+              ),
+              itemCount: n,
+              itemBuilder: (_, i) => _buildItemCard(context, items[i], t),
             ),
-            itemCount: n,
-            itemBuilder: (_, i) => _buildItemCard(context, items[i], t),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 
   // ─── 3 items ──────────────────────────────────────────────────────────
@@ -1073,157 +1262,199 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   //            item[1] starts at ~50% and item[2] ends at ~50% of the
   //            left item's height. Both columns are equal width.
   Widget _layout3(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kGap;
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kGap;
 
-      final cw = _cappedCellWidth(w, g, 2); // equal-width columns, capped
-      final totalH = cw * 2 + g;       // left item fills this height
-      final vPad = (totalH - 2 * cw - g) / 2; // top/bottom padding to centre right col
+        final cw = _cappedCellWidth(w, g, 2); // equal-width columns, capped
+        final totalH = cw * 2 + g; // left item fills this height
+        final vPad =
+            (totalH - 2 * cw - g) / 2; // top/bottom padding to centre right col
 
-      return Center(
-        child: SizedBox(
-          width: cw * 2 + g,
-          height: totalH,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Left: one tall item
-              SizedBox(
-                width: cw,
-                height: totalH,
-                child: _buildItemCard(context, items[0], t),
-              ),
-              SizedBox(width: g),
-              // Right: two square items, vertically centred
-              SizedBox(
-                width: cw,
-                child: Column(
-                  children: [
-                    SizedBox(height: vPad),
-                    SizedBox(height: cw, child: _buildItemCard(context, items[1], t)),
-                    SizedBox(height: g),
-                    SizedBox(height: cw, child: _buildItemCard(context, items[2], t)),
-                    SizedBox(height: vPad),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    });
-  }
-
-  // ─── 4 items ──────────────────────────────────────────────────────────
-  Widget _layout4(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kGap;
-
-      final cw = _cappedCellWidth(w, g, 2);
-      final ih = cw;
-
-      return Center(
-        child: SizedBox(
-          width: cw * 2 + g,
-          child: Column(
-            children: [
-              _row2(context, t, items[0], items[1], cw, ih),
-              SizedBox(height: g),
-              _row2(context, t, items[2], items[3], cw, ih),
-            ],
-          ),
-        ),
-      );
-    });
-  }
-
-  // ─── 5 items ──────────────────────────────────────────────────────────
-  Widget _layout5(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kGap;
-
-      // Left (shirt/anchor): kept at the wider 0.72 width:height aspect
-      // (so BoxFit.cover doesn't crop the sides), but the overall tile
-      // footprint is dialed back down from the previous 0.54 share.
-      final tlw = w * 0.42 - g / 2;
-      final topH = tlw / 0.72;
-
-      // Right (secondary item, e.g. pant): explicitly smaller instead
-      // of Expanded to fill all remaining width — it's a secondary
-      // piece next to the anchor, so both its width and height are
-      // scaled down and it's centred in the space left over.
-      final remainingW = w - tlw - g;
-      final trw = remainingW * 0.72;
-      final trh = topH * 0.88;
-      final trVPad = (topH - trh) / 2;
-
-      final biw = (w - 2 * g) / 3;
-      final bih = biw;
-
-      return Column(
-        children: [
-          SizedBox(
-            height: topH,
+        return Center(
+          child: SizedBox(
+            width: cw * 2 + g,
+            height: totalH,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(width: tlw, child: _buildItemCard(context, items[0], t)),
-                SizedBox(width: g),
+                // Left: one tall item
                 SizedBox(
-                  width: remainingW,
+                  width: cw,
+                  height: totalH,
+                  child: _buildItemCard(context, items[0], t),
+                ),
+                SizedBox(width: g),
+                // Right: two square items, vertically centred
+                SizedBox(
+                  width: cw,
                   child: Column(
                     children: [
-                      SizedBox(height: trVPad),
+                      SizedBox(height: vPad),
                       SizedBox(
-                        width: trw,
-                        height: trh,
+                        height: cw,
                         child: _buildItemCard(context, items[1], t),
                       ),
+                      SizedBox(height: g),
+                      SizedBox(
+                        height: cw,
+                        child: _buildItemCard(context, items[2], t),
+                      ),
+                      SizedBox(height: vPad),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          SizedBox(height: g),
-          Row(
-            children: [
-              SizedBox(width: biw, height: bih, child: _buildItemCard(context, items[2], t)),
-              SizedBox(width: g),
-              SizedBox(width: biw, height: bih, child: _buildItemCard(context, items[3], t)),
-              SizedBox(width: g),
-              SizedBox(width: biw, height: bih, child: _buildItemCard(context, items[4], t)),
-            ],
+        );
+      },
+    );
+  }
+
+  // ─── 4 items ──────────────────────────────────────────────────────────
+  Widget _layout4(
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kGap;
+
+        final cw = _cappedCellWidth(w, g, 2);
+        final ih = cw;
+
+        return Center(
+          child: SizedBox(
+            width: cw * 2 + g,
+            child: Column(
+              children: [
+                _row2(context, t, items[0], items[1], cw, ih),
+                SizedBox(height: g),
+                _row2(context, t, items[2], items[3], cw, ih),
+              ],
+            ),
           ),
-        ],
-      );
-    });
+        );
+      },
+    );
+  }
+
+  // ─── 5 items ──────────────────────────────────────────────────────────
+  Widget _layout5(
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kGap;
+
+        // Left (shirt/anchor): kept at the wider 0.72 width:height aspect
+        // (so BoxFit.cover doesn't crop the sides), but the overall tile
+        // footprint is dialed back down from the previous 0.54 share.
+        final tlw = w * 0.42 - g / 2;
+        final topH = tlw / 0.72;
+
+        // Right (secondary item, e.g. pant): explicitly smaller instead
+        // of Expanded to fill all remaining width — it's a secondary
+        // piece next to the anchor, so both its width and height are
+        // scaled down and it's centred in the space left over.
+        final remainingW = w - tlw - g;
+        final trw = remainingW * 0.72;
+        final trh = topH * 0.88;
+        final trVPad = (topH - trh) / 2;
+
+        final biw = (w - 2 * g) / 3;
+        final bih = biw;
+
+        return Column(
+          children: [
+            SizedBox(
+              height: topH,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: tlw,
+                    child: _buildItemCard(context, items[0], t),
+                  ),
+                  SizedBox(width: g),
+                  SizedBox(
+                    width: remainingW,
+                    child: Column(
+                      children: [
+                        SizedBox(height: trVPad),
+                        SizedBox(
+                          width: trw,
+                          height: trh,
+                          child: _buildItemCard(context, items[1], t),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: g),
+            Row(
+              children: [
+                SizedBox(
+                  width: biw,
+                  height: bih,
+                  child: _buildItemCard(context, items[2], t),
+                ),
+                SizedBox(width: g),
+                SizedBox(
+                  width: biw,
+                  height: bih,
+                  child: _buildItemCard(context, items[3], t),
+                ),
+                SizedBox(width: g),
+                SizedBox(
+                  width: biw,
+                  height: bih,
+                  child: _buildItemCard(context, items[4], t),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // ─── 6 items ──────────────────────────────────────────────────────────
   Widget _layout6(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kGap;
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kGap;
 
-      final cw = (w - 2 * g) / 3;
-      final ih = cw;
+        final cw = (w - 2 * g) / 3;
+        final ih = cw;
 
-      return Column(
-        children: [
-          _row3(context, t, items.sublist(0, 3), cw, ih),
-          SizedBox(height: g),
-          _row3(context, t, items.sublist(3, 6), cw, ih),
-        ],
-      );
-    });
+        return Column(
+          children: [
+            _row3(context, t, items.sublist(0, 3), cw, ih),
+            SizedBox(height: g),
+            _row3(context, t, items.sublist(3, 6), cw, ih),
+          ],
+        );
+      },
+    );
   }
 
   // ─── 7 items ──────────────────────────────────────────────────────────
@@ -1232,123 +1463,178 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   // Right col: 3 items stacked at the same cw height → total height = cw*3 + 2*g.
   // The overall SizedBox uses the taller right column so nothing is clipped.
   Widget _layout7(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kGap;
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kGap;
 
-      final cw = (w - 2 * g) / 3; // equal-width columns
-      final totalH = cw * 3 + 2 * g; // right col drives the height
+        final cw = (w - 2 * g) / 3; // equal-width columns
+        final totalH = cw * 3 + 2 * g; // right col drives the height
 
-      return SizedBox(
-        height: totalH,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: cw,
-              child: Column(
-                children: [
-                  SizedBox(height: cw, child: _buildItemCard(context, items[0], t)),
-                  SizedBox(height: g),
-                  SizedBox(height: cw, child: _buildItemCard(context, items[1], t)),
-                ],
+        return SizedBox(
+          height: totalH,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: cw,
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: cw,
+                      child: _buildItemCard(context, items[0], t),
+                    ),
+                    SizedBox(height: g),
+                    SizedBox(
+                      height: cw,
+                      child: _buildItemCard(context, items[1], t),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            SizedBox(width: g),
-            SizedBox(
-              width: cw,
-              child: Column(
-                children: [
-                  SizedBox(height: cw, child: _buildItemCard(context, items[2], t)),
-                  SizedBox(height: g),
-                  SizedBox(height: cw, child: _buildItemCard(context, items[3], t)),
-                ],
+              SizedBox(width: g),
+              SizedBox(
+                width: cw,
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: cw,
+                      child: _buildItemCard(context, items[2], t),
+                    ),
+                    SizedBox(height: g),
+                    SizedBox(
+                      height: cw,
+                      child: _buildItemCard(context, items[3], t),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            SizedBox(width: g),
-            SizedBox(
-              width: cw,
-              child: Column(
-                children: [
-                  SizedBox(height: cw, child: _buildItemCard(context, items[4], t)),
-                  SizedBox(height: g),
-                  SizedBox(height: cw, child: _buildItemCard(context, items[5], t)),
-                  SizedBox(height: g),
-                  SizedBox(height: cw, child: _buildItemCard(context, items[6], t)),
-                ],
+              SizedBox(width: g),
+              SizedBox(
+                width: cw,
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: cw,
+                      child: _buildItemCard(context, items[4], t),
+                    ),
+                    SizedBox(height: g),
+                    SizedBox(
+                      height: cw,
+                      child: _buildItemCard(context, items[5], t),
+                    ),
+                    SizedBox(height: g),
+                    SizedBox(
+                      height: cw,
+                      child: _buildItemCard(context, items[6], t),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      );
-    });
+            ],
+          ),
+        );
+      },
+    );
   }
 
   // ─── 8 items ──────────────────────────────────────────────────────────
   Widget _layout8(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kGap;
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kGap;
 
-      final tLW = w * 0.30 - g * 2 / 3;
-      final tCW = w * 0.42 - g * 2 / 3;
-      final tRW = w - tLW - tCW - 2 * g;
-      final topH = tCW;
+        final tLW = w * 0.30 - g * 2 / 3;
+        final tCW = w * 0.42 - g * 2 / 3;
+        final tRW = w - tLW - tCW - 2 * g;
+        final topH = tCW;
 
-      final bLW = tLW;
-      final bItemW = (w - bLW - 3 * g) / 3;
-      final botH = bItemW;
+        final bLW = tLW;
+        final bItemW = (w - bLW - 3 * g) / 3;
+        final botH = bItemW;
 
-      return Column(
-        children: [
-          SizedBox(
-            height: topH,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(width: tLW, child: _buildItemCard(context, items[0], t)),
-                SizedBox(width: g),
-                SizedBox(width: tCW, child: _buildItemCard(context, items[1], t)),
-                SizedBox(width: g),
-                SizedBox(
-                  width: tRW,
-                  child: Column(
-                    children: [
-                      Expanded(child: _buildItemCard(context, items[2], t)),
-                      SizedBox(height: g),
-                      Expanded(child: _buildItemCard(context, items[3], t)),
-                    ],
+        return Column(
+          children: [
+            SizedBox(
+              height: topH,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: tLW,
+                    child: _buildItemCard(context, items[0], t),
                   ),
-                ),
-              ],
+                  SizedBox(width: g),
+                  SizedBox(
+                    width: tCW,
+                    child: _buildItemCard(context, items[1], t),
+                  ),
+                  SizedBox(width: g),
+                  SizedBox(
+                    width: tRW,
+                    child: Column(
+                      children: [
+                        Expanded(child: _buildItemCard(context, items[2], t)),
+                        SizedBox(height: g),
+                        Expanded(child: _buildItemCard(context, items[3], t)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          SizedBox(height: g),
-          SizedBox(
-            height: botH,
-            child: Row(
-              children: [
-                SizedBox(width: bLW, child: _buildItemCard(context, items[4], t)),
-                SizedBox(width: g),
-                SizedBox(width: bItemW, child: _buildItemCard(context, items[5], t)),
-                SizedBox(width: g),
-                SizedBox(width: bItemW, child: _buildItemCard(context, items[6], t)),
-                SizedBox(width: g),
-                SizedBox(width: bItemW, child: _buildItemCard(context, items[7], t)),
-              ],
+            SizedBox(height: g),
+            SizedBox(
+              height: botH,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: bLW,
+                    child: _buildItemCard(context, items[4], t),
+                  ),
+                  SizedBox(width: g),
+                  SizedBox(
+                    width: bItemW,
+                    child: _buildItemCard(context, items[5], t),
+                  ),
+                  SizedBox(width: g),
+                  SizedBox(
+                    width: bItemW,
+                    child: _buildItemCard(context, items[6], t),
+                  ),
+                  SizedBox(width: g),
+                  SizedBox(
+                    width: bItemW,
+                    child: _buildItemCard(context, items[7], t),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      );
-    });
+          ],
+        );
+      },
+    );
   }
 
   // ─── Row helpers ───────────────────────────────────────────────────────
 
-  Widget _row2(BuildContext context, AppThemeTokens t,
-      BoardDisplayItem a, BoardDisplayItem b, double cw, double ih) {
+  Widget _row2(
+    BuildContext context,
+    AppThemeTokens t,
+    BoardDisplayItem a,
+    BoardDisplayItem b,
+    double cw,
+    double ih,
+  ) {
     return Row(
       children: [
         SizedBox(width: cw, height: ih, child: _buildItemCard(context, a, t)),
@@ -1358,20 +1644,41 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
     );
   }
 
-  Widget _row3(BuildContext context, AppThemeTokens t,
-      List<BoardDisplayItem> row, double cw, double ih) {
+  Widget _row3(
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> row,
+    double cw,
+    double ih,
+  ) {
     return Row(
       children: [
-        SizedBox(width: cw, height: ih, child: _buildItemCard(context, row[0], t)),
+        SizedBox(
+          width: cw,
+          height: ih,
+          child: _buildItemCard(context, row[0], t),
+        ),
         SizedBox(width: _kGap),
-        SizedBox(width: cw, height: ih, child: _buildItemCard(context, row[1], t)),
+        SizedBox(
+          width: cw,
+          height: ih,
+          child: _buildItemCard(context, row[1], t),
+        ),
         SizedBox(width: _kGap),
-        SizedBox(width: cw, height: ih, child: _buildItemCard(context, row[2], t)),
+        SizedBox(
+          width: cw,
+          height: ih,
+          child: _buildItemCard(context, row[2], t),
+        ),
       ],
     );
   }
 
-  Widget _buildItemCard(BuildContext context, BoardDisplayItem item, AppThemeTokens t) {
+  Widget _buildItemCard(
+    BuildContext context,
+    BoardDisplayItem item,
+    AppThemeTokens t,
+  ) {
     final isLocked = lockedItemIds.contains(item.id);
 
     // Border is only shown when item is locked
@@ -1392,43 +1699,50 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
           children: [
             item.displayUrl != null
                 ? ClipRRect(
-              borderRadius: BorderRadius.circular(7),
-              child: Image.network(
-                item.displayUrl!,
-                fit: BoxFit.contain,
-              ),
-            )
+                    borderRadius: BorderRadius.circular(7),
+                    child: Image.network(item.displayUrl!, fit: BoxFit.contain),
+                  )
                 : Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    item.isAiRecommended ? Icons.auto_awesome : Icons.checkroom,
-                    color: item.isAiRecommended ? Colors.amber : t.mutedText,
-                    size: 28,
-                  ),
-                  if (item.isAiRecommended) ...[
-                    const SizedBox(height: 4),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Text(
-                        item.cat,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(fontSize: 9, color: t.mutedText),
-                      ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          item.isAiRecommended
+                              ? Icons.auto_awesome
+                              : Icons.checkroom,
+                          color: item.isAiRecommended
+                              ? Colors.amber
+                              : t.mutedText,
+                          size: 28,
+                        ),
+                        if (item.isAiRecommended) ...[
+                          const SizedBox(height: 4),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(
+                              item.cat,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 9,
+                                color: t.mutedText,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                ],
-              ),
-            ),
+                  ),
             if (item.isAiRecommended)
               Positioned(
                 top: 6,
                 left: 6,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.amber.withOpacity(0.95),
                     borderRadius: BorderRadius.circular(6),
@@ -1480,7 +1794,9 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
                 left: 6,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 3),
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: t.accent.primary.withOpacity(0.95),
                     borderRadius: BorderRadius.circular(6),
@@ -1527,13 +1843,13 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   }
 
   Widget _buildActionButton(
-      BuildContext context, {
-        required IconData icon,
-        required String label,
-        required VoidCallback onTap,
-        required AppThemeTokens t,
-        bool isPrimary = false,
-      }) {
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required AppThemeTokens t,
+    bool isPrimary = false,
+  }) {
     return Expanded(
       child: InkWell(
         onTap: onTap,
@@ -1543,8 +1859,11 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon,
-                  color: isPrimary ? t.accent.primary : t.textPrimary, size: 18),
+              Icon(
+                icon,
+                color: isPrimary ? t.accent.primary : t.textPrimary,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -1592,7 +1911,7 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
           ),
           const SizedBox(height: 12),
           if (filteredHistory.isEmpty)
-          // Empty state wrapped in the same bordered container
+            // Empty state wrapped in the same bordered container
             Container(
               decoration: BoxDecoration(
                 border: Border.all(color: t.cardBorder, width: 1.0),
@@ -1622,8 +1941,9 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: ConstrainedBox(
-                      constraints:
-                      const BoxConstraints(maxWidth: _kHistoryCardMaxWidth),
+                      constraints: const BoxConstraints(
+                        maxWidth: _kHistoryCardMaxWidth,
+                      ),
                       child: GestureDetector(
                         onTap: () {
                           final realIndex = boardHistory.indexOf(h);
@@ -1632,7 +1952,9 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
                         child: Container(
                           decoration: BoxDecoration(
                             border: Border.all(
-                              color: isCurrent ? t.accent.primary : t.cardBorder,
+                              color: isCurrent
+                                  ? t.accent.primary
+                                  : t.cardBorder,
                               width: 1.0,
                             ),
                             borderRadius: BorderRadius.circular(16),
@@ -1650,13 +1972,14 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           isCurrent
                                               ? AppLocalizations.t(
-                                              context,
-                                              'style_boards_history_current')
+                                                  context,
+                                                  'style_boards_history_current',
+                                                )
                                               : h.getTimeAgo(context),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
@@ -1722,7 +2045,10 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   // preview height without hard-coding pixel values.
 
   Widget _buildHistoryGrid(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
     if (items.isEmpty) return const SizedBox.shrink();
 
     // Scale factor: history cards are rendered at ~55% the width of
@@ -1736,7 +2062,10 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   }
 
   Widget _buildHistoryUnifiedGrid(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
     if (items.isEmpty) return const SizedBox.shrink();
 
     switch (items.length) {
@@ -1767,7 +2096,10 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
   static const double _kHistoryCardMaxWidth = 150.0;
 
   Widget _buildHistoryItemCard(
-      BuildContext context, BoardDisplayItem item, AppThemeTokens t) {
+    BuildContext context,
+    BoardDisplayItem item,
+    AppThemeTokens t,
+  ) {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(6),
@@ -1775,270 +2107,415 @@ class _StyleBoardsScreenState extends State<StyleBoardsScreen> {
       ),
       child: item.displayUrl != null
           ? ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: Image.network(
-          item.displayUrl!,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => Center(
-            child: Icon(Icons.checkroom, color: t.mutedText, size: 14),
-          ),
-        ),
-      )
+              borderRadius: BorderRadius.circular(6),
+              child: Image.network(
+                item.displayUrl!,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Center(
+                  child: Icon(Icons.checkroom, color: t.mutedText, size: 14),
+                ),
+              ),
+            )
           : Center(
-        child: Icon(
-          item.isAiRecommended ? Icons.auto_awesome : Icons.checkroom,
-          color: item.isAiRecommended ? Colors.amber : t.mutedText,
-          size: 14,
-        ),
-      ),
+              child: Icon(
+                item.isAiRecommended ? Icons.auto_awesome : Icons.checkroom,
+                color: item.isAiRecommended ? Colors.amber : t.mutedText,
+                size: 14,
+              ),
+            ),
     );
   }
 
   Widget _historyLayoutSmall(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kHGap;
-      final cw = items.length == 1 ? w : (w - g) / 2;
-      final ih = cw * 0.85;
-      return SizedBox(
-        height: ih,
-        child: Row(
-          children: [
-            for (int i = 0; i < items.length; i++) ...[
-              if (i > 0) SizedBox(width: g),
-              SizedBox(width: cw, child: _buildHistoryItemCard(context, items[i], t)),
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kHGap;
+        final cw = items.length == 1 ? w : (w - g) / 2;
+        final ih = cw * 0.85;
+        return SizedBox(
+          height: ih,
+          child: Row(
+            children: [
+              for (int i = 0; i < items.length; i++) ...[
+                if (i > 0) SizedBox(width: g),
+                SizedBox(
+                  width: cw,
+                  child: _buildHistoryItemCard(context, items[i], t),
+                ),
+              ],
             ],
-          ],
-        ),
-      );
-    });
+          ),
+        );
+      },
+    );
   }
 
   Widget _historyLayout3(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kHGap;
-      final cw = (w - g) / 2;
-      final totalH = cw * 2 + g;
-      final vPad = (totalH - 2 * cw - g) / 2;
-      return SizedBox(
-        height: totalH,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kHGap;
+        final cw = (w - g) / 2;
+        final totalH = cw * 2 + g;
+        final vPad = (totalH - 2 * cw - g) / 2;
+        return SizedBox(
+          height: totalH,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: cw,
+                height: totalH,
+                child: _buildHistoryItemCard(context, items[0], t),
+              ),
+              SizedBox(width: g),
+              SizedBox(
+                width: cw,
+                child: Column(
+                  children: [
+                    SizedBox(height: vPad),
+                    SizedBox(
+                      height: cw,
+                      child: _buildHistoryItemCard(context, items[1], t),
+                    ),
+                    SizedBox(height: g),
+                    SizedBox(
+                      height: cw,
+                      child: _buildHistoryItemCard(context, items[2], t),
+                    ),
+                    SizedBox(height: vPad),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _historyLayout4(
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kHGap;
+        final cw = (w - g) / 2;
+        final ih = cw * 0.85;
+        return Column(
           children: [
-            SizedBox(width: cw, height: totalH, child: _buildHistoryItemCard(context, items[0], t)),
-            SizedBox(width: g),
+            _historyRow2(context, t, items[0], items[1], cw, ih),
+            SizedBox(height: g),
+            _historyRow2(context, t, items[2], items[3], cw, ih),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _historyLayout5(
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kHGap;
+        final tlw = w * 0.42 - g / 2;
+        final topH = tlw / 0.65;
+        final biw = (w - 2 * g) / 3;
+        final bih = biw;
+        return Column(
+          children: [
             SizedBox(
-              width: cw,
-              child: Column(
+              height: topH,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(height: vPad),
-                  SizedBox(height: cw, child: _buildHistoryItemCard(context, items[1], t)),
-                  SizedBox(height: g),
-                  SizedBox(height: cw, child: _buildHistoryItemCard(context, items[2], t)),
-                  SizedBox(height: vPad),
+                  SizedBox(
+                    width: tlw,
+                    child: _buildHistoryItemCard(context, items[0], t),
+                  ),
+                  SizedBox(width: g),
+                  Expanded(child: _buildHistoryItemCard(context, items[1], t)),
+                ],
+              ),
+            ),
+            SizedBox(height: g),
+            Row(
+              children: [
+                SizedBox(
+                  width: biw,
+                  height: bih,
+                  child: _buildHistoryItemCard(context, items[2], t),
+                ),
+                SizedBox(width: g),
+                SizedBox(
+                  width: biw,
+                  height: bih,
+                  child: _buildHistoryItemCard(context, items[3], t),
+                ),
+                SizedBox(width: g),
+                SizedBox(
+                  width: biw,
+                  height: bih,
+                  child: _buildHistoryItemCard(context, items[4], t),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _historyLayout6(
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kHGap;
+        final cw = (w - 2 * g) / 3;
+        final ih = cw;
+        return Column(
+          children: [
+            _historyRow3(context, t, items.sublist(0, 3), cw, ih),
+            SizedBox(height: g),
+            _historyRow3(context, t, items.sublist(3, 6), cw, ih),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _historyLayout7(
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kHGap;
+        final cw = (w - 2 * g) / 3;
+        final totalH = cw * 3 + 2 * g;
+        return SizedBox(
+          height: totalH,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: cw,
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: cw,
+                      child: _buildHistoryItemCard(context, items[0], t),
+                    ),
+                    SizedBox(height: g),
+                    SizedBox(
+                      height: cw,
+                      child: _buildHistoryItemCard(context, items[1], t),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: g),
+              SizedBox(
+                width: cw,
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: cw,
+                      child: _buildHistoryItemCard(context, items[2], t),
+                    ),
+                    SizedBox(height: g),
+                    SizedBox(
+                      height: cw,
+                      child: _buildHistoryItemCard(context, items[3], t),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: g),
+              SizedBox(
+                width: cw,
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: cw,
+                      child: _buildHistoryItemCard(context, items[4], t),
+                    ),
+                    SizedBox(height: g),
+                    SizedBox(
+                      height: cw,
+                      child: _buildHistoryItemCard(context, items[5], t),
+                    ),
+                    SizedBox(height: g),
+                    SizedBox(
+                      height: cw,
+                      child: _buildHistoryItemCard(context, items[6], t),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _historyLayout8(
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> items,
+  ) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        const double g = _kHGap;
+        final tLW = w * 0.30 - g * 2 / 3;
+        final tCW = w * 0.42 - g * 2 / 3;
+        final tRW = w - tLW - tCW - 2 * g;
+        final topH = tCW;
+        final bLW = tLW;
+        final bItemW = (w - bLW - 3 * g) / 3;
+        final botH = bItemW;
+        return Column(
+          children: [
+            SizedBox(
+              height: topH,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: tLW,
+                    child: _buildHistoryItemCard(context, items[0], t),
+                  ),
+                  SizedBox(width: g),
+                  SizedBox(
+                    width: tCW,
+                    child: _buildHistoryItemCard(context, items[1], t),
+                  ),
+                  SizedBox(width: g),
+                  SizedBox(
+                    width: tRW,
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: _buildHistoryItemCard(context, items[2], t),
+                        ),
+                        SizedBox(height: g),
+                        Expanded(
+                          child: _buildHistoryItemCard(context, items[3], t),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: g),
+            SizedBox(
+              height: botH,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: bLW,
+                    child: _buildHistoryItemCard(context, items[4], t),
+                  ),
+                  SizedBox(width: g),
+                  SizedBox(
+                    width: bItemW,
+                    child: _buildHistoryItemCard(context, items[5], t),
+                  ),
+                  SizedBox(width: g),
+                  SizedBox(
+                    width: bItemW,
+                    child: _buildHistoryItemCard(context, items[6], t),
+                  ),
+                  SizedBox(width: g),
+                  SizedBox(
+                    width: bItemW,
+                    child: _buildHistoryItemCard(context, items[7], t),
+                  ),
                 ],
               ),
             ),
           ],
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 
-  Widget _historyLayout4(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kHGap;
-      final cw = (w - g) / 2;
-      final ih = cw * 0.85;
-      return Column(
-        children: [
-          _historyRow2(context, t, items[0], items[1], cw, ih),
-          SizedBox(height: g),
-          _historyRow2(context, t, items[2], items[3], cw, ih),
-        ],
-      );
-    });
-  }
-
-  Widget _historyLayout5(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kHGap;
-      final tlw = w * 0.42 - g / 2;
-      final topH = tlw / 0.65;
-      final biw = (w - 2 * g) / 3;
-      final bih = biw;
-      return Column(
-        children: [
-          SizedBox(
-            height: topH,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(width: tlw, child: _buildHistoryItemCard(context, items[0], t)),
-                SizedBox(width: g),
-                Expanded(child: _buildHistoryItemCard(context, items[1], t)),
-              ],
-            ),
-          ),
-          SizedBox(height: g),
-          Row(
-            children: [
-              SizedBox(width: biw, height: bih, child: _buildHistoryItemCard(context, items[2], t)),
-              SizedBox(width: g),
-              SizedBox(width: biw, height: bih, child: _buildHistoryItemCard(context, items[3], t)),
-              SizedBox(width: g),
-              SizedBox(width: biw, height: bih, child: _buildHistoryItemCard(context, items[4], t)),
-            ],
-          ),
-        ],
-      );
-    });
-  }
-
-  Widget _historyLayout6(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kHGap;
-      final cw = (w - 2 * g) / 3;
-      final ih = cw;
-      return Column(
-        children: [
-          _historyRow3(context, t, items.sublist(0, 3), cw, ih),
-          SizedBox(height: g),
-          _historyRow3(context, t, items.sublist(3, 6), cw, ih),
-        ],
-      );
-    });
-  }
-
-  Widget _historyLayout7(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kHGap;
-      final cw = (w - 2 * g) / 3;
-      final totalH = cw * 3 + 2 * g;
-      return SizedBox(
-        height: totalH,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: cw,
-              child: Column(children: [
-                SizedBox(height: cw, child: _buildHistoryItemCard(context, items[0], t)),
-                SizedBox(height: g),
-                SizedBox(height: cw, child: _buildHistoryItemCard(context, items[1], t)),
-              ]),
-            ),
-            SizedBox(width: g),
-            SizedBox(
-              width: cw,
-              child: Column(children: [
-                SizedBox(height: cw, child: _buildHistoryItemCard(context, items[2], t)),
-                SizedBox(height: g),
-                SizedBox(height: cw, child: _buildHistoryItemCard(context, items[3], t)),
-              ]),
-            ),
-            SizedBox(width: g),
-            SizedBox(
-              width: cw,
-              child: Column(children: [
-                SizedBox(height: cw, child: _buildHistoryItemCard(context, items[4], t)),
-                SizedBox(height: g),
-                SizedBox(height: cw, child: _buildHistoryItemCard(context, items[5], t)),
-                SizedBox(height: g),
-                SizedBox(height: cw, child: _buildHistoryItemCard(context, items[6], t)),
-              ]),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  Widget _historyLayout8(
-      BuildContext context, AppThemeTokens t, List<BoardDisplayItem> items) {
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      const double g = _kHGap;
-      final tLW = w * 0.30 - g * 2 / 3;
-      final tCW = w * 0.42 - g * 2 / 3;
-      final tRW = w - tLW - tCW - 2 * g;
-      final topH = tCW;
-      final bLW = tLW;
-      final bItemW = (w - bLW - 3 * g) / 3;
-      final botH = bItemW;
-      return Column(
-        children: [
-          SizedBox(
-            height: topH,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(width: tLW, child: _buildHistoryItemCard(context, items[0], t)),
-                SizedBox(width: g),
-                SizedBox(width: tCW, child: _buildHistoryItemCard(context, items[1], t)),
-                SizedBox(width: g),
-                SizedBox(
-                  width: tRW,
-                  child: Column(children: [
-                    Expanded(child: _buildHistoryItemCard(context, items[2], t)),
-                    SizedBox(height: g),
-                    Expanded(child: _buildHistoryItemCard(context, items[3], t)),
-                  ]),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: g),
-          SizedBox(
-            height: botH,
-            child: Row(
-              children: [
-                SizedBox(width: bLW, child: _buildHistoryItemCard(context, items[4], t)),
-                SizedBox(width: g),
-                SizedBox(width: bItemW, child: _buildHistoryItemCard(context, items[5], t)),
-                SizedBox(width: g),
-                SizedBox(width: bItemW, child: _buildHistoryItemCard(context, items[6], t)),
-                SizedBox(width: g),
-                SizedBox(width: bItemW, child: _buildHistoryItemCard(context, items[7], t)),
-              ],
-            ),
-          ),
-        ],
-      );
-    });
-  }
-
-  Widget _historyRow2(BuildContext context, AppThemeTokens t,
-      BoardDisplayItem a, BoardDisplayItem b, double cw, double ih) {
+  Widget _historyRow2(
+    BuildContext context,
+    AppThemeTokens t,
+    BoardDisplayItem a,
+    BoardDisplayItem b,
+    double cw,
+    double ih,
+  ) {
     return Row(
       children: [
-        SizedBox(width: cw, height: ih, child: _buildHistoryItemCard(context, a, t)),
+        SizedBox(
+          width: cw,
+          height: ih,
+          child: _buildHistoryItemCard(context, a, t),
+        ),
         const SizedBox(width: _kHGap),
-        SizedBox(width: cw, height: ih, child: _buildHistoryItemCard(context, b, t)),
+        SizedBox(
+          width: cw,
+          height: ih,
+          child: _buildHistoryItemCard(context, b, t),
+        ),
       ],
     );
   }
 
-  Widget _historyRow3(BuildContext context, AppThemeTokens t,
-      List<BoardDisplayItem> row, double cw, double ih) {
+  Widget _historyRow3(
+    BuildContext context,
+    AppThemeTokens t,
+    List<BoardDisplayItem> row,
+    double cw,
+    double ih,
+  ) {
     return Row(
       children: [
-        SizedBox(width: cw, height: ih, child: _buildHistoryItemCard(context, row[0], t)),
+        SizedBox(
+          width: cw,
+          height: ih,
+          child: _buildHistoryItemCard(context, row[0], t),
+        ),
         const SizedBox(width: _kHGap),
-        SizedBox(width: cw, height: ih, child: _buildHistoryItemCard(context, row[1], t)),
+        SizedBox(
+          width: cw,
+          height: ih,
+          child: _buildHistoryItemCard(context, row[1], t),
+        ),
         const SizedBox(width: _kHGap),
-        SizedBox(width: cw, height: ih, child: _buildHistoryItemCard(context, row[2], t)),
+        SizedBox(
+          width: cw,
+          height: ih,
+          child: _buildHistoryItemCard(context, row[2], t),
+        ),
       ],
     );
   }
@@ -2095,7 +2572,9 @@ class _SelectedItemPanel extends StatelessWidget {
                         children: [
                           Text(
                             AppLocalizations.t(
-                                context, 'style_boards_item_details_title'),
+                              context,
+                              'style_boards_item_details_title',
+                            ),
                             style: GoogleFonts.inter(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
@@ -2119,19 +2598,23 @@ class _SelectedItemPanel extends StatelessWidget {
                         padding: const EdgeInsets.all(12),
                         child: item.displayUrl != null
                             ? ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            item.displayUrl!,
-                            fit: BoxFit.contain,
-                            width: double.infinity,
-                            height: double.infinity,
-                          ),
-                        )
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  item.displayUrl!,
+                                  fit: BoxFit.contain,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                ),
+                              )
                             : Icon(
-                          item.isAiRecommended ? Icons.auto_awesome : Icons.checkroom,
-                          color: item.isAiRecommended ? Colors.amber : t.mutedText,
-                          size: 48,
-                        ),
+                                item.isAiRecommended
+                                    ? Icons.auto_awesome
+                                    : Icons.checkroom,
+                                color: item.isAiRecommended
+                                    ? Colors.amber
+                                    : t.mutedText,
+                                size: 48,
+                              ),
                       ),
                       const SizedBox(height: 16),
                       Row(
@@ -2149,13 +2632,18 @@ class _SelectedItemPanel extends StatelessWidget {
                           if (item.isAiRecommended)
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.amber.withOpacity(0.95),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                AppLocalizations.t(context, 'style_boards_ai_pick_badge'),
+                                AppLocalizations.t(
+                                  context,
+                                  'style_boards_ai_pick_badge',
+                                ),
                                 style: GoogleFonts.inter(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
@@ -2180,9 +2668,13 @@ class _SelectedItemPanel extends StatelessWidget {
                         icon: isLocked ? Icons.lock : Icons.lock_open,
                         label: isLocked
                             ? AppLocalizations.t(
-                            context, 'style_boards_item_unlock')
+                                context,
+                                'style_boards_item_unlock',
+                              )
                             : AppLocalizations.t(
-                            context, 'style_boards_item_lock'),
+                                context,
+                                'style_boards_item_lock',
+                              ),
                         onTap: onToggleLock,
                         t: t,
                         isPrimary: true,
@@ -2192,7 +2684,9 @@ class _SelectedItemPanel extends StatelessWidget {
                         context,
                         icon: Icons.repeat,
                         label: AppLocalizations.t(
-                            context, 'style_boards_item_replace'),
+                          context,
+                          'style_boards_item_replace',
+                        ),
                         onTap: onReplace,
                         t: t,
                       ),
@@ -2201,7 +2695,9 @@ class _SelectedItemPanel extends StatelessWidget {
                         context,
                         icon: Icons.search,
                         label: AppLocalizations.t(
-                            context, 'style_boards_item_find_similar'),
+                          context,
+                          'style_boards_item_find_similar',
+                        ),
                         onTap: onFindSimilar ?? () {},
                         t: t,
                       ),
@@ -2218,13 +2714,13 @@ class _SelectedItemPanel extends StatelessWidget {
   }
 
   Widget _action(
-      BuildContext context, {
-        required IconData icon,
-        required String label,
-        required VoidCallback onTap,
-        required AppThemeTokens t,
-        bool isPrimary = false,
-      }) {
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required AppThemeTokens t,
+    bool isPrimary = false,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -2232,8 +2728,11 @@ class _SelectedItemPanel extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
         child: Row(
           children: [
-            Icon(icon,
-                color: isPrimary ? t.accent.primary : t.textPrimary, size: 20),
+            Icon(
+              icon,
+              color: isPrimary ? t.accent.primary : t.textPrimary,
+              size: 20,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -2316,46 +2815,56 @@ class _ItemPickerSheet extends StatelessWidget {
           Expanded(
             child: candidates.isEmpty
                 ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  AppLocalizations.t(context, 'style_boards_no_items_to_swap'),
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                      fontSize: 13, color: t.mutedText),
-                ),
-              ),
-            )
-                : GridView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              gridDelegate:
-              const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.0,
-              ),
-              itemCount: candidates.length,
-              itemBuilder: (_, i) {
-                final item = candidates[i];
-                return GestureDetector(
-                  onTap: () => onPicked(item),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: t.cardBorder),
-                      borderRadius: BorderRadius.circular(8),
-                      color: t.backgroundPrimary,
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        AppLocalizations.t(
+                          context,
+                          'style_boards_no_items_to_swap',
+                        ),
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: t.mutedText,
+                        ),
+                      ),
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: item.displayUrl != null
-                        ? Image.network(item.displayUrl!,
-                        fit: BoxFit.contain)
-                        : Icon(Icons.checkroom,
-                        color: t.mutedText, size: 24),
+                  )
+                : GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 1.0,
+                        ),
+                    itemCount: candidates.length,
+                    itemBuilder: (_, i) {
+                      final item = candidates[i];
+                      return GestureDetector(
+                        onTap: () => onPicked(item),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: t.cardBorder),
+                            borderRadius: BorderRadius.circular(8),
+                            color: t.backgroundPrimary,
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: item.displayUrl != null
+                              ? Image.network(
+                                  item.displayUrl!,
+                                  fit: BoxFit.contain,
+                                )
+                              : Icon(
+                                  Icons.checkroom,
+                                  color: t.mutedText,
+                                  size: 24,
+                                ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
         ],
       ),
