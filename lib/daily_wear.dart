@@ -498,7 +498,10 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     ).toInt()]['id']?.toString()
         : null;
 
-    _displayedOutfits = outfits;
+    // Always growable: _notForMe/_changeIt mutate this list in place
+    // (removeWhere/index-assign), and some producers (e.g.
+    // _normalizeDailyBoardCards) hand back a fixed-length list.
+    _displayedOutfits = List<Map<String, dynamic>>.from(outfits);
     _savedCarouselById = {
       for (final outfit in outfits) outfit['id'] as String: false,
     };

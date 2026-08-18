@@ -177,6 +177,63 @@ void main() {
     });
   });
 
+  group('Not for me — real board mutability (regression for on-device crash)', () {
+    // Reproduces the exact production crash: a live Daily Board fetch
+    // (_normalizeDailyBoardCards) hands back a FIXED-LENGTH list
+    // (.toList(growable: false)) — asserted here from source directly so
+    // this test breaks if that producer's growability assumption changes
+    // without the assignment-site fix below being revisited too.
+    test('_normalizeDailyBoardCards still returns a fixed-length list (the hazard this guards against)', () {
+      final source = File('lib/daily_wear.dart').readAsStringSync();
+      final section = source.substring(
+        source.indexOf('List<Map<String, dynamic>> _normalizeDailyBoardCards'),
+        source.indexOf('bool _isInsufficientWardrobeResponse'),
+      );
+      expect(section, contains('.toList(growable: false)'));
+    });
+
+    test('_applyOutfits materializes a growable copy before assigning _displayedOutfits', () {
+      final source = File('lib/daily_wear.dart').readAsStringSync();
+      final section = source.substring(
+        source.indexOf('void _applyOutfits'),
+        source.indexOf('Map<String, dynamic> _outfitById'),
+      );
+      expect(
+        section,
+        contains('_displayedOutfits = List<Map<String, dynamic>>.from(outfits);'),
+      );
+    });
+
+    test('a fixed-length board list survives the exact _notForMe/_changeIt mutations that crashed on device', () {
+      // Mirrors what _normalizeDailyBoardCards really produces: fixed-length.
+      final fixedLengthBoard = <Map<String, dynamic>>[
+        {'id': 'o1', 'items': []},
+        {'id': 'o2', 'items': []},
+      ].toList(growable: false);
+      expect(() => fixedLengthBoard.removeWhere((o) => o['id'] == 'o1'), throwsUnsupportedError);
+
+      // The fix applied in _applyOutfits: wrap in List.from(...) before it
+      // ever becomes _displayedOutfits.
+      final growableCopy = List<Map<String, dynamic>>.from(fixedLengthBoard);
+
+      // _notForMe's exact mutation (daily_wear.dart:1295):
+      growableCopy.removeWhere((o) => (o['id'] ?? '').toString() == 'o1');
+      expect(growableCopy, hasLength(1));
+      expect(growableCopy.single['id'], 'o2');
+
+      // _changeIt's exact mutation (daily_wear.dart index-assign) also
+      // still works on the same growable copy:
+      final idx = growableCopy.indexWhere((o) => o['id'] == 'o2');
+      growableCopy[idx] = {...growableCopy[idx], 'items': ['shoe-3']};
+      expect(growableCopy.single['items'], ['shoe-3']);
+
+      // And the single-remaining-card path: rejecting the last card leaves
+      // an empty (but still growable/mutable) list, never a crash.
+      growableCopy.removeWhere((o) => (o['id'] ?? '').toString() == 'o2');
+      expect(growableCopy, isEmpty);
+    });
+  });
+
   group('Change it', () {
     test('exact old item id is resolved from user selection, never guessed', () {
       final section = _changeItSource();

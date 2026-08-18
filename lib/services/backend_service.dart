@@ -1113,6 +1113,27 @@ class BackendService {
           'error': {'code': 'REQUEST_FAILED', 'status': response.statusCode},
         };
       }
+      // Safe-fields-only status line (no tokens/wardrobe payload) so a
+      // "200 but nothing visibly changed" report can be diagnosed from
+      // logs alone instead of guessed at.
+      final success = data['success'] == true;
+      final errorCode = !success && data['error'] is Map
+          ? (data['error'] as Map)['code']
+          : null;
+      final changedCount =
+          ((data['data'] as Map?)?['changed_item_ids'] as List?)?.length;
+      final cardsList = data['cards'] as List?;
+      final firstCard = (cardsList != null && cardsList.isNotEmpty)
+          ? cardsList.first
+          : null;
+      final updatedCount =
+          (firstCard is Map ? firstCard['items'] as List? : null)?.length;
+      debugPrint(
+        'AHVI_CHANGE_ITEM_STATUS status=${response.statusCode} success=$success '
+        'revision=${data['revision']} changed_item_count=$changedCount '
+        'updated_item_count=$updatedCount'
+        '${errorCode != null ? ' error_code=$errorCode' : ''}',
+      );
       return data;
     } catch (e) {
       debugPrint('AHVI_CHANGE_ITEM_FAIL error=$e');
