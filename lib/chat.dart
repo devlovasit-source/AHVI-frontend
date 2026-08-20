@@ -2992,7 +2992,9 @@ class _ChatScreenState extends State<ChatScreen>
   Widget _genericModuleCard(Map<String, dynamic> card, AppThemeTokens t) {
     if ((card['type'] ?? '').toString() == 'visual_packing_checklist' ||
         card['visual_sections'] is List) {
-      return _visualPackingChecklistCard(card, t);
+      // Reintroduced old layout (checkbox list, add-your-own-item) fed by
+      // the same real visual_sections data the new image-grid card used.
+      return _buildLivePackingChecklistCard(card, t);
     }
     final title =
         (card['title'] ??
@@ -4510,6 +4512,497 @@ class _ChatScreenState extends State<ChatScreen>
                           : LinearGradient(
                               colors: [t.accent.tertiary, t.accent.primary],
                             ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      isSaved
+                          ? AppLocalizations.t(context, 'list_saved')
+                          : AppLocalizations.t(context, 'save_to_board'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Section id (from backend visual_sections) -> emoji + accent color, so
+  // the old checkbox-list layout keeps its familiar look even though the
+  // sections/items are now real Pack & Plan data instead of demo content.
+  static const Map<String, String> _packPlanSectionEmoji = {
+    'clothes': '👕',
+    'essentials': '🧴',
+    'tech': '🔌',
+    'documents': '📄',
+    'weather': '🌤️',
+  };
+
+  Color _packPlanSectionColor(String sectionId, AppThemeTokens t) {
+    switch (sectionId) {
+      case 'documents':
+        return t.accent.tertiary;
+      case 'tech':
+        return t.accent.secondary;
+      case 'clothes':
+        return t.accent.primary;
+      default:
+        return t.accent.primary;
+    }
+  }
+
+  /// The old checkbox-list Pack & Plan checklist, reintroduced — but wired
+  /// to the real backend data in card['visual_sections'] instead of the
+  /// hardcoded Documents/Tech/Comfort demo content in _buildChecklistCard.
+  Widget _buildLivePackingChecklistCard(
+      Map<String, dynamic> card,
+      AppThemeTokens t,
+      ) {
+    final title = (card['title'] ?? 'Packing Checklist').toString();
+    final rawSections = card['visual_sections'];
+    final sections = (rawSections is List ? rawSections : const [])
+        .whereType<Map>()
+        .map((s) {
+      final id = (s['id'] ?? '').toString();
+      final items = (s['items'] is List ? s['items'] as List : const [])
+          .whereType<Map>()
+          .map((item) {
+        final label =
+        (item['display_label'] ?? item['label'] ?? '').toString();
+        final images = item['image_urls'];
+        final imageUrl = (images is List && images.isNotEmpty)
+            ? images.first.toString()
+            : null;
+        return (label: label, imageUrl: imageUrl);
+      })
+          .where((it) => it.label.isNotEmpty)
+          .toList();
+      return (
+      id: id,
+      name: (s['title'] ?? id).toString(),
+      emoji: _packPlanSectionEmoji[id] ?? '🧳',
+      color: _packPlanSectionColor(id, t),
+      items: items,
+      );
+    })
+        .where((s) => s.items.isNotEmpty)
+        .toList();
+
+    if (sections.isEmpty) return const SizedBox.shrink();
+
+    final itemsState = _checklistItemsByTitle.putIfAbsent(
+      title,
+          () => sections.map((s) => s.items.map((it) => it.label).toList())
+          .toList(),
+    );
+    final addCtrls = _checklistAddCtrlsByTitle.putIfAbsent(
+      title,
+          () => List.generate(sections.length, (_) => TextEditingController()),
+    );
+    final checksState = _checklistChecksByTitle.putIfAbsent(
+      title,
+          () => itemsState
+          .map(
+            (items) => List<bool>.filled(items.length, false, growable: true),
+      )
+          .toList(),
+    );
+    final isSaved = _checklistSavedByTitle[title] ?? false;
+
+    for (var i = 0; i < itemsState.length; i++) {
+      final targetLen = itemsState[i].length;
+      if (checksState[i].length < targetLen) {
+        checksState[i].addAll(
+          List<bool>.filled(
+            targetLen - checksState[i].length,
+            false,
+            growable: true,
+          ),
+        );
+      } else if (checksState[i].length > targetLen) {
+        checksState[i] = checksState[i].sublist(0, targetLen);
+      }
+    }
+
+    return StatefulBuilder(
+      builder: (context, checklistSetState) {
+        final totalItems = itemsState.fold<int>(
+          0,
+              (sum, items) => sum + items.length,
+        );
+        final totalChecked = checksState.fold<int>(
+          0,
+              (sum, items) => sum + items.where((v) => v).length,
+        );
+        final progress = totalItems == 0 ? 0.0 : totalChecked / totalItems;
+
+        return Container(
+          margin: EdgeInsets.only(
+            left: 4,
+            right: (MediaQuery.of(context).size.width * 0.07).clamp(16.0, 28.0),
+            bottom: 16,
+          ),
+          decoration: BoxDecoration(
+            color: t.backgroundSecondary,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: t.cardBorder),
+          ),
+          clipBehavior: Clip.hardEdge,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                color: t.phoneShell,
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '$totalChecked of $totalItems items',
+                      style: TextStyle(
+                        color: t.mutedText,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: t.cardBorder.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(99),
+                        child: AnimatedFractionallySizedBox(
+                          duration: const Duration(milliseconds: 300),
+                          widthFactor: progress,
+                          alignment: Alignment.centerLeft,
+                          child: Container(color: t.accent.tertiary),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ...List.generate(sections.length, (sIdx) {
+                final s = sections[sIdx];
+                // Per-item images (when the backend matched a wardrobe
+                // photo) fall back to a generic icon tile otherwise —
+                // real data doesn't guarantee a curated photo per item
+                // the way the old demo sectionImages list did.
+                final itemImages = s.items
+                    .map((it) => it.imageUrl)
+                    .whereType<String>()
+                    .toList();
+                return Container(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+                  decoration: BoxDecoration(
+                    color: t.card,
+                    border: Border(
+                      top: BorderSide(
+                        color: t.cardBorder.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(s.emoji),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              s.name,
+                              style: TextStyle(
+                                color: t.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (itemImages.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 64,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: itemImages.length,
+                            itemExtent: 88,
+                            itemBuilder: (_, imgIdx) {
+                              final img = itemImages[imgIdx];
+                              return Padding(
+                                padding: EdgeInsets.only(
+                                  right: imgIdx == itemImages.length - 1
+                                      ? 0
+                                      : 8,
+                                ),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color:
+                                      t.cardBorder.withValues(alpha: 0.85),
+                                    ),
+                                  ),
+                                  clipBehavior: Clip.hardEdge,
+                                  child: Image.network(
+                                    img,
+                                    fit: BoxFit.cover,
+                                    cacheWidth: 264,
+                                    cacheHeight: 192,
+                                    errorBuilder: (_, _, _) => Container(
+                                      color: t.panel.withValues(alpha: 0.75),
+                                      alignment: Alignment.center,
+                                      child: Icon(
+                                        Icons.image_outlined,
+                                        size: 16,
+                                        color: t.mutedText,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      ...List.generate(itemsState[sIdx].length, (i) {
+                        final done = checksState[sIdx][i];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: t.panel.withValues(alpha: 0.75),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: t.cardBorder.withValues(alpha: 0.8),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              GestureDetector(
+                                onTap: () => checklistSetState(
+                                      () => checksState[sIdx][i] = !done,
+                                ),
+                                child: Icon(
+                                  done
+                                      ? Icons.check_box_rounded
+                                      : Icons.check_box_outline_blank_rounded,
+                                  size: 18,
+                                  color: done ? s.color : t.mutedText,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  itemsState[sIdx][i],
+                                  style: TextStyle(
+                                    color: done ? t.mutedText : t.textPrimary,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    decoration: done
+                                        ? TextDecoration.lineThrough
+                                        : TextDecoration.none,
+                                  ),
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () {
+                                  checklistSetState(() {
+                                    itemsState[sIdx].removeAt(i);
+                                    checksState[sIdx].removeAt(i);
+                                  });
+                                },
+                                child: Text(
+                                  '×',
+                                  style: TextStyle(
+                                    color: t.mutedText,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: t.phoneShellInner.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: addCtrls[sIdx],
+                                style: TextStyle(
+                                  color: t.textPrimary,
+                                  fontSize: 12,
+                                ),
+                                decoration: InputDecoration(
+                                  hintText: AppLocalizations.t(
+                                    context,
+                                    'chat_add_item',
+                                  ),
+                                  hintStyle: TextStyle(
+                                    color: t.mutedText,
+                                    fontSize: 12,
+                                  ),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                                onSubmitted: (_) {
+                                  final v = addCtrls[sIdx].text.trim();
+                                  if (v.isEmpty) return;
+                                  checklistSetState(() {
+                                    itemsState[sIdx].add(v);
+                                    checksState[sIdx].add(false);
+                                    addCtrls[sIdx].clear();
+                                  });
+                                },
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                                final v = addCtrls[sIdx].text.trim();
+                                if (v.isEmpty) return;
+                                checklistSetState(() {
+                                  itemsState[sIdx].add(v);
+                                  checksState[sIdx].add(false);
+                                  addCtrls[sIdx].clear();
+                                });
+                              },
+                              child: Container(
+                                width: 26,
+                                height: 26,
+                                decoration: BoxDecoration(
+                                  color: s.color,
+                                  borderRadius: BorderRadius.circular(7),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  '+',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.black,
+                                    height: 1,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                child: GestureDetector(
+                  onTap: isSaved
+                      ? null
+                      : () {
+                    showModalBottomSheet(
+                      context: context,
+                      backgroundColor: t.backgroundSecondary,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(20),
+                        ),
+                      ),
+                      builder: (_) => SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(height: 12),
+                            Text(
+                              AppLocalizations.t(
+                                context,
+                                'save_to_board_title',
+                              ),
+                              style: TextStyle(
+                                color: t.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            ...[
+                              'Party Looks',
+                              'Occasion',
+                              'Office Fit',
+                              'Vacation',
+                            ].map(
+                                  (b) => ListTile(
+                                title: Text(
+                                  b,
+                                  style: TextStyle(color: t.textPrimary),
+                                ),
+                                trailing: Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: t.mutedText,
+                                ),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  checklistSetState(
+                                        () => _checklistSavedByTitle[title] =
+                                    true,
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      gradient: isSaved
+                          ? LinearGradient(
+                        colors: [t.accent.tertiary, t.accent.tertiary],
+                      )
+                          : LinearGradient(
+                        colors: [t.accent.tertiary, t.accent.primary],
+                      ),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
