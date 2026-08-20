@@ -877,7 +877,6 @@ class _ItemDetailModal extends StatelessWidget {
 // ============================================================
 // PRIMARY CTA BUTTON
 // ============================================================
-
 class _StyleProcessingCard extends StatelessWidget {
   final String itemName;
   final AppThemeTokens t;
@@ -894,7 +893,7 @@ class _StyleProcessingCard extends StatelessWidget {
         child: SizedBox(
           width: width,
           child: Container(
-            padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+            padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
             decoration: BoxDecoration(
               color: t.card,
               borderRadius: BorderRadius.circular(24),
@@ -903,16 +902,29 @@ class _StyleProcessingCard extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'AHVI',
-                  style: TextStyle(
-                    fontFamily: 'Anton',
-                    fontSize: 22,
-                    letterSpacing: 2.2,
-                    color: t.accent.primary,
-                  ),
+                // AHVI branding
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome, size: 16, color: t.accent.primary),
+                    const SizedBox(width: 7),
+                    Text(
+                      'AHVI',
+                      style: TextStyle(
+                        fontFamily: 'Anton',
+                        fontSize: 24,
+                        letterSpacing: 1.8,
+                        color: t.accent.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Icon(Icons.auto_awesome, size: 16, color: t.accent.primary),
+                  ],
                 ),
-                const SizedBox(height: 22),
+
+                const SizedBox(height: 18),
+
+                // Processing title
                 Text(
                   AppLocalizations.t(
                     context,
@@ -925,7 +937,10 @@ class _StyleProcessingCard extends StatelessWidget {
                     color: t.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 8),
+
+                const SizedBox(height: 6),
+
+                // Processing subtitle
                 Text(
                   AppLocalizations.t(
                     context,
@@ -934,11 +949,14 @@ class _StyleProcessingCard extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: GoogleFonts.inter(
                     fontSize: 13,
-                    height: 1.4,
+                    height: 1.35,
                     color: t.mutedText,
                   ),
                 ),
-                const SizedBox(height: 24),
+
+                const SizedBox(height: 20),
+
+                // Progress
                 ClipRRect(
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
