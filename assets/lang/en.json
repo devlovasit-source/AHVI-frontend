@@ -666,6 +666,8 @@
   "item_detail_worn_times": "Worn {n}x",
   "item_detail_your_look": "Your Look",
   "item_detail_yours_badge": "Yours",
+  "item_detail_style_processing_title": "Styling your {item}",
+  "item_detail_style_processing_subtitle": "Finding the best pieces from your wardrobe...",
   "language": "Language",
   "lens_add_wardrobe": "Add to Wardrobe",
   "lens_add_wardrobe_desc": "Save to your collection",

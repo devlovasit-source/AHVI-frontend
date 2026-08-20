@@ -24,7 +24,6 @@ import 'package:myapp/services/backend_service.dart'; // styleWardrobeItem
 import 'package:myapp/style_board/board_models.dart';
 import 'package:myapp/style_board/board_layout_engine.dart';
 import 'package:myapp/app_localizations.dart'; // ÃƒÂ°Ã…Â¸Ã¢â‚¬Â Ã¢â‚¬Â¢ Localization
-import 'style_boards.dart'; // ÃƒÂ°Ã…Â¸Ã¢â‚¬Â Ã¢â‚¬Â¢ STYLE BOARDS INTEGRATION (consolidated, same folder)
 import 'pairing_engine.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/ahvi_outfit_board_card.dart';
 import 'build_outfit_screen.dart'; // ÃƒÂ°Ã…Â¸Ã¢â‚¬Â Ã¢â‚¬Â¢ BUILD OUTFIT SCREEN
@@ -393,25 +392,8 @@ class _ItemDetailModal extends StatelessWidget {
   // BUILD OUTFIT -> 1 practical outfit anchored on this item.
   // Both show a loading spinner, then a result sheet, and never dead-end.
   // ============================================================
-  void _onStyleThis(BuildContext context, WardrobeItem item) {
-    // ÃƒÂ°Ã…Â¸Ã¢â‚¬Â Ã¢â‚¬Â¢ STYLE BOARDS INTEGRATION
-    // Open style boards bottom sheet instead of chat
-    showStyleBoardsSheet(
-      context,
-      selectedItem: item,
-      allItems: allItems,
-      onStyleSelected: () {
-        debugPrint('Style applied for: ${item.name}');
-        // Optional: Add additional logic here
-        // - Show success message
-        // - Update recommendations
-        // - Navigate to outfit builder
-      },
-      onItemReplaced: () {
-        debugPrint('Item replaced in style board');
-        // Handle replacement logic if needed
-      },
-    );
+  Future<void> _onStyleThis(BuildContext context, WardrobeItem item) async {
+    await _performStyleRequest(context, item, mode: 'style_this');
   }
 
   void _onBuildOutfit(BuildContext context, WardrobeItem item) {
@@ -460,8 +442,16 @@ class _ItemDetailModal extends StatelessWidget {
     showDialog<void>(
       context: appContext,
       barrierDismissible: false,
-      builder: (_) =>
-          const Center(child: CircularProgressIndicator(color: Colors.white)),
+      barrierColor: Colors.black54,
+      builder: (dialogContext) {
+        final t = Theme.of(dialogContext).extension<AppThemeTokens>()!;
+
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: _StyleProcessingCard(itemName: item.name, t: t),
+        );
+      },
     );
 
     debugPrint('AHVI_MODAL_GUARD start flow=styleCta mode=$mode');
@@ -887,6 +877,103 @@ class _ItemDetailModal extends StatelessWidget {
 // ============================================================
 // PRIMARY CTA BUTTON
 // ============================================================
+class _StyleProcessingCard extends StatelessWidget {
+  final String itemName;
+  final AppThemeTokens t;
+
+  const _StyleProcessingCard({required this.itemName, required this.t});
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width * 0.82;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: SizedBox(
+          width: width,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
+            decoration: BoxDecoration(
+              color: t.card,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: t.cardBorder),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // AHVI branding
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome, size: 16, color: t.accent.primary),
+                    const SizedBox(width: 7),
+                    Text(
+                      'AHVI',
+                      style: TextStyle(
+                        fontFamily: 'Anton',
+                        fontSize: 24,
+                        letterSpacing: 1.8,
+                        color: t.accent.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Icon(Icons.auto_awesome, size: 16, color: t.accent.primary),
+                  ],
+                ),
+
+                const SizedBox(height: 18),
+
+                // Processing title
+                Text(
+                  AppLocalizations.t(
+                    context,
+                    'item_detail_style_processing_title',
+                  ).replaceAll('{item}', itemName),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: t.textPrimary,
+                  ),
+                ),
+
+                const SizedBox(height: 6),
+
+                // Processing subtitle
+                Text(
+                  AppLocalizations.t(
+                    context,
+                    'item_detail_style_processing_subtitle',
+                  ),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    height: 1.35,
+                    color: t.mutedText,
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // Progress
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    minHeight: 5,
+                    backgroundColor: t.cardBorder,
+                    valueColor: AlwaysStoppedAnimation<Color>(t.accent.primary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PrimaryStyleThisButton extends StatelessWidget {
   final WardrobeItem item;
   final AppThemeTokens t;
