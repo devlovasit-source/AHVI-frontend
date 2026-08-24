@@ -5,6 +5,8 @@ import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/style_board/saved_board_images.dart';
+import 'package:appwrite/models.dart' as appwrite_models;
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 
 // ── Data model ───────────────────────────────────────────────────────────────
 class FavouriteLookItem {
@@ -154,8 +156,8 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
         );
         final occasion =
             doc.data['boardCategoryLabel']?.toString() ??
-                doc.data['occasion']?.toString() ??
-                AppLocalizations.t(context, 'fav_default_occasion');
+            doc.data['occasion']?.toString() ??
+            AppLocalizations.t(context, 'fav_default_occasion');
 
         uniqueCategories.add(occasion);
         loadedBoards.add(
@@ -172,9 +174,12 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
             id: doc.$id,
             title: (doc.data['title'] ?? occasion).toString(),
             description:
-            (doc.data['outfitDescription'] ??
-                AppLocalizations.t(context, 'fav_look_for_occasion').replaceAll('{occasion}', occasion))
-                .toString(),
+                (doc.data['outfitDescription'] ??
+                        AppLocalizations.t(
+                          context,
+                          'fav_look_for_occasion',
+                        ).replaceAll('{occasion}', occasion))
+                    .toString(),
             emoji: '❤️',
             category: occasion,
             filter: occasion.toLowerCase(),
@@ -198,7 +203,8 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
         if (itemId.isEmpty) continue;
 
         // Check if this wardrobe item is liked
-        final bool isLiked = item['isLiked'] == true || item['isFavourite'] == true;
+        final bool isLiked =
+            item['isLiked'] == true || item['isFavourite'] == true;
         if (!isLiked) continue;
 
         final category = (item['category'] ?? 'Wardrobe').toString();
@@ -220,12 +226,12 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
 
         // Try multiple image URL keys
         final imageUrl =
-        (item['image_url'] ??
-            item['imageUrl'] ??
-            item['masked_url'] ??
-            item['normalized_url'] ??
-            item['raw_url'])
-            ?.toString();
+            (item['image_url'] ??
+                    item['imageUrl'] ??
+                    item['masked_url'] ??
+                    item['normalized_url'] ??
+                    item['raw_url'])
+                ?.toString();
 
         loadedLooks.add(
           FavouriteLookItem(
@@ -249,7 +255,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
         FilterPillData(AppLocalizations.t(context, 'fav_filter_all'), 'all'),
         ...uniqueCategories
             .map((c) => FilterPillData(c, c.toLowerCase()))
-            .toList()
+            .toList(),
       ];
 
       setState(() {
@@ -311,70 +317,68 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
           : _looks.isEmpty
           ? _EmptyState()
           : ListView(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        children: [
-          // Filter pills
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: _filters
-                  .map(
-                    (f) => Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterPill(
-                    label: f.label,
-                    isActive: _activeFilter == f.filter,
-                    onTap: () {
-                      setState(
-                            () => _activeFilter = f.filter,
-                      );
-                    },
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              children: [
+                // Filter pills
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: _filters
+                        .map(
+                          (f) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: FilterPill(
+                              label: f.label,
+                              isActive: _activeFilter == f.filter,
+                              onTap: () {
+                                setState(() => _activeFilter = f.filter);
+                              },
+                            ),
+                          ),
+                        )
+                        .toList(),
                   ),
                 ),
-              )
-                  .toList(),
+                const SizedBox(height: 12),
+                // Looks grid
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: _filteredLooks.length,
+                  itemBuilder: (context, index) => _LookCard(
+                    look: _filteredLooks[index],
+                    userId:
+                        Provider.of<AppwriteService>(
+                          context,
+                          listen: false,
+                        ).currentUserId ??
+                        '',
+                    onDelete: () => _deleteLook(_filteredLooks[index]),
+                    onFavouriteToggled: () => setState(() {}),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-          // Looks grid
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            gridDelegate:
-            const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: _filteredLooks.length,
-            itemBuilder: (context, index) => _LookCard(
-              look: _filteredLooks[index],
-              userId: Provider.of<AppwriteService>(context, listen: false).currentUserId ?? '',
-              onDelete: () => _deleteLook(_filteredLooks[index]),
-              onFavouriteToggled: () => setState(() {}),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
   List<FavouriteLookItem> get _filteredLooks {
     if (_activeFilter == 'all') return _looks;
-    return _looks
-        .where(
-          (l) => l.filter == _activeFilter,
-    )
-        .toList();
+    return _looks.where((l) => l.filter == _activeFilter).toList();
   }
 
   Future<void> _deleteLook(FavouriteLookItem look) async {
     try {
       final appwrite = Provider.of<AppwriteService>(context, listen: false);
       final boardEntry = _boards.firstWhere(
-            (b) => _boardId(b.source) == look.id,
+        (b) => _boardId(b.source) == look.id,
         orElse: () => _FavouriteBoardEntry(source: null, filter: ''),
       );
 
@@ -383,10 +387,19 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
       if (boardEntry.source is _WardrobeSource) {
         // For wardrobe items, update the isLiked/isFavourite flag
         final wardrobeSource = boardEntry.source as _WardrobeSource;
-        await appwrite.updateWardrobeItem(wardrobeSource.id, {'isLiked': false});
+        await appwrite.updateWardrobeItem(wardrobeSource.id, {
+          'isLiked': false,
+        });
       } else {
         // For saved boards, use the dedicated delete method
         await appwrite.deleteSavedBoard(look.id);
+
+        final source = boardEntry.source;
+        if (source is appwrite_models.Document) {
+          await SavedBoardsStore.removeForServerBoard(
+            Map<String, dynamic>.from(source.data),
+          );
+        }
       }
 
       setState(() {
@@ -558,9 +571,7 @@ class _LookCardState extends State<_LookCard> {
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
-                              _isLiked
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
+                              _isLiked ? Icons.favorite : Icons.favorite_border,
                               size: 14,
                               color: _isLiked ? Colors.red : Colors.grey,
                             ),
@@ -617,66 +628,42 @@ class _LookCardState extends State<_LookCard> {
       LookBgStyle.streetwear => LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          const Color(0xFF1A1A1A),
-          const Color(0xFF2D2D2D),
-        ],
+        colors: [const Color(0xFF1A1A1A), const Color(0xFF2D2D2D)],
       ),
       LookBgStyle.athleisure => LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          const Color(0xFF6B9BD1),
-          const Color(0xFFE8F4F8),
-        ],
+        colors: [const Color(0xFF6B9BD1), const Color(0xFFE8F4F8)],
       ),
       LookBgStyle.boho => LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          const Color(0xFFD4A574),
-          const Color(0xFFF5E6D3),
-        ],
+        colors: [const Color(0xFFD4A574), const Color(0xFFF5E6D3)],
       ),
       LookBgStyle.minimalist => LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          const Color(0xFFF5F5F5),
-          const Color(0xFFE0E0E0),
-        ],
+        colors: [const Color(0xFFF5F5F5), const Color(0xFFE0E0E0)],
       ),
       LookBgStyle.vintage => LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          const Color(0xFFC4876A),
-          const Color(0xFFFAE5D3),
-        ],
+        colors: [const Color(0xFFC4876A), const Color(0xFFFAE5D3)],
       ),
       LookBgStyle.monochrome => LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          const Color(0xFF333333),
-          const Color(0xFFCCCCCC),
-        ],
+        colors: [const Color(0xFF333333), const Color(0xFFCCCCCC)],
       ),
       LookBgStyle.cottagecore => LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          const Color(0xFFC4A69D),
-          const Color(0xFFFAE5D3),
-        ],
+        colors: [const Color(0xFFC4A69D), const Color(0xFFFAE5D3)],
       ),
       LookBgStyle.defaultBg => LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          const Color(0xFFE8E8E8),
-          const Color(0xFFF8F8F8),
-        ],
+        colors: [const Color(0xFFE8E8E8), const Color(0xFFF8F8F8)],
       ),
     };
   }
@@ -706,7 +693,6 @@ class _LookCardState extends State<_LookCard> {
       LookBadgeStyle.defaultBadge => const Color(0xFF666666),
     };
   }
-
 }
 
 // ── Empty State ──────────────────────────────────────────────────────────────

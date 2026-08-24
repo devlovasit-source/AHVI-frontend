@@ -4,6 +4,8 @@ import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/style_board/saved_board_card.dart';
+import 'package:appwrite/models.dart' as appwrite_models;
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 
 // ── Data model ───────────────────────────────────────────────────────────────
 class LookItem {
@@ -117,10 +119,24 @@ class _OccasionBoardState extends State<OccasionBoard> {
   }
 
   Future<void> _deleteLook(String id) async {
-    setState(() => _boards.removeWhere((board) => _boardId(board) == id));
+    final board = _boards.cast<dynamic>().firstWhere(
+      (item) => _boardId(item) == id,
+      orElse: () => null,
+    );
+
+    setState(() => _boards.removeWhere((item) => _boardId(item) == id));
+
     try {
       final appwrite = Provider.of<AppwriteService>(context, listen: false);
+
       await appwrite.deleteSavedBoard(id);
+
+      if (board is appwrite_models.Document) {
+        await SavedBoardsStore.removeForServerBoard(
+          Map<String, dynamic>.from(board.data),
+        );
+      }
+
       _showToast(context.tr('wardrobe_remove'));
     } catch (e) {
       _showToast(context.tr('error'));
@@ -135,8 +151,8 @@ class _OccasionBoardState extends State<OccasionBoard> {
   }
 
   Map<String, Map<String, dynamic>> _buildIdMap(
-      List<Map<String, dynamic>> items,
-      ) {
+    List<Map<String, dynamic>> items,
+  ) {
     final byId = <String, Map<String, dynamic>>{};
     for (final item in items) {
       for (final rawId in [
@@ -202,35 +218,35 @@ class _OccasionBoardState extends State<OccasionBoard> {
                   color: _bg,
                   child: _isLoading
                       ? Center(
-                    child: CircularProgressIndicator(
-                      color: _t.accent.primary,
-                    ),
-                  )
+                          child: CircularProgressIndicator(
+                            color: _t.accent.primary,
+                          ),
+                        )
                       : _boards.isEmpty
                       ? RefreshIndicator(
-                    onRefresh: _fetchLooks,
-                    color: _t.accent.primary,
-                    backgroundColor: _t.card,
-                    child: ListView(
-                      children: [
-                        _EmptyState(
-                          titleKey: widget.titleKey,
-                          titleLabel: widget.titleLabel,
-                          occasion: widget.occasion,
-                          emoji: widget.emptyEmoji,
-                        ),
-                      ],
-                    ),
-                  )
+                          onRefresh: _fetchLooks,
+                          color: _t.accent.primary,
+                          backgroundColor: _t.card,
+                          child: ListView(
+                            children: [
+                              _EmptyState(
+                                titleKey: widget.titleKey,
+                                titleLabel: widget.titleLabel,
+                                occasion: widget.occasion,
+                                emoji: widget.emptyEmoji,
+                              ),
+                            ],
+                          ),
+                        )
                       : RefreshIndicator(
-                    onRefresh: _fetchLooks,
-                    color: _t.accent.primary,
-                    backgroundColor: _t.card,
-                    child: _LooksGrid(
-                      boards: _boards,
-                      wardrobeById: _wardrobeById,
-                    ),
-                  ),
+                          onRefresh: _fetchLooks,
+                          color: _t.accent.primary,
+                          backgroundColor: _t.card,
+                          child: _LooksGrid(
+                            boards: _boards,
+                            wardrobeById: _wardrobeById,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -498,32 +514,32 @@ class _LookCardState extends State<_LookCard> {
                 children: [
                   look.outfitImages.length >= 2
                       ? AspectRatio(
-                    aspectRatio: aspectRatio,
-                    child: _SavedLookImageGrid(images: look.outfitImages),
-                  )
+                          aspectRatio: aspectRatio,
+                          child: _SavedLookImageGrid(images: look.outfitImages),
+                        )
                       : look.imageUrl != null && look.imageUrl!.isNotEmpty
                       ? AspectRatio(
-                    aspectRatio: aspectRatio,
-                    child: Image.network(
-                      look.imageUrl!,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                    ),
-                  )
+                          aspectRatio: aspectRatio,
+                          child: Image.network(
+                            look.imageUrl!,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                          ),
+                        )
                       : AspectRatio(
-                    aspectRatio: aspectRatio,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: _bgGradient(look.bg),
-                      ),
-                      child: Center(
-                        child: Text(
-                          look.emoji,
-                          style: const TextStyle(fontSize: 32),
+                          aspectRatio: aspectRatio,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: _bgGradient(look.bg),
+                            ),
+                            child: Center(
+                              child: Text(
+                                look.emoji,
+                                style: const TextStyle(fontSize: 32),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
                   // Delete button
                   Positioned(
                     top: 10,

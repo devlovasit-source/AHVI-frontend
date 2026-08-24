@@ -12,6 +12,7 @@ import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:myapp/style_board/saved_board_thumb.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/util/wardrobe_image_resolver.dart';
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 
 class SavedBoardCard extends StatelessWidget {
   final dynamic source;
@@ -368,6 +369,9 @@ class SavedBoardCard extends StatelessWidget {
                                       context,
                                       listen: false,
                                     ).deleteSavedBoard(boardId);
+                                    await SavedBoardsStore.removeForServerBoard(
+                                      data,
+                                    );
                                     if (sheetContext.mounted) {
                                       Navigator.of(sheetContext).pop();
                                       ScaffoldMessenger.of(

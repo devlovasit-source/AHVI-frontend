@@ -6,26 +6,29 @@ import 'package:myapp/services/appwrite_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:convert';
 import 'dart:io';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 
 void main() {
-  runApp(MaterialApp(
-    debugShowCheckedModeBanner: false,
-    themeMode: ThemeMode.system,
-    theme: ThemeData(
-      brightness: Brightness.light,
-      scaffoldBackgroundColor: AppColors.light.bg2,
-      extensions: const [AppColors.light],
+  runApp(
+    MaterialApp(
+      debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.system,
+      theme: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: AppColors.light.bg2,
+        extensions: const [AppColors.light],
+      ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: AppColors.dark.bg2,
+        extensions: const [AppColors.dark],
+      ),
+      home: const Screen3(),
     ),
-    darkTheme: ThemeData(
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: AppColors.dark.bg2,
-      extensions: const [AppColors.dark],
-    ),
-    home: const Screen3(),
-  ));
+  );
 }
 
 // ── Theme-aware color tokens ────────────────────────────────────────────────
@@ -212,9 +215,21 @@ class AppColors extends ThemeExtension<AppColors> {
       statusPurple: Color.lerp(statusPurple, other.statusPurple, t)!,
       statusPink: Color.lerp(statusPink, other.statusPink, t)!,
       onAccent: Color.lerp(onAccent, other.onAccent, t)!,
-      recommendationBg: Color.lerp(recommendationBg, other.recommendationBg, t)!,
-      recommendationBorder: Color.lerp(recommendationBorder, other.recommendationBorder, t)!,
-      recommendationTitle: Color.lerp(recommendationTitle, other.recommendationTitle, t)!,
+      recommendationBg: Color.lerp(
+        recommendationBg,
+        other.recommendationBg,
+        t,
+      )!,
+      recommendationBorder: Color.lerp(
+        recommendationBorder,
+        other.recommendationBorder,
+        t,
+      )!,
+      recommendationTitle: Color.lerp(
+        recommendationTitle,
+        other.recommendationTitle,
+        t,
+      )!,
       uploadedBg: Color.lerp(uploadedBg, other.uploadedBg, t)!,
       privacyTint: Color.lerp(privacyTint, other.privacyTint, t)!,
       dotInactive: Color.lerp(dotInactive, other.dotInactive, t)!,
@@ -308,7 +323,7 @@ class _Screen3State extends State<Screen3> {
 
   bool get _isValid {
     if (!_personalizationEnabled) return true;
-    return _faceUploaded && _bodyUploaded;
+    return _faceUploaded;
   }
 
   // ── Advanced Face Analysis Function ────────────────────────────
@@ -320,7 +335,9 @@ class _Screen3State extends State<Screen3> {
       final faces = await _faceDetector.processImage(inputImage);
 
       if (faces.isEmpty) {
-        _showValidationError('No face detected. Please capture a clear face photo.');
+        _showValidationError(
+          'No face detected. Please capture a clear face photo.',
+        );
         setState(() => _isAnalyzingFace = false);
         return;
       }
@@ -383,11 +400,64 @@ class _Screen3State extends State<Screen3> {
         _isAnalyzingFace = false;
       });
 
+      _persistFaceScanToUserShopPrefs(analysisData);
+
       debugPrint('Advanced Face Analysis Complete');
     } catch (e) {
       debugPrint('Face analysis error: $e');
       _showValidationError('Failed to analyze face. Try again.');
       setState(() => _isAnalyzingFace = false);
+    }
+  }
+
+  Future<void> _persistFaceScanToUserShopPrefs(FaceAnalysisData data) async {
+    try {
+      final appwrite = context.read<AppwriteService>();
+      final doc = await appwrite.getCurrentUserProfileDocument(createIfMissing: false);
+      final List<dynamic> existingPrefs = List<dynamic>.from(
+        doc?.data['shopPrefs'] ?? doc?.data['shop_prefs'] ?? [],
+      );
+
+      final hexColor = '#${data.skinToneColor.value.toRadixString(16).padLeft(8, '0').substring(2)}';
+
+      final Map<String, dynamic> faceScanMap = {
+        'source': 'face_scan',
+        'skinTone': data.skinTone,
+        'skinToneColor': hexColor,
+        'faceShape': data.faceShape,
+        'skinQuality': data.skinQuality,
+        'acneDetected': data.acneDetected,
+        'pigmentationDetected': data.pigmentationDetected,
+        'eyeShape': data.eyeShape,
+        'lipColor': data.lipColor,
+        'darkerCircles': data.darkerCircles,
+        'recommendations': data.recommendations,
+      };
+
+      final jsonStr = jsonEncode(faceScanMap);
+      bool replaced = false;
+      for (int i = 0; i < existingPrefs.length; i++) {
+        final pref = existingPrefs[i];
+        if (pref is String && pref.contains('face_scan')) {
+          existingPrefs[i] = jsonStr;
+          replaced = true;
+          break;
+        } else if (pref is Map && pref['source'] == 'face_scan') {
+          existingPrefs[i] = jsonStr;
+          replaced = true;
+          break;
+        }
+      }
+      if (!replaced) {
+        existingPrefs.add(jsonStr);
+      }
+
+      await appwrite.updateCurrentUserProfileFields({
+        'shopPrefs': existingPrefs,
+      });
+      debugPrint('AHVI_FACE_SCAN_PERSISTED_TO_SHOPPREFS count=${existingPrefs.length}');
+    } catch (e) {
+      debugPrint('AHVI_FACE_SCAN_PERSIST_ERROR: $e');
     }
   }
 
@@ -402,8 +472,14 @@ class _Screen3State extends State<Screen3> {
 
       final samplePoints = <List<double>>[
         [bbox.center.dx, bbox.top + bbox.height * 0.28], // forehead
-        [bbox.left + bbox.width * 0.28, bbox.top + bbox.height * 0.58], // left cheek
-        [bbox.right - bbox.width * 0.28, bbox.top + bbox.height * 0.58], // right cheek
+        [
+          bbox.left + bbox.width * 0.28,
+          bbox.top + bbox.height * 0.58,
+        ], // left cheek
+        [
+          bbox.right - bbox.width * 0.28,
+          bbox.top + bbox.height * 0.58,
+        ], // right cheek
       ];
 
       int rSum = 0, gSum = 0, bSum = 0, samples = 0;
@@ -458,8 +534,14 @@ class _Screen3State extends State<Screen3> {
       final bbox = face.boundingBox;
       final width = (bbox.width * image.width).toInt();
       final height = (bbox.height * image.height).toInt();
-      final startX = (bbox.left * image.width).toInt().clamp(0, image.width - 1);
-      final startY = (bbox.top * image.height).toInt().clamp(0, image.height - 1);
+      final startX = (bbox.left * image.width).toInt().clamp(
+        0,
+        image.width - 1,
+      );
+      final startY = (bbox.top * image.height).toInt().clamp(
+        0,
+        image.height - 1,
+      );
 
       int irregularPixels = 0;
       int totalPixels = 0;
@@ -468,7 +550,11 @@ class _Screen3State extends State<Screen3> {
       final regionHeight = (height * 0.7).toInt();
 
       for (int x = startX; x < startX + regionWidth && x < image.width; x++) {
-        for (int y = startY; y < startY + regionHeight && y < image.height; y++) {
+        for (
+          int y = startY;
+          y < startY + regionHeight && y < image.height;
+          y++
+        ) {
           totalPixels++;
           final pixel = image.getPixelSafe(x, y);
           final r = pixel.r.toInt();
@@ -482,14 +568,13 @@ class _Screen3State extends State<Screen3> {
         }
       }
 
-      final acnePercentage = totalPixels > 0 ? (irregularPixels / totalPixels * 100).toInt() : 0;
+      final acnePercentage = totalPixels > 0
+          ? (irregularPixels / totalPixels * 100).toInt()
+          : 0;
       final detected = acnePercentage > 5;
       final severity = acnePercentage.clamp(0, 100);
 
-      return {
-        'detected': detected,
-        'severity': severity,
-      };
+      return {'detected': detected, 'severity': severity};
     } catch (e) {
       return {'detected': false, 'severity': 0};
     }
@@ -501,8 +586,14 @@ class _Screen3State extends State<Screen3> {
       final bbox = face.boundingBox;
       final width = (bbox.width * image.width).toInt();
       final height = (bbox.height * image.height).toInt();
-      final startX = (bbox.left * image.width).toInt().clamp(0, image.width - 1);
-      final startY = (bbox.top * image.height).toInt().clamp(0, image.height - 1);
+      final startX = (bbox.left * image.width).toInt().clamp(
+        0,
+        image.width - 1,
+      );
+      final startY = (bbox.top * image.height).toInt().clamp(
+        0,
+        image.height - 1,
+      );
 
       double totalColorVariance = 0;
       int sampleCount = 0;
@@ -520,14 +611,13 @@ class _Screen3State extends State<Screen3> {
         }
       }
 
-      final avgVariance = sampleCount > 0 ? totalColorVariance / sampleCount : 0;
+      final avgVariance = sampleCount > 0
+          ? totalColorVariance / sampleCount
+          : 0;
       final intensity = (avgVariance / 100).clamp(0.0, 1.0);
       final detected = intensity > 0.3;
 
-      return {
-        'detected': detected,
-        'intensity': intensity,
-      };
+      return {'detected': detected, 'intensity': intensity};
     } catch (e) {
       return {'detected': false, 'intensity': 0.0};
     }
@@ -540,7 +630,7 @@ class _Screen3State extends State<Screen3> {
 
       // Analyze eye landmarks (landmarks is a Map, use .values)
       final leftEyeLandmark = face.landmarks.values.firstWhere(
-            (lm) => lm?.type == FaceLandmarkType.leftEye,
+        (lm) => lm?.type == FaceLandmarkType.leftEye,
         orElse: () => null,
       );
 
@@ -552,7 +642,8 @@ class _Screen3State extends State<Screen3> {
       // Use .y instead of .dy for Point<int>
       if (position.y < face.boundingBox.top + face.boundingBox.height * 0.4) {
         return 'Almond';
-      } else if (position.y > face.boundingBox.top + face.boundingBox.height * 0.45) {
+      } else if (position.y >
+          face.boundingBox.top + face.boundingBox.height * 0.45) {
         return 'Hooded';
       } else {
         return 'Round';
@@ -618,8 +709,12 @@ class _Screen3State extends State<Screen3> {
       }
 
       // If any band had no points, fall back to overall face width.
-      final foreheadWidth = (foreheadMaxX > foreheadMinX) ? foreheadMaxX - foreheadMinX : faceWidth;
-      final cheekWidth = (cheekMaxX > cheekMinX) ? cheekMaxX - cheekMinX : faceWidth;
+      final foreheadWidth = (foreheadMaxX > foreheadMinX)
+          ? foreheadMaxX - foreheadMinX
+          : faceWidth;
+      final cheekWidth = (cheekMaxX > cheekMinX)
+          ? cheekMaxX - cheekMinX
+          : faceWidth;
       final jawWidth = (jawMaxX > jawMinX) ? jawMaxX - jawMinX : faceWidth;
 
       final lengthToWidthRatio = faceLength / faceWidth;
@@ -630,9 +725,12 @@ class _Screen3State extends State<Screen3> {
         return 'Oblong';
       } else if (foreheadToJawRatio > 1.15 && jawToCheekRatio < 0.85) {
         return 'Heart';
-      } else if (cheekWidth > foreheadWidth * 1.08 && cheekWidth > jawWidth * 1.08) {
+      } else if (cheekWidth > foreheadWidth * 1.08 &&
+          cheekWidth > jawWidth * 1.08) {
         return 'Diamond';
-      } else if (jawToCheekRatio > 0.92 && foreheadWidth > cheekWidth * 0.92 && lengthToWidthRatio < 1.15) {
+      } else if (jawToCheekRatio > 0.92 &&
+          foreheadWidth > cheekWidth * 0.92 &&
+          lengthToWidthRatio < 1.15) {
         return 'Square';
       } else if (jawToCheekRatio > 0.85 && lengthToWidthRatio < 1.3) {
         return 'Round';
@@ -676,7 +774,10 @@ class _Screen3State extends State<Screen3> {
       final centerX = (bbox.center.dx * image.width).toInt();
       final centerY = (bbox.bottom * image.height * 0.95).toInt();
 
-      if (centerX < 0 || centerX >= image.width || centerY < 0 || centerY >= image.height) {
+      if (centerX < 0 ||
+          centerX >= image.width ||
+          centerY < 0 ||
+          centerY >= image.height) {
         return 'Natural';
       }
 
@@ -717,12 +818,16 @@ class _Screen3State extends State<Screen3> {
       final underEyeY = (bbox.top + bbox.height * 0.5).toInt();
       final sampleX = (bbox.center.dx * image.width).toInt();
 
-      if (sampleX < 0 || sampleX >= image.width || underEyeY < 0 || underEyeY >= image.height) {
+      if (sampleX < 0 ||
+          sampleX >= image.width ||
+          underEyeY < 0 ||
+          underEyeY >= image.height) {
         return false;
       }
 
       final pixel = image.getPixelSafe(sampleX, underEyeY);
-      final brightness = (pixel.r.toInt() + pixel.g.toInt() + pixel.b.toInt()) / 3;
+      final brightness =
+          (pixel.r.toInt() + pixel.g.toInt() + pixel.b.toInt()) / 3;
 
       return brightness < 100;
     } catch (e) {
@@ -749,13 +854,13 @@ class _Screen3State extends State<Screen3> {
 
   // ── Generate Recommendations ──────────────────────────────────
   List<String> _generateRecommendations(
-      String skinTone,
-      bool hasAcne,
-      bool hasPigmentation,
-      String eyeShape,
-      bool darkCircles,
-      String faceShape,
-      ) {
+    String skinTone,
+    bool hasAcne,
+    bool hasPigmentation,
+    String eyeShape,
+    bool darkCircles,
+    String faceShape,
+  ) {
     final recommendations = <String>[];
 
     if (hasAcne) {
@@ -782,7 +887,9 @@ class _Screen3State extends State<Screen3> {
         recommendations.add('Soften angles with rounded blush placement');
         break;
       case 'Heart':
-        recommendations.add('Balance a wider forehead with soft, side-swept styling');
+        recommendations.add(
+          'Balance a wider forehead with soft, side-swept styling',
+        );
         break;
       case 'Oblong':
         recommendations.add('Add visual width with horizontal blush placement');
@@ -804,9 +911,9 @@ class _Screen3State extends State<Screen3> {
   }
 
   void _showValidationError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _captureFacePhoto() async {
@@ -814,7 +921,9 @@ class _Screen3State extends State<Screen3> {
     final status = await Permission.camera.request();
 
     if (status.isPermanentlyDenied) {
-      _showValidationError('Camera permission denied. Please enable it in Settings.');
+      _showValidationError(
+        'Camera permission denied. Please enable it in Settings.',
+      );
       await openAppSettings();
       return;
     }
@@ -845,7 +954,9 @@ class _Screen3State extends State<Screen3> {
     final status = await Permission.camera.request();
 
     if (status.isPermanentlyDenied) {
-      _showValidationError('Camera permission denied. Please enable it in Settings.');
+      _showValidationError(
+        'Camera permission denied. Please enable it in Settings.',
+      );
       await openAppSettings();
       return;
     }
@@ -858,7 +969,7 @@ class _Screen3State extends State<Screen3> {
     try {
       final XFile? photo = await _picker.pickImage(
         source: ImageSource.camera,
-        preferredCameraDevice: CameraDevice.rear,   // Rear camera for full body
+        preferredCameraDevice: CameraDevice.rear, // Rear camera for full body
       );
 
       if (photo != null) {
@@ -885,12 +996,14 @@ class _Screen3State extends State<Screen3> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboardingComplete', true);
     if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.main, (route) => false);
+    Navigator.of(
+      context,
+    ).pushNamedAndRemoveUntil(AppRoutes.main, (route) => false);
   }
 
   Future<void> _onSaveContinue() async {
     if (!_isValid) {
-      _showValidationError('Please upload both face and body photos.');
+      _showValidationError('Please upload a face photo.');
       return;
     }
     context.read<ProfileController>().updatePersonalization(
@@ -906,7 +1019,9 @@ class _Screen3State extends State<Screen3> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboardingComplete', true);
     if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.main, (route) => false);
+    Navigator.of(
+      context,
+    ).pushNamedAndRemoveUntil(AppRoutes.main, (route) => false);
   }
 
   @override
@@ -923,7 +1038,10 @@ class _Screen3State extends State<Screen3> {
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 0,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -939,7 +1057,8 @@ class _Screen3State extends State<Screen3> {
                         const SizedBox(height: 16),
                         _ToggleCard(
                           enabled: _personalizationEnabled,
-                          onChanged: (v) => setState(() => _personalizationEnabled = v),
+                          onChanged: (v) =>
+                              setState(() => _personalizationEnabled = v),
                         ),
                         const SizedBox(height: 16),
                         _OptionalBadge(),
@@ -1040,7 +1159,9 @@ class _FaceAnalysisPreview extends StatelessWidget {
             items: [
               _AnalysisItem(
                 label: 'Acne Status',
-                value: data.acneDetected ? 'Detected (${data.acneSeverity}%)' : 'Clear',
+                value: data.acneDetected
+                    ? 'Detected (${data.acneSeverity}%)'
+                    : 'Clear',
                 icon: data.acneDetected ? '⚠️' : '✅',
                 color: data.acneDetected ? c.danger : c.accent3,
               ),
@@ -1119,25 +1240,27 @@ class _FaceAnalysisPreview extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                ...data.recommendations.map((rec) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('• ', style: TextStyle(color: c.muted)),
-                      Expanded(
-                        child: Text(
-                          rec,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: c.muted,
-                            height: 1.4,
+                ...data.recommendations.map(
+                  (rec) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('• ', style: TextStyle(color: c.muted)),
+                        Expanded(
+                          child: Text(
+                            rec,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: c.muted,
+                              height: 1.4,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                )),
+                ),
               ],
             ),
           ),
@@ -1159,10 +1282,7 @@ class _AnalysisSection extends StatelessWidget {
   final String title;
   final List<_AnalysisItem> items;
 
-  const _AnalysisSection({
-    required this.title,
-    required this.items,
-  });
+  const _AnalysisSection({required this.title, required this.items});
 
   @override
   Widget build(BuildContext context) {
@@ -1180,61 +1300,66 @@ class _AnalysisSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        ...items.map((item) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Text(item.icon, style: const TextStyle(fontSize: 16)),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        item.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: c.text,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    if (item.swatchColor != null) ...[
+        ...items.map(
+          (item) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Text(item.icon, style: const TextStyle(fontSize: 16)),
                       const SizedBox(width: 8),
-                      Container(
-                        width: 14,
-                        height: 14,
-                        decoration: BoxDecoration(
-                          color: item.swatchColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: c.cardBorder, width: 1),
+                      Flexible(
+                        child: Text(
+                          item.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: c.text,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
+                      if (item.swatchColor != null) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: item.swatchColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: c.cardBorder, width: 1),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: item.color.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  item.value,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: item.color,
                   ),
                 ),
-              ),
-            ],
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: item.color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    item.value,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: item.color,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        )),
+        ),
       ],
     );
   }
@@ -1413,11 +1538,7 @@ class _ToggleCard extends StatelessWidget {
               color: c.text,
             ),
           ),
-          Switch(
-            value: enabled,
-            onChanged: onChanged,
-            activeColor: c.accent1,
-          ),
+          Switch(value: enabled, onChanged: onChanged, activeColor: c.accent1),
         ],
       ),
     );
@@ -1539,18 +1660,18 @@ class _UploadCard extends StatelessWidget {
                 child: Center(
                   child: isLoading
                       ? SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation(c.onAccent),
-                    ),
-                  )
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(c.onAccent),
+                          ),
+                        )
                       : Icon(
-                    uploaded ? Icons.check : icon,
-                    color: c.onAccent,
-                    size: 24,
-                  ),
+                          uploaded ? Icons.check : icon,
+                          color: c.onAccent,
+                          size: 24,
+                        ),
                 ),
               ),
               const SizedBox(width: 16),
@@ -1572,7 +1693,9 @@ class _UploadCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         color: uploaded ? c.accent3 : c.muted,
-                        fontWeight: uploaded ? FontWeight.w500 : FontWeight.w400,
+                        fontWeight: uploaded
+                            ? FontWeight.w500
+                            : FontWeight.w400,
                       ),
                     ),
                   ],
@@ -1638,7 +1761,8 @@ class _PrivacyBlock extends StatelessWidget {
                     ),
                     children: [
                       const TextSpan(
-                        text: 'Photos are analyzed on your device (not uploaded). Data is ',
+                        text:
+                            'Photos are analyzed on your device (not uploaded). Data is ',
                       ),
                       TextSpan(
                         text: 'deleted on request',
