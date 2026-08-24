@@ -27,6 +27,7 @@ typedef ProcessUploadItemFn =
       required Uint8List imageBytes,
       Map<String, dynamic>? metadata,
       bool overrideDuplicate,
+      Map<String, dynamic>? reviewedItem,
     });
 
 typedef GetBatchStatusFn =
@@ -39,11 +40,16 @@ class UploadBatchUnit {
   final String clientUploadItemId;
   final Uint8List imageBytes;
   final Map<String, dynamic>? metadata;
+  // The exact garment the user already reviewed/approved in preview (the
+  // backend's own detected-item payload for this item, edits applied) - lets
+  // save persist THIS item instead of re-running detection from scratch.
+  final Map<String, dynamic>? reviewedItem;
 
   const UploadBatchUnit({
     required this.clientUploadItemId,
     required this.imageBytes,
     this.metadata,
+    this.reviewedItem,
   });
 }
 
@@ -166,6 +172,7 @@ class SequentialUploadController {
         imageBytes: unit.imageBytes,
         metadata: unit.metadata,
         overrideDuplicate: false,
+        reviewedItem: unit.reviewedItem,
       );
       final result = UploadItemResult.fromRaw(unit.clientUploadItemId, raw);
       _resultsById[unit.clientUploadItemId] = result;
@@ -191,6 +198,7 @@ class SequentialUploadController {
       imageBytes: unit.imageBytes,
       metadata: unit.metadata,
       overrideDuplicate: true,
+      reviewedItem: unit.reviewedItem,
     );
     final result = UploadItemResult.fromRaw(clientUploadItemId, raw);
     _resultsById[clientUploadItemId] = result;

@@ -3073,12 +3073,14 @@ class _AddItemModalState extends State<_AddItemModal>
         required imageBytes,
         metadata,
         overrideDuplicate = false,
+        reviewedItem,
       }) => backendService.processUploadBatchItem(
         batchId: batchId,
         clientUploadItemId: clientUploadItemId,
         imageBytes: imageBytes,
         metadata: metadata,
         overrideDuplicate: overrideDuplicate,
+        reviewedItem: reviewedItem,
       ),
       getBatchStatus: backendService.getUploadBatchStatus,
     );
@@ -3091,6 +3093,19 @@ class _AddItemModalState extends State<_AddItemModal>
             ? _galleryImages[index]
             : _capturedBytes;
       }
+      // The exact garment already detected + approved in preview, with any
+      // review-screen edits applied on top - lets save persist THIS item
+      // instead of re-running detection on the source bytes from scratch.
+      final reviewedItem = Map<String, dynamic>.from(item.raw)
+        ..['category'] = item.category
+        ..['name'] = item.name
+        ..['sub_category'] = item.subCategory
+        ..['subcategory'] = item.subCategory
+        ..['color'] = item.color
+        ..['color_name'] = item.color
+        ..['pattern'] = item.pattern
+        ..['occasions'] = item.occasions;
+
       return UploadBatchUnit(
         clientUploadItemId: item.id,
         imageBytes: bytes ?? Uint8List(0),
@@ -3102,6 +3117,7 @@ class _AddItemModalState extends State<_AddItemModal>
           'pattern': item.pattern,
           'occasions': item.occasions,
         },
+        reviewedItem: reviewedItem,
       );
     }).toList();
 

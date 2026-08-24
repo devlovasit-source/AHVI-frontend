@@ -1415,6 +1415,7 @@ class BackendService {
     required Uint8List imageBytes,
     Map<String, dynamic>? metadata,
     bool overrideDuplicate = false,
+    Map<String, dynamic>? reviewedItem,
   }) async {
     try {
       final base64String = await compute(_encodeBytes, imageBytes);
@@ -1428,6 +1429,7 @@ class BackendService {
               'image_base64': base64String,
               if (metadata != null) 'metadata': metadata,
               'override_duplicate': overrideDuplicate,
+              if (reviewedItem != null) 'reviewed_item': reviewedItem,
             }),
           )
           // Single-item analyze+persist; same headroom as single-image analyze.

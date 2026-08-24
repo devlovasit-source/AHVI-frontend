@@ -65,11 +65,13 @@ SequentialUploadController _controller({
       required imageBytes,
       metadata,
       overrideDuplicate = false,
+      reviewedItem,
     }) async {
       calls.add({
         'batchId': batchId,
         'clientUploadItemId': clientUploadItemId,
         'overrideDuplicate': overrideDuplicate,
+        'reviewedItem': reviewedItem,
       });
       final responses = byId[clientUploadItemId] ?? byId['*'] ?? const [];
       final idx = (callCounts[clientUploadItemId] ?? 0).clamp(
@@ -317,6 +319,56 @@ void main() {
     test('addAnyway before run() for that item throws instead of silently no-op-ing', () async {
       final controller = _controller(byId: const {}, calls: []);
       expect(() => controller.addAnyway('never-run'), throwsStateError);
+    });
+
+    test('reviewedItem on the unit is forwarded to processItem on run()', () async {
+      final calls = <Map<String, dynamic>>[];
+      final controller = _controller(
+        byId: {
+          'a': [_added('w-a')],
+        },
+        calls: calls,
+      );
+
+      await controller.run(
+        [
+          UploadBatchUnit(
+            clientUploadItemId: 'a',
+            imageBytes: _bytes('a'),
+            reviewedItem: {'item_id': 'backend-a', 'category': 'Tops'},
+          ),
+        ],
+        clientBatchRequestId: 'batch-11',
+      );
+
+      expect(calls.single['reviewedItem'], {'item_id': 'backend-a', 'category': 'Tops'});
+    });
+
+    test('reviewedItem on the unit is forwarded to processItem on addAnyway', () async {
+      final calls = <Map<String, dynamic>>[];
+      final controller = _controller(
+        byId: {
+          'dup': [_duplicate(), _added('w-dup')],
+        },
+        calls: calls,
+      );
+
+      await controller.run(
+        [
+          UploadBatchUnit(
+            clientUploadItemId: 'dup',
+            imageBytes: _bytes('dup'),
+            reviewedItem: {'item_id': 'backend-dup', 'category': 'Bottoms'},
+          ),
+        ],
+        clientBatchRequestId: 'batch-12',
+      );
+      calls.clear();
+
+      await controller.addAnyway('dup');
+
+      expect(calls.single['reviewedItem'], {'item_id': 'backend-dup', 'category': 'Bottoms'});
+      expect(calls.single['overrideDuplicate'], isTrue);
     });
   });
 }

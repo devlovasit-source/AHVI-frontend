@@ -73,6 +73,7 @@ class _FakeBackendService extends BackendService {
   int analyzeBatchCallCount = 0;
   int saveCallCount = 0;
   final List<List<Map<String, dynamic>>> saveCalls = [];
+  final List<Map<String, dynamic>?> reviewedItemCalls = [];
   // When set, saveWardrobeLabels suspends until this completes, so a test
   // can deterministically observe the in-flight "saving" step instead of
   // racing a save call that resolves within the same pump.
@@ -132,8 +133,10 @@ class _FakeBackendService extends BackendService {
     required Uint8List imageBytes,
     Map<String, dynamic>? metadata,
     bool overrideDuplicate = false,
+    Map<String, dynamic>? reviewedItem,
   }) async {
     saveCallCount++;
+    reviewedItemCalls.add(reviewedItem);
     final payload = [
       {'item_id': clientUploadItemId, ...?metadata},
     ];
@@ -773,6 +776,93 @@ void main() {
         );
         expect(backend.analyzeCallCount, 1);
         expect(backend.analyzeBatchCallCount, 0);
+      },
+    );
+  });
+
+  // ------------------------------------------------------------------
+  // Reviewed-item save contract: the exact garment the user reviewed and
+  // approved in preview must travel to save, not just raw source bytes.
+  // ------------------------------------------------------------------
+
+  group('reviewed-item save payload', () {
+    testWidgets(
+      '24: the preview-detected item_id travels into the save reviewed_item payload',
+      (tester) async {
+        final backend = _FakeBackendService();
+        await _openReview(
+          tester,
+          backend: backend,
+          items: [_detectedItemJson(id: 'backend-detected-42')],
+        );
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+        expect(backend.reviewedItemCalls.single, isNotNull);
+        expect(
+          backend.reviewedItemCalls.single!['item_id'],
+          'backend-detected-42',
+        );
+      },
+    );
+
+    testWidgets(
+      '25: an inline review-screen edit survives into the reviewed_item payload',
+      (tester) async {
+        final backend = _FakeBackendService();
+        await _openReview(
+          tester,
+          backend: backend,
+          items: [_detectedItemJson(name: 'Blue Cotton Shirt')],
+        );
+
+        final nameField = find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'e.g. White linen shirt',
+        );
+        expect(nameField, findsOneWidget);
+        await tester.enterText(nameField, 'Navy Formal Shirt');
+        await tester.pump();
+
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+        expect(
+          backend.reviewedItemCalls.single!['name'],
+          'Navy Formal Shirt',
+          reason:
+              'the reviewed_item sent to save must reflect the edited name, '
+              'not the original backend-detected one',
+        );
+      },
+    );
+
+    testWidgets(
+      '26: two garments detected from one source photo get distinct reviewed_item payloads',
+      (tester) async {
+        final backend = _FakeBackendService();
+        await _openReview(
+          tester,
+          backend: backend,
+          items: [
+            _detectedItemJson(id: 'shirt-1', name: 'White Shirt'),
+            _detectedItemJson(id: 'pants-1', name: 'Black Pants', category: 'bottom'),
+          ],
+        );
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+        expect(backend.reviewedItemCalls.length, 2);
+        final ids = backend.reviewedItemCalls
+            .map((r) => r!['item_id'])
+            .toSet();
+        expect(
+          ids,
+          {'shirt-1', 'pants-1'},
+          reason:
+              'each detected garment must carry its OWN reviewed identity, '
+              'not a shared/duplicated payload even though both came from '
+              'the same source photo',
+        );
       },
     );
   });
