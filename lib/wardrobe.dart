@@ -2454,6 +2454,10 @@ class _AddItemModalState extends State<_AddItemModal>
   bool _isGalleryPick = false;
   List<_DetectedItem> _detected = [];
   String? _detectError;
+  // Multi-image PREVIEW analyze progress: each selected image is analyzed
+  // sequentially (one client-visible request at a time), never batched.
+  int _analyzeCompletedCount = 0;
+  int _analyzeTotalCount = 0;
   bool _isSavingWardrobe = false;
   // Timing: when the detection preview was shown, to measure review-gap.
   DateTime? _previewShownAt;
@@ -2710,8 +2714,14 @@ class _AddItemModalState extends State<_AddItemModal>
   }
 
   List<_DetectedItem> _detectedItemsFromAnalyzeResponse(
-    Map<String, dynamic>? data,
-  ) {
+    Map<String, dynamic>? data, {
+    // Set when this response came from one image out of a sequential
+    // multi-image analyze loop (the single-image endpoint has no batch
+    // context of its own) — stamps sourceImageIndex so save can still find
+    // the right source bytes, and disambiguates ids that could otherwise
+    // collide across independently-indexed single-image responses.
+    int? sourceImageIndexOverride,
+  }) {
     if (data == null) {
       throw Exception('Backend returned no scan response');
     }
@@ -2740,11 +2750,14 @@ class _AddItemModalState extends State<_AddItemModal>
               (data['occasions'] as List).map((v) => v.toString()),
             )
           : <String>[];
+      final baseId =
+          data['item_id']?.toString() ??
+          data['id']?.toString() ??
+          UniqueKey().toString();
       return _DetectedItem(
-        id:
-            data['item_id']?.toString() ??
-            data['id']?.toString() ??
-            UniqueKey().toString(),
+        id: sourceImageIndexOverride != null
+            ? 'img$sourceImageIndexOverride-$baseId'
+            : baseId,
         name: taxonomy.name,
         category: taxonomy.category,
         subCategory: taxonomy.subCategory,
@@ -2760,11 +2773,13 @@ class _AddItemModalState extends State<_AddItemModal>
         rawUrl: data['raw_url']?.toString(),
         maskedUrl: data['masked_url']?.toString(),
         maskedImageBase64: data['masked_image_base64']?.toString(),
-        sourceImageIndex: data['source_image_index'] is num
-            ? (data['source_image_index'] as num).toInt()
-            : (data['batch_index'] is num
-                  ? (data['batch_index'] as num).toInt()
-                  : null),
+        sourceImageIndex:
+            sourceImageIndexOverride ??
+            (data['source_image_index'] is num
+                ? (data['source_image_index'] as num).toInt()
+                : (data['batch_index'] is num
+                      ? (data['batch_index'] as num).toInt()
+                      : null)),
         raw: data,
         validationStatus: safeValidationStatus,
         rejectionReason:
@@ -2868,80 +2883,46 @@ class _AddItemModalState extends State<_AddItemModal>
     }
   }
 
-  // Multi-image flow ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â all images scanned in parallel, results merged
+  // Multi-image flow - each selected image is analyzed sequentially, one
+  // client-visible /analyze request at a time (never a single giant
+  // /analyze-batch call), so the review screen no longer waits behind one
+  // combined ~240s round trip. One image failing does not stop the rest:
+  // its slot simply contributes zero items while every other image still
+  // analyzes and already-collected results survive.
   Future<void> _runDetectionMulti(List<Uint8List> bytesList) async {
-    try {
-      List<_DetectedItem> allItems = [];
+    setState(() {
+      _analyzeCompletedCount = 0;
+      _analyzeTotalCount = bytesList.length;
+    });
+    final allItems = <_DetectedItem>[];
+    for (var i = 0; i < bytesList.length; i++) {
       try {
         final data = await Provider.of<BackendService>(
           context,
           listen: false,
-        ).analyzeImagesBatch(bytesList);
-        allItems = _detectedItemsFromAnalyzeResponse(data);
-      } catch (e) {
-        debugPrint('Batch detection fallback: $e');
-      }
-
-      if (allItems.isEmpty) {
-        final results = await Future.wait(
-          bytesList.map(
-            (bytes) => _detectOneImage(bytes).catchError((error) {
-              debugPrint('Single image fallback failed: $error');
-              return <_DetectedItem>[];
-            }),
+        ).analyzeImage(bytesList[i]);
+        allItems.addAll(
+          _detectedItemsFromAnalyzeResponse(
+            data,
+            sourceImageIndexOverride: i,
           ),
         );
-        var counter = 1;
-        allItems = [
-          for (final list in results)
-            for (final item in list)
-              _DetectedItem(
-                id: (counter++).toString(),
-                name: item.name,
-                category: item.category,
-                subCategory: item.subCategory,
-                color: item.color,
-                colorCode: item.colorCode,
-                pattern: item.pattern,
-                occasions: List<String>.from(item.occasions),
-                labelSource: item.labelSource,
-                requiresManualEntry: item.requiresManualEntry,
-                confidence: item.confidence,
-                rawUrl: item.rawUrl,
-                maskedUrl: item.maskedUrl,
-                maskedImageBase64: item.maskedImageBase64,
-                sourceImageIndex: item.sourceImageIndex,
-                raw: item.raw,
-                selected: true,
-              ),
-        ];
+      } catch (e) {
+        debugPrint('Sequential analyze failed for image $i: $e');
+        // Isolated failure: this image contributes zero items; continue.
       }
-
-      if (mounted) {
-        setState(() {
-          _detected = allItems;
-          _step = _ModalStep.reviewing;
-          if (allItems.isEmpty) {
-            _detectError = 'No items detected in any of the images.';
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('Wardrobe multi detection failed: $e');
-      if (mounted) {
-        setState(() {
-          _detectError = 'Detection failed: ${_shortScanError(e)}';
-          _step = _ModalStep.reviewing;
-          _detected = [];
-        });
-      }
+      if (!mounted) return;
+      setState(() => _analyzeCompletedCount = i + 1);
     }
-  }
 
-  String _shortScanError(Object error) {
-    final text = error.toString().replaceFirst('Exception: ', '').trim();
-    if (text.length <= 160) return text;
-    return '${text.substring(0, 160)}...';
+    if (!mounted) return;
+    setState(() {
+      _detected = allItems;
+      _step = _ModalStep.reviewing;
+      if (allItems.isEmpty) {
+        _detectError = 'No items detected in any of the images.';
+      }
+    });
   }
 
   void _retake() {
@@ -4407,7 +4388,7 @@ class _AddItemModalState extends State<_AddItemModal>
               const SizedBox(height: 24),
               Text(
                 isMulti
-                    ? 'Scanning ${_galleryImages.length} images...'
+                    ? 'Analyzing ${(_analyzeCompletedCount + 1).clamp(1, _analyzeTotalCount < 1 ? 1 : _analyzeTotalCount)} of $_analyzeTotalCount'
                     : 'Scanning outfit...',
                 style: TextStyle(
                   fontFamily: GoogleFonts.inter().fontFamily,
@@ -4420,7 +4401,7 @@ class _AddItemModalState extends State<_AddItemModal>
               const SizedBox(height: 8),
               Text(
                 isMulti
-                    ? 'AHVI is understanding all images in parallel'
+                    ? 'AHVI is understanding each image, one at a time'
                     : 'AHVI is understanding your pieces',
                 style: TextStyle(
                   fontFamily: GoogleFonts.inter().fontFamily,

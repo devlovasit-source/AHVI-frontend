@@ -61,10 +61,16 @@ class _FakeImagePickerPlatform extends ImagePickerPlatform {
 /// tests can inspect the exact backend payload (e.g. to prove privacy
 /// normalization survived an inline edit).
 class _FakeBackendService extends BackendService {
-  Map<String, dynamic> Function(List<Uint8List> images)? onAnalyze;
+  // FutureOr so a test can gate an individual call (return a Completer's
+  // .future) to deterministically observe an in-flight "Analyzing N of M"
+  // step, or return a plain Map for the common synchronous case.
+  FutureOr<Map<String, dynamic>> Function(List<Uint8List> images)? onAnalyze;
   Map<String, dynamic> Function(List<Map<String, dynamic>> payloads)? onSave;
 
+  // Single-image /analyze calls only. The sequential multi-image PREVIEW
+  // flow must drive this exclusively — analyzeBatchCallCount must stay 0.
   int analyzeCallCount = 0;
+  int analyzeBatchCallCount = 0;
   int saveCallCount = 0;
   final List<List<Map<String, dynamic>>> saveCalls = [];
   // When set, saveWardrobeLabels suspends until this completes, so a test
@@ -79,7 +85,8 @@ class _FakeBackendService extends BackendService {
     bool saveDuplicates = false,
   }) async {
     analyzeCallCount++;
-    return onAnalyze?.call([imageBytes]) ?? const {'items': []};
+    final result = onAnalyze?.call([imageBytes]);
+    return result == null ? const {'items': []} : await result;
   }
 
   @override
@@ -88,8 +95,9 @@ class _FakeBackendService extends BackendService {
     bool autoSave = false,
     bool saveDuplicates = false,
   }) async {
-    analyzeCallCount++;
-    return onAnalyze?.call(images) ?? const {'items': []};
+    analyzeBatchCallCount++;
+    final result = onAnalyze?.call(images);
+    return result == null ? const {'items': []} : await result;
   }
 
   @override
@@ -240,6 +248,51 @@ Future<void> _openReview(
     'review',
     'wardrobe-error',
   ]);
+}
+
+/// Same as [_openReview] but drives a multi-image gallery pick of
+/// [imageCount] images. Taps the gallery icon and pumps exactly once (not
+/// until settled) so callers land on the "detecting" step with the FIRST
+/// analyze call in flight — from there they drive/gate each call themselves
+/// via [backend.onAnalyze] and finish with `_pumpUntilKeyFound`.
+Future<void> _openMultiPick(
+  WidgetTester tester, {
+  required _FakeBackendService backend,
+  required int imageCount,
+}) async {
+  ImagePickerPlatform.instance = _FakeImagePickerPlatform(
+    List.generate(
+      imageCount,
+      (i) => XFile.fromData(_onePxPng, mimeType: 'image/png', name: 'p$i.png'),
+    ),
+  );
+
+  await tester.pumpWidget(
+    Provider<BackendService>.value(
+      value: backend,
+      child: MaterialApp(
+        theme: ThemeData(
+          useMaterial3: true,
+          extensions: [AppThemeTokens.light(_accent)],
+        ),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: ElevatedButton(
+                onPressed: () => showAddToWardrobeModal(context),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.tap(find.text('open'));
+  await tester.pump();
+  await tester.tap(find.byIcon(Icons.photo_library_outlined));
+  await tester.pump();
 }
 
 /// Repeatedly pumps small, bounded frames (never `pumpAndSettle`, which
@@ -571,4 +624,156 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // ------------------------------------------------------------------
+  // Multi-image PREVIEW analyze: each selected image must be analyzed
+  // sequentially through the single-image /analyze endpoint (one
+  // client-visible request at a time) rather than one giant
+  // /analyze-batch call. Save/duplicate handling is untouched — these
+  // only cover the pre-review analyze step.
+  // ------------------------------------------------------------------
+
+  group('multi-image sequential analyze (PREVIEW)', () {
+    testWidgets(
+      '19: 3 images call analyzeImage sequentially, never analyzeImagesBatch',
+      (tester) async {
+        final gates = List.generate(
+          3,
+          (_) => Completer<Map<String, dynamic>>(),
+        );
+        final callOrder = <int>[];
+        final backend = _FakeBackendService()
+          ..onAnalyze = (_) {
+            final idx = callOrder.length;
+            callOrder.add(idx);
+            return gates[idx].future;
+          };
+        await _openMultiPick(tester, backend: backend, imageCount: 3);
+        await tester.pump();
+
+        // Only the first call is in flight — the second must not start
+        // until the first resolves (proves no Future.wait fan-out).
+        expect(callOrder, [0]);
+        gates[0].complete({
+          'items': [_detectedItemJson(id: 'a')],
+        });
+        await tester.pump();
+        await tester.pump();
+        expect(callOrder, [0, 1]);
+        gates[1].complete({
+          'items': [_detectedItemJson(id: 'b')],
+        });
+        await tester.pump();
+        await tester.pump();
+        expect(callOrder, [0, 1, 2]);
+        gates[2].complete({
+          'items': [_detectedItemJson(id: 'c')],
+        });
+
+        await _pumpUntilKeyFound(tester, const ['review']);
+        expect(backend.analyzeCallCount, 3);
+        expect(backend.analyzeBatchCallCount, 0);
+        // Flush the "detecting" checklist's Future.delayed timers (scheduled
+        // while that step was actually held on screen across real pumps
+        // above) so none are left pending at test teardown.
+        await tester.pump(const Duration(seconds: 3));
+      },
+    );
+
+    testWidgets('20: analyzing progress goes 1 of 3 -> 2 of 3 -> 3 of 3', (
+      tester,
+    ) async {
+      final gates = List.generate(
+        3,
+        (_) => Completer<Map<String, dynamic>>(),
+      );
+      var nextGate = 0;
+      final backend = _FakeBackendService()
+        ..onAnalyze = (_) => gates[nextGate++].future;
+      await _openMultiPick(tester, backend: backend, imageCount: 3);
+      await tester.pump();
+
+      expect(find.textContaining('Analyzing 1 of 3'), findsOneWidget);
+      gates[0].complete({
+        'items': [_detectedItemJson(id: 'a')],
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('Analyzing 2 of 3'), findsOneWidget);
+      gates[1].complete({
+        'items': [_detectedItemJson(id: 'b')],
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('Analyzing 3 of 3'), findsOneWidget);
+      gates[2].complete({
+        'items': [_detectedItemJson(id: 'c')],
+      });
+      await _pumpUntilKeyFound(tester, const ['review']);
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets(
+      '21: one image failing does not stop the rest - earlier and later results survive',
+      (tester) async {
+        var call = 0;
+        final backend = _FakeBackendService()
+          ..onAnalyze = (_) {
+            call++;
+            if (call == 2) throw Exception('image 2 analyze failed');
+            return {
+              'items': [
+                _detectedItemJson(
+                  id: call == 1 ? 'a' : 'c',
+                  name: call == 1 ? 'Item A' : 'Item C',
+                ),
+              ],
+            };
+          };
+        await _openMultiPick(tester, backend: backend, imageCount: 3);
+        await _pumpUntilKeyFound(tester, const ['review']);
+
+        expect(
+          backend.analyzeCallCount,
+          3,
+          reason: 'image 3 must still analyze after image 2 failed',
+        );
+        expect(backend.analyzeBatchCallCount, 0);
+        // The multi-item review is paged (one item card per page), so only
+        // the first page's item is directly visible here — the confirm CTA
+        // count is what proves BOTH surviving items (a and c) made it into
+        // _detected, not just the one shown on page 0.
+        expect(find.text('Item A'), findsWidgets);
+        expect(find.textContaining('Add 2 items to wardrobe'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '22: all images failing routes to the existing review error/retry UI',
+      (tester) async {
+        final backend = _FakeBackendService()
+          ..onAnalyze = (_) => throw Exception('boom');
+        await _openMultiPick(tester, backend: backend, imageCount: 2);
+        await _pumpUntilKeyFound(tester, const ['review']);
+
+        expect(find.byKey(const ValueKey('review')), findsOneWidget);
+        expect(find.textContaining('No items detected'), findsOneWidget);
+        expect(backend.analyzeBatchCallCount, 0);
+      },
+    );
+
+    testWidgets(
+      '23: single-image pick is unchanged - one analyzeImage call, never batch',
+      (tester) async {
+        final backend = _FakeBackendService();
+        await _openReview(
+          tester,
+          backend: backend,
+          items: [_detectedItemJson()],
+        );
+        expect(backend.analyzeCallCount, 1);
+        expect(backend.analyzeBatchCallCount, 0);
+      },
+    );
+  });
 }
