@@ -1370,6 +1370,119 @@ class BackendService {
     _appwriteService.invalidateWardrobeCache();
   }
 
+  // ---------------------------------------------------------------- //
+  // Sequential upload batch (AHVI P0): one image processed per call,
+  // instead of one giant /analyze-batch + /save-selected round trip.
+  // ---------------------------------------------------------------- //
+
+  Future<Map<String, dynamic>?> createOrResumeUploadBatch({
+    required String clientBatchRequestId,
+    required int totalItems,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/wardrobe/upload-batches'),
+            headers: await _authHeaders(),
+            body: jsonEncode({
+              'user_id': await _currentUserId(),
+              'client_batch_request_id': clientBatchRequestId,
+              'total_items': totalItems,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) {
+        return await compute(_parseJsonMap, response.body);
+      }
+      debugPrint(
+        'Create upload batch failed: ${response.statusCode} - ${response.body}',
+      );
+      return null;
+    } catch (e) {
+      debugPrint('Create upload batch error: $e');
+      return null;
+    }
+  }
+
+  /// Processes exactly ONE image through analyze+persist server-side and
+  /// waits for its terminal result. Callers must invoke this sequentially,
+  /// one item at a time — never in parallel — so upload progress is
+  /// meaningful and one slow/failed item never blocks the others.
+  Future<Map<String, dynamic>?> processUploadBatchItem({
+    required String batchId,
+    required String clientUploadItemId,
+    required Uint8List imageBytes,
+    Map<String, dynamic>? metadata,
+    bool overrideDuplicate = false,
+  }) async {
+    try {
+      final base64String = await compute(_encodeBytes, imageBytes);
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/wardrobe/upload-batches/$batchId/items'),
+            headers: await _authHeaders(),
+            body: jsonEncode({
+              'user_id': await _currentUserId(),
+              'client_upload_item_id': clientUploadItemId,
+              'image_base64': base64String,
+              if (metadata != null) 'metadata': metadata,
+              'override_duplicate': overrideDuplicate,
+            }),
+          )
+          // Single-item analyze+persist; same headroom as single-image analyze.
+          .timeout(const Duration(seconds: 180));
+
+      final parsed = await compute(_parseJsonMap, response.body);
+      if (response.statusCode == 200) {
+        if (parsed['status'] == 'ADDED_TO_WARDROBE') {
+          invalidateWardrobeCacheAfterMutation();
+        }
+        return parsed;
+      }
+      debugPrint(
+        'Upload batch item failed: ${response.statusCode} - ${response.body}',
+      );
+      // 503 (typed infra failure) still carries a JSON detail body worth
+      // surfacing as a FAILED result rather than treated as a transport error.
+      return {
+        'success': false,
+        'status': 'FAILED',
+        'error_code': 'REQUEST_FAILED',
+        'reason': parsed['detail']?.toString() ?? 'request_failed',
+      };
+    } catch (e) {
+      debugPrint('Upload batch item error: $e');
+      return {
+        'success': false,
+        'status': 'FAILED',
+        'error_code': 'REQUEST_FAILED',
+        'reason': e.toString(),
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>?> getUploadBatchStatus(String batchId) async {
+    try {
+      final userId = await _currentUserId();
+      final response = await http
+          .get(
+            Uri.parse(
+              '$baseUrl/api/wardrobe/upload-batches/$batchId?user_id=$userId',
+            ),
+            headers: await _authHeaders(),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode == 200) {
+        return await compute(_parseJsonMap, response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Get upload batch status error: $e');
+      return null;
+    }
+  }
+
   /// Power the item-detail CTAs (Style This / Build Outfit).
   ///
   /// mode = 'style_this'   -> response.style_directions: 3 directions

@@ -102,6 +102,65 @@ class _FakeBackendService extends BackendService {
     return onSave?.call(detectedItems) ??
         {'saved_count': detectedItems.length};
   }
+
+  // Sequential upload batch: the review/save flow now calls these instead of
+  // saveWardrobeLabels(). Adapted onto the SAME onSave/saveGate/saveCallCount
+  // test hooks, called once per item (matching the real sequential contract)
+  // rather than once per batch.
+  @override
+  Future<Map<String, dynamic>?> createOrResumeUploadBatch({
+    required String clientBatchRequestId,
+    required int totalItems,
+  }) async => {
+    'success': true,
+    'batch_id': clientBatchRequestId,
+    'resumed': false,
+  };
+
+  @override
+  Future<Map<String, dynamic>?> processUploadBatchItem({
+    required String batchId,
+    required String clientUploadItemId,
+    required Uint8List imageBytes,
+    Map<String, dynamic>? metadata,
+    bool overrideDuplicate = false,
+  }) async {
+    saveCallCount++;
+    final payload = [
+      {'item_id': clientUploadItemId, ...?metadata},
+    ];
+    saveCalls.add(payload);
+    if (saveGate != null) await saveGate!.future;
+    final result = onSave?.call(payload) ?? {'saved_count': 1};
+    final savedCountRaw = result['saved_count'];
+    final savedCount = savedCountRaw is int
+        ? savedCountRaw
+        : int.tryParse(savedCountRaw?.toString() ?? '') ?? 0;
+    if (savedCount > 0) {
+      return {
+        'success': true,
+        'status': 'ADDED_TO_WARDROBE',
+        'wardrobe_item_id': 'w_$clientUploadItemId',
+      };
+    }
+    return {
+      'success': false,
+      'status': 'FAILED',
+      'error_code': 'PERSISTENCE_FAILED',
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getUploadBatchStatus(String batchId) async => {
+    'success': true,
+    'batch_id': batchId,
+    'status': 'COMPLETED',
+    'total_items': saveCallCount,
+    'added_count': saveCallCount,
+    'needs_review_count': 0,
+    'rejected_count': 0,
+    'failed_count': 0,
+  };
 }
 
 Map<String, dynamic> _detectedItemJson({
@@ -239,7 +298,7 @@ void main() {
       expect(source.contains('_editItem'), isFalse);
       expect(
         RegExp(r'enum _ModalStep \{[^}]*\}').firstMatch(source)!.group(0),
-        'enum _ModalStep { camera, detecting, reviewing, saving, success, error }',
+        'enum _ModalStep { camera, detecting, reviewing, saving, success, results, error }',
       );
     });
 
@@ -400,8 +459,12 @@ void main() {
   testWidgets(
     '10: partial save (requested=3, saved=1) never claims all 3 saved',
     (tester) async {
+      // Sequential per-item contract: item "b" fails, "a"/"c" are added. A
+      // genuine mix routes to the per-item results screen, never a single
+      // "all saved" success message.
       final backend = _FakeBackendService()
-        ..onSave = (_) => const {'saved_count': 1};
+        ..onSave = (payload) =>
+            {'saved_count': payload.single['item_id'] == 'b' ? 0 : 1};
       await _openReview(
         tester,
         backend: backend,
@@ -412,9 +475,10 @@ void main() {
         ],
       );
       await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
-      await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+      await _pumpUntilKeyFound(tester, const ['wardrobe-results']);
       expect(find.text('Added 3 items to your wardrobe!'), findsNothing);
-      expect(find.textContaining('Added 1 of 3 items'), findsOneWidget);
+      expect(find.textContaining('Added 2 of 3 items'), findsOneWidget);
+      expect(backend.saveCallCount, 3, reason: 'each item is its own sequential call');
     },
   );
 

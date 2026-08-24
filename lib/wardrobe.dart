@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
 import 'package:myapp/services/backend_service.dart';
+import 'package:myapp/services/sequential_upload_controller.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/connectivity_watcher.dart';
 import 'package:myapp/services/offline_cache.dart';
@@ -1951,16 +1952,41 @@ class _DetectedItem {
            ? 'ok'
            : validationStatus.trim().toLowerCase(),
        selectedByDefault =
-           selectedByDefault ?? validationStatus.trim().toLowerCase() == 'ok',
+           (selectedByDefault ??
+               validationStatus.trim().toLowerCase() == 'ok') &&
+           !(raw['duplicate'] is Map &&
+               (raw['duplicate'] as Map)['checked'] == true &&
+               (raw['duplicate'] as Map)['is_duplicate'] == true),
        selected =
            selected ??
-           (selectedByDefault ?? validationStatus.trim().toLowerCase() == 'ok');
+           ((selectedByDefault ??
+                   validationStatus.trim().toLowerCase() == 'ok') &&
+               !(raw['duplicate'] is Map &&
+                   (raw['duplicate'] as Map)['checked'] == true &&
+                   (raw['duplicate'] as Map)['is_duplicate'] == true));
 
   bool get isApproved => validationStatus == 'ok';
   bool get isNeedsReview => validationStatus == 'needs_review';
   bool get isRejected => validationStatus == 'rejected';
   bool get isSaveable => isApproved;
+
+  // Canonical duplicate signal, read straight off the raw analyze response
+  // (item["duplicate"]) - never re-derived or re-checked client-side.
+  Map<String, dynamic>? get _duplicateInfo =>
+      raw['duplicate'] is Map ? Map<String, dynamic>.from(raw['duplicate'] as Map) : null;
+  bool get isDuplicate =>
+      _duplicateInfo != null &&
+      _duplicateInfo!['checked'] == true &&
+      _duplicateInfo!['is_duplicate'] == true;
+  String? get duplicateReason => _duplicateInfo?['reason']?.toString();
+  String? get matchedItemId => _duplicateInfo?['matched_item_id']?.toString();
+  double? get duplicateConfidence {
+    final c = _duplicateInfo?['confidence'];
+    return c is num ? c.toDouble() : null;
+  }
+
   String? get statusLabel {
+    if (isDuplicate) return 'Possible duplicate';
     if (isNeedsReview) return 'Needs review';
     if (isRejected) return 'Rejected';
     return null;
@@ -2352,7 +2378,7 @@ _DetectedTaxonomy _normalizeDetectedTaxonomy(Map<String, dynamic> data) {
   );
 }
 
-enum _ModalStep { camera, detecting, reviewing, saving, success, error }
+enum _ModalStep { camera, detecting, reviewing, saving, success, results, error }
 
 /// Per-item inline-edit controllers for the unified review page. One set is
 /// created per detected item (keyed by item id) so multiple items can be
@@ -2444,6 +2470,19 @@ class _AddItemModalState extends State<_AddItemModal>
   String? _savedSingleName;
   String? _savedSingleColor;
   String? _savedSinglePattern;
+
+  // Sequential upload batch: one stable batch id per save ATTEMPT SESSION
+  // (generated once, reused across retries/Add-anyway — never regenerated
+  // per button tap), and one controller instance driving the per-item loop.
+  String? _uploadBatchRequestId;
+  SequentialUploadController? _uploadController;
+  int _uploadCompletedCount = 0;
+  int _uploadTotalCount = 0;
+  // Item-level results from the last sequential run, keyed by _DetectedItem.id
+  // (== client_upload_item_id). Drives the results screen and Add-anyway.
+  Map<String, UploadItemResult> _uploadResults = {};
+  final Set<String> _addAnywayInFlight = {};
+  List<_DetectedItem> _lastSaveAttemptItems = [];
 
   // Inline per-item edit controllers for the unified review page, keyed by
   // detected-item id. Built lazily so edits made before a save failure are
@@ -3021,176 +3060,210 @@ class _AddItemModalState extends State<_AddItemModal>
       _saveError = null;
     });
     HapticFeedback.lightImpact();
-    final payloads = selected.map((item) => item.toBackendPayload()).toList();
-    // Shrink the upload: downscale heavy base64 before sending. Skipped when a
-    // server cache token is present (base64 already dropped via toBackendPayload).
-    for (final p in payloads) {
-      final hasToken =
-          (p['image_cache_token']?.toString().trim().isNotEmpty ?? false);
+    // Shrink the upload: downscale heavy base64 in place on each item before
+    // sending. Skipped when a server cache token is present.
+    for (final item in selected) {
+      final hasToken = (item.raw['image_cache_token']?.toString().trim().isNotEmpty ?? false);
       if (hasToken) continue;
-      for (final key in const ['masked_image_base64', 'raw_image_base64']) {
-        final b64 = p[key]?.toString();
-        if (b64 != null && b64.isNotEmpty) {
-          p[key] = await _downscaleBase64ForUpload(b64);
-        }
+      if (item.maskedImageBase64 != null && item.maskedImageBase64!.isNotEmpty) {
+        item.raw['masked_image_base64'] =
+            await _downscaleBase64ForUpload(item.maskedImageBase64!);
       }
     }
     final backendService = Provider.of<BackendService>(context, listen: false);
-    // TIMING: split the slow "whole process" into human-review vs upload vs
-    // server. review_ms = preview shown -> save tapped; payload_kb = upload
-    // size; save_call_ms = full client wall-time of the save (upload + server
-    // + download). Compare save_call_ms to the backend's latency_ms to isolate
-    // network/upload overhead vs server compute.
     final int reviewMs = _previewShownAt == null
         ? -1
         : DateTime.now().difference(_previewShownAt!).inMilliseconds;
-    int payloadKb = -1;
-    try {
-      payloadKb = (jsonEncode(payloads).length / 1024).round();
-    } catch (_) {}
-    debugPrint(
-      'AHVI_SAVE_TIMING review_ms=$reviewMs payload_kb=$payloadKb items=${selected.length}',
+    debugPrint('AHVI_SAVE_TIMING review_ms=$reviewMs items=${selected.length}');
+
+    // One stable batch id per save ATTEMPT SESSION - generated once, reused
+    // across Retry/Add-anyway. Never regenerated per button tap.
+    _uploadBatchRequestId ??=
+        'batch_${DateTime.now().microsecondsSinceEpoch}';
+    _uploadController ??= SequentialUploadController(
+      createOrResumeBatch: ({required clientBatchRequestId, required totalItems}) =>
+          backendService.createOrResumeUploadBatch(
+            clientBatchRequestId: clientBatchRequestId,
+            totalItems: totalItems,
+          ),
+      processItem: ({
+        required batchId,
+        required clientUploadItemId,
+        required imageBytes,
+        metadata,
+        overrideDuplicate = false,
+      }) => backendService.processUploadBatchItem(
+        batchId: batchId,
+        clientUploadItemId: clientUploadItemId,
+        imageBytes: imageBytes,
+        metadata: metadata,
+        overrideDuplicate: overrideDuplicate,
+      ),
+      getBatchStatus: backendService.getUploadBatchStatus,
     );
+
+    final units = selected.map((item) {
+      Uint8List? bytes = item.previewBytes;
+      if (bytes == null || bytes.isEmpty) {
+        final index = item.sourceImageIndex;
+        bytes = _isGalleryPick && index != null && index >= 0 && index < _galleryImages.length
+            ? _galleryImages[index]
+            : _capturedBytes;
+      }
+      return UploadBatchUnit(
+        clientUploadItemId: item.id,
+        imageBytes: bytes ?? Uint8List(0),
+        metadata: {
+          'category': item.category,
+          'name': item.name,
+          'sub_category': item.subCategory,
+          'color': item.color,
+          'pattern': item.pattern,
+          'occasions': item.occasions,
+        },
+      );
+    }).toList();
+
+    setState(() {
+      _uploadCompletedCount = 0;
+      _uploadTotalCount = units.length;
+      _lastSaveAttemptItems = selected;
+    });
+
     final saveSw = Stopwatch()..start();
-    final saveResult = await backendService.saveWardrobeLabels(payloads);
+    final results = await _uploadController!.run(
+      units,
+      clientBatchRequestId: _uploadBatchRequestId!,
+      onProgress: (completed, total, result) {
+        if (!mounted) return;
+        setState(() => _uploadCompletedCount = completed);
+      },
+    );
     debugPrint('AHVI_SAVE_TIMING save_call_ms=${saveSw.elapsedMilliseconds}');
     if (!mounted) return;
-    final savedCount = saveResult == null
-        ? 0
-        : (saveResult['saved_count'] is int
-              ? saveResult['saved_count'] as int
-              : int.tryParse(saveResult['saved_count']?.toString() ?? '') ?? 0);
-    if (saveResult == null || savedCount <= 0) {
-      setState(() {
-        _isSavingWardrobe = false;
+
+    _uploadResults = {for (final r in results) r.clientUploadItemId: r};
+    final addedResults = results.where((r) => r.isAdded).toList();
+
+    for (final result in addedResults) {
+      final item = selected.firstWhere((i) => i.id == result.clientUploadItemId);
+      final remoteUrl = item.maskedUrl ?? item.rawUrl;
+      Uint8List? displayBytes = item.maskedImageBytes;
+      if (displayBytes == null && (remoteUrl == null || remoteUrl.isEmpty)) {
+        final index = item.sourceImageIndex;
+        displayBytes = _isGalleryPick && index != null && index >= 0 && index < _galleryImages.length
+            ? _galleryImages[index]
+            : _capturedBytes;
+      }
+      // Backend wardrobe_item_id is the ONLY authority for this row's id -
+      // never a client-guessed id. The full wardrobe cache refresh
+      // (invalidateWardrobeCacheAfterMutation, already triggered inside
+      // processUploadBatchItem) supersedes this optimistic local row.
+      widget.onSave({
+        'id': result.wardrobeItemId ?? item.id,
+        'name': _cleanUiText(item.name, fallback: 'Item'),
+        'cat': item.category,
+        'occasions': List<String>.from(item.occasions),
+        'notes': [
+          item.color,
+          item.pattern,
+        ].where((v) => v != null && v.isNotEmpty && v != 'null').join(', '),
+        'imageBytes': displayBytes,
+        'imageUrl': remoteUrl,
+        'maskedUrl': remoteUrl,
+        'normalizedUrl': null,
+        'worn': 0,
+        'liked': false,
+        'remoteSaved': true,
+      });
+    }
+
+    HapticFeedback.mediumImpact();
+    final requestedCount = selected.length;
+    final savedCount = addedResults.length;
+    final allAdded = savedCount == requestedCount;
+
+    setState(() {
+      _isSavingWardrobe = false;
+      _savedCount = savedCount;
+      _savedRequestedCount = requestedCount;
+      if (allAdded) {
+        _step = _ModalStep.success;
+        _savedSingleName = savedCount == 1
+            ? _cleanUiText(selected.first.name, fallback: 'Item')
+            : null;
+        _savedSingleColor = savedCount == 1 ? selected.first.color : null;
+        _savedSinglePattern = savedCount == 1 ? selected.first.pattern : null;
+      } else if (savedCount == 0) {
+        // Nothing was added at all - the existing dedicated error/retry
+        // screen already covers this cleanly.
         _step = _ModalStep.error;
         _saveError =
             "Something went wrong while saving. Your changes haven't been lost.";
-      });
-      return;
-    }
-
-    final savedRows = (saveResult['items'] is List)
-        ? (saveResult['items'] as List).whereType<Map>().toList()
-        : <Map>[];
-
-    final savedDisplay = <Map<String, String?>>[];
-    if (savedRows.isEmpty) {
-      for (final item in selected.take(savedCount)) {
-        savedDisplay.add({
-          'name': _cleanUiText(item.name, fallback: 'Item'),
-          'color': item.color,
-          'pattern': item.pattern,
-        });
-        final remoteUrl = item.maskedUrl ?? item.rawUrl;
-        Uint8List? displayBytes = item.maskedImageBytes;
-        if (displayBytes == null && (remoteUrl == null || remoteUrl.isEmpty)) {
-          final index = item.sourceImageIndex;
-          displayBytes =
-              _isGalleryPick &&
-                  index != null &&
-                  index >= 0 &&
-                  index < _galleryImages.length
-              ? _galleryImages[index]
-              : _capturedBytes;
-        }
-        widget.onSave({
-          'id': item.id,
-          'name': _cleanUiText(item.name, fallback: 'Item'),
-          'cat': item.category,
-          'occasions': List<String>.from(item.occasions),
-          'notes': [
-            item.color,
-            item.pattern,
-          ].where((v) => v != null && v.isNotEmpty && v != 'null').join(', '),
-          'imageBytes': displayBytes,
-          'imageUrl': remoteUrl,
-          'maskedUrl': remoteUrl,
-          'normalizedUrl': null,
-          'worn': 0,
-          'liked': false,
-          'remoteSaved': true,
-        });
+      } else {
+        // A genuine mix (some added, some need a decision or failed) - show
+        // the per-item results screen instead of a single pass/fail message.
+        _step = _ModalStep.results;
       }
-    } else {
-      for (final raw in savedRows) {
-        final row = Map<String, dynamic>.from(raw);
-        savedDisplay.add({
-          'name': _cleanUiText(row['name'], fallback: 'Item'),
-          'color': row['color_name']?.toString() ?? row['color']?.toString(),
-          'pattern': row['pattern']?.toString(),
-        });
-        final displayUrl =
-            row['display_image_url']?.toString() ??
-            row['displayImageUrl']?.toString();
-        final normalizedUrl =
-            displayUrl ??
-            row['normalized_url']?.toString() ??
-            row['normalizedUrl']?.toString();
-        final maskedUrl =
-            row['masked_url']?.toString() ?? row['maskedUrl']?.toString();
-        final imageUrl =
-            row['image_url']?.toString() ?? row['imageUrl']?.toString();
-        widget.onSave({
-          'id':
-              row[r'$id']?.toString() ??
-              row['id']?.toString() ??
-              row['item_id']?.toString() ??
-              UniqueKey().toString(),
-          'name': _cleanUiText(row['name'], fallback: 'Item'),
-          'cat': _cleanCategory(row['category']),
-          'occasions': _cleanStringList(row['occasions']),
-          'notes': _cleanUiText(row['notes']),
-          'imageBytes': null,
-          'imageUrl': imageUrl,
-          'maskedUrl': maskedUrl ?? imageUrl,
-          'normalizedUrl': normalizedUrl,
-          'worn': row['worn'] is int ? row['worn'] as int : 0,
-          'liked': row['liked'] == true,
-          'remoteSaved': true,
-          'catalogStatus': (row['catalogStatus'] ?? row['catalog_status'])
-              ?.toString(),
-        });
-      }
-    }
-    HapticFeedback.mediumImpact();
-    final requestedCount = selected.length;
-    setState(() {
-      _isSavingWardrobe = false;
-      _step = _ModalStep.success;
-      _savedCount = savedCount;
-      _savedRequestedCount = requestedCount;
-      _savedSingleName = savedDisplay.length == 1
-          ? savedDisplay.first['name']
-          : null;
-      _savedSingleColor = savedDisplay.length == 1
-          ? savedDisplay.first['color']
-          : null;
-      _savedSinglePattern = savedDisplay.length == 1
-          ? savedDisplay.first['pattern']
-          : null;
     });
-    final catalogScheduledCount = saveResult['catalog_scheduled_count'] is int
-        ? saveResult['catalog_scheduled_count'] as int
-        : int.tryParse(
-                saveResult['catalog_scheduled_count']?.toString() ?? '',
-              ) ??
-              0;
-    if (savedCount < requestedCount) {
-      _toast(
-        'Saved $savedCount of $requestedCount items. Some were skipped because AHVI could not create clean wardrobe images.'
-        '${catalogScheduledCount > 0 ? ' Catalog enhancement for saved items is processing on a best-effort basis.' : ''}',
-      );
-    } else if (catalogScheduledCount > 0) {
-      _toast(
-        'Saved $savedCount item${savedCount == 1 ? '' : 's'} to wardrobe. '
-        'Catalog enhancement is processing on a best-effort basis.',
-      );
-    } else {
-      _toast(
-        'Saved $savedCount item${savedCount == 1 ? '' : 's'} to wardrobe.',
-      );
+
+    if (allAdded) {
+      _toast('Saved $savedCount item${savedCount == 1 ? '' : 's'} to wardrobe.');
     }
+  }
+
+  /// Explicit, item-scoped "Add anyway" for a duplicate-flagged item: same
+  /// batch, same client_upload_item_id, override_duplicate=true. Never
+  /// touches any other item's already-recorded result.
+  Future<void> _addAnyway(_DetectedItem item) async {
+    final controller = _uploadController;
+    if (controller == null || _addAnywayInFlight.contains(item.id)) return;
+    setState(() => _addAnywayInFlight.add(item.id));
+    final result = await controller.addAnyway(item.id);
+    if (!mounted) return;
+    setState(() {
+      _addAnywayInFlight.remove(item.id);
+      _uploadResults = {..._uploadResults, item.id: result};
+    });
+    if (result.isAdded) {
+      final remoteUrl = item.maskedUrl ?? item.rawUrl;
+      Uint8List? displayBytes = item.maskedImageBytes;
+      if (displayBytes == null && (remoteUrl == null || remoteUrl.isEmpty)) {
+        final index = item.sourceImageIndex;
+        displayBytes = _isGalleryPick && index != null && index >= 0 && index < _galleryImages.length
+            ? _galleryImages[index]
+            : _capturedBytes;
+      }
+      widget.onSave({
+        'id': result.wardrobeItemId ?? item.id,
+        'name': _cleanUiText(item.name, fallback: 'Item'),
+        'cat': item.category,
+        'occasions': List<String>.from(item.occasions),
+        'notes': [
+          item.color,
+          item.pattern,
+        ].where((v) => v != null && v.isNotEmpty && v != 'null').join(', '),
+        'imageBytes': displayBytes,
+        'imageUrl': remoteUrl,
+        'maskedUrl': remoteUrl,
+        'normalizedUrl': null,
+        'worn': 0,
+        'liked': false,
+        'remoteSaved': true,
+      });
+      HapticFeedback.mediumImpact();
+    }
+  }
+
+  /// Retries ONLY the items that did not reach ADDED_TO_WARDROBE on the
+  /// results screen - same batch, same client_upload_item_ids, no
+  /// re-analysis and no re-processing of already-added items.
+  Future<void> _retryOutstandingFromResults() async {
+    setState(() {
+      _isSavingWardrobe = true;
+      _step = _ModalStep.saving;
+    });
+    await _confirmAndSave();
   }
 
   /// Retry after a failed save: re-enters the single _confirmAndSave() path
@@ -3356,6 +3429,7 @@ class _AddItemModalState extends State<_AddItemModal>
       _ModalStep.reviewing: multi ? 'Review items' : 'Review item',
       _ModalStep.saving: 'Saving to wardrobe...',
       _ModalStep.success: 'Added to wardrobe',
+      _ModalStep.results: 'Upload results',
       _ModalStep.error: "Couldn't add this item",
     };
     final subtitles = {
@@ -3366,6 +3440,7 @@ class _AddItemModalState extends State<_AddItemModal>
           : 'Edit details directly on this page',
       _ModalStep.saving: 'Please wait a moment',
       _ModalStep.success: '',
+      _ModalStep.results: '',
       _ModalStep.error: '',
     };
     // Back arrow only makes sense on the review step; saving/success/error
@@ -3462,6 +3537,7 @@ class _AddItemModalState extends State<_AddItemModal>
         _ModalStep.reviewing => _buildReviewBody(),
         _ModalStep.saving => _buildSavingBody(),
         _ModalStep.success => _buildSuccessBody(),
+        _ModalStep.results => _buildResultsBody(),
         _ModalStep.error => _buildErrorBody(),
       },
     );
@@ -3677,7 +3753,9 @@ class _AddItemModalState extends State<_AddItemModal>
           ),
           const SizedBox(height: 6),
           Text(
-            'Please wait a moment',
+            _uploadTotalCount > 1
+                ? 'Processing ${(_uploadCompletedCount + 1).clamp(1, _uploadTotalCount)} of $_uploadTotalCount'
+                : 'Please wait a moment',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: GoogleFonts.inter().fontFamily,
@@ -3912,6 +3990,234 @@ class _AddItemModalState extends State<_AddItemModal>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Per-item outcomes from the last sequential upload attempt: added items
+  /// (compact confirmation row), duplicates (existing duplicate UX + Add
+  /// anyway), other needs-review/rejected/failed items (their own row with a
+  /// per-item Retry where applicable). Shown instead of a single pass/fail
+  /// message whenever the batch was not a clean 100% add.
+  Widget _buildResultsBody() {
+    final items = _lastSaveAttemptItems;
+    final addedCount = items.where((i) => _uploadResults[i.id]?.isAdded ?? false).length;
+    final outstanding = items.where((i) => !(_uploadResults[i.id]?.isAdded ?? false)).toList();
+
+    return Container(
+      key: const ValueKey('wardrobe-results'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            addedCount > 0
+                ? 'Added $addedCount of ${items.length} items'
+                : 'A few items need your attention',
+            style: TextStyle(
+              fontFamily: GoogleFonts.inter().fontFamily,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: t.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'What did save is already in your wardrobe.',
+            style: TextStyle(
+              fontFamily: GoogleFonts.inter().fontFamily,
+              fontSize: 12,
+              color: t.mutedText,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 420),
+            child: SingleChildScrollView(
+              child: Column(
+                children: items.map((item) => _buildResultRow(item)).toList(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (outstanding.isNotEmpty)
+            SizedBox(
+              width: double.infinity,
+              child: Semantics(
+                button: true,
+                label: 'Retry outstanding items',
+                child: GestureDetector(
+                  onTap: _isSavingWardrobe ? null : _retryOutstandingFromResults,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: t.panel,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: t.cardBorder, width: 1.5),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Retry outstanding items',
+                      style: TextStyle(
+                        fontFamily: GoogleFonts.inter().fontFamily,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: t.mutedText,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: Semantics(
+              button: true,
+              label: 'Done',
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [t.accent.primary, t.accent.tertiary],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    'Done',
+                    style: TextStyle(
+                      fontFamily: GoogleFonts.inter().fontFamily,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: t.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultRow(_DetectedItem item) {
+    final result = _uploadResults[item.id];
+    final addingNow = _addAnywayInFlight.contains(item.id);
+
+    String label;
+    Color color;
+    IconData icon;
+    Widget? action;
+
+    if (result == null) {
+      label = 'Not processed';
+      color = t.mutedText;
+      icon = Icons.hourglass_empty_rounded;
+    } else if (result.isAdded) {
+      label = 'Added to wardrobe';
+      color = Colors.green;
+      icon = Icons.check_circle_rounded;
+    } else if (result.isDuplicate) {
+      label = 'Possible duplicate'
+          '${(result.duplicateReason ?? '').trim().isEmpty ? '' : ' (${result.duplicateReason})'}';
+      color = Colors.amber.shade800;
+      icon = Icons.content_copy_rounded;
+      action = addingNow
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : TextButton(
+              key: ValueKey('add-anyway-${item.id}'),
+              onPressed: () => _addAnyway(item),
+              child: const Text('Add Anyway'),
+            );
+    } else if (result.outcome == UploadItemOutcome.needsReview) {
+      label = 'Needs review';
+      color = t.mutedText;
+      icon = Icons.rate_review_outlined;
+    } else if (result.outcome == UploadItemOutcome.rejected) {
+      label = 'Rejected';
+      color = Colors.redAccent;
+      icon = Icons.block_rounded;
+    } else {
+      label = 'Failed — will retry';
+      color = Colors.redAccent;
+      icon = Icons.error_outline_rounded;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: t.panel,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: t.cardBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: t.backgroundSecondary,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: item.previewBytes != null
+                  ? Image.memory(item.previewBytes!, fit: BoxFit.contain)
+                  : Center(
+                      child: Text(
+                        _DetectedItem.catEmoji(item.category),
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _cleanUiText(item.name, fallback: 'Item'),
+                    style: TextStyle(
+                      fontFamily: GoogleFonts.inter().fontFamily,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: t.textPrimary,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Icon(icon, size: 12, color: color),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontFamily: GoogleFonts.inter().fontFamily,
+                            fontSize: 11,
+                            color: color,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (action != null) ...[const SizedBox(width: 6), action],
+          ],
+        ),
       ),
     );
   }
@@ -4456,6 +4762,36 @@ class _AddItemModalState extends State<_AddItemModal>
                 color: t.mutedText,
               ),
             ),
+          if (item.isDuplicate) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.amber.withOpacity(0.4)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.content_copy_rounded, size: 13, color: Colors.amber),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Looks like an item you already have'
+                      '${(item.duplicateReason ?? '').trim().isEmpty ? '' : ' (${item.duplicateReason})'}'
+                      '. Skipped by default — tap the check above to include it anyway.',
+                      style: TextStyle(
+                        fontFamily: GoogleFonts.inter().fontFamily,
+                        fontSize: 11,
+                        color: t.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           _ModalField(
             label: AppLocalizations.t(context, 'wardrobe_item_name'),
