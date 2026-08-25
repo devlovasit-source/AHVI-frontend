@@ -12,6 +12,7 @@ import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:myapp/style_board/saved_board_thumb.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/util/wardrobe_image_resolver.dart';
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 
 class SavedBoardCard extends StatelessWidget {
   final dynamic source;
@@ -364,10 +365,29 @@ class SavedBoardCard extends StatelessWidget {
                               ? null
                               : () async {
                                   try {
+                                    // Authoritative delete first.
                                     await Provider.of<AppwriteService>(
                                       context,
                                       listen: false,
                                     ).deleteSavedBoard(boardId);
+
+                                    // Best-effort local mirror cleanup.
+                                    // This must never turn a successful
+                                    // server delete into a reported
+                                    // failure — a stale local cache entry
+                                    // is a minor annoyance, not a lost
+                                    // deletion.
+                                    try {
+                                      await SavedBoardsStore.removeForServerBoard(
+                                        data,
+                                      );
+                                    } catch (e) {
+                                      debugPrint(
+                                        'AHVI_SAVED_BOARD_LOCAL_CLEANUP_FAILED '
+                                        'err=$e',
+                                      );
+                                    }
+
                                     if (sheetContext.mounted) {
                                       Navigator.of(sheetContext).pop();
                                       ScaffoldMessenger.of(
