@@ -800,12 +800,23 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
 
           final alreadySavedRemotely = item['remoteSaved'] == true;
           if (alreadySavedRemotely) {
-            // Deferred catalog (WARDROBE_ASYNC_CATALOG): the card currently
-            // shows the cutout; schedule a bounded refetch to swap in the
-            // catalog PNG when the background task lands.
             if ((item['catalogStatus'] ?? '').toString() == 'catalog_pending') {
+              // Deferred catalog (WARDROBE_ASYNC_CATALOG): the card currently
+              // shows the cutout; schedule a bounded refetch to swap in the
+              // catalog PNG when the background task lands.
               _pendingCatalogIds.add(localItem.id);
               _scheduleCatalogRefresh();
+            } else {
+              // The reviewed-item upload-batch save path only returns
+              // ADDED_TO_WARDROBE after the canonical row (including
+              // normalized_url) is already fully persisted server-side -
+              // nothing is pending, so reconcile the optimistic placeholder
+              // (still showing the preview-time image) with the real
+              // backend row right away instead of leaving it stale until
+              // the user manually pulls to refresh. Same canonical fetch
+              // _runCatalogRefresh already uses; fire-and-forget so the
+              // success toast/modal close isn't blocked on it.
+              _fetchWardrobeItems();
             }
             if (mounted) {
               _showToast(AppLocalizations.t(context, 'wardrobe_item_saved'));

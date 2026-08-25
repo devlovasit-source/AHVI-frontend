@@ -402,6 +402,70 @@ void main() {
         expect(source.contains('_wardrobe.insert(0, localItem)'), isTrue);
       },
     );
+
+    test(
+      '27: a remotely-saved item that is NOT catalog_pending triggers an '
+      'immediate canonical wardrobe reconciliation instead of staying on '
+      'the stale optimistic (preview-time) image',
+      () {
+        final start = source.indexOf(
+          "final alreadySavedRemotely = item['remoteSaved'] == true;",
+        );
+        final end = source.indexOf('return;', start);
+        expect(start, greaterThan(0));
+        expect(end, greaterThan(start));
+        final block = source.substring(start, end);
+
+        expect(
+          block.contains('_fetchWardrobeItems();'),
+          isTrue,
+          reason:
+              'remoteSaved items must reconcile with the canonical backend '
+              'row (incl. normalized_url) immediately - cache invalidation '
+              'alone never triggers a refetch of the mounted wardrobe state',
+        );
+
+        // The immediate fetch must live in the ELSE of the catalog_pending
+        // check - deferred-catalog saves (WARDROBE_ASYNC_CATALOG) keep using
+        // the existing bounded/scheduled refresh, never an immediate one.
+        final catalogPendingIdx = block.indexOf("== 'catalog_pending'");
+        final elseIdx = block.indexOf('} else {', catalogPendingIdx);
+        final fetchIdx = block.indexOf('_fetchWardrobeItems();');
+        expect(catalogPendingIdx, greaterThan(0));
+        expect(elseIdx, greaterThan(catalogPendingIdx));
+        expect(
+          fetchIdx,
+          greaterThan(elseIdx),
+          reason:
+              'the immediate fetch must be gated to the non-catalog_pending '
+              'branch, not run unconditionally for every remoteSaved item',
+        );
+      },
+    );
+
+    test(
+      '28: catalog_pending items still use the existing scheduled refresh, '
+      'never the immediate one',
+      () {
+        final start = source.indexOf(
+          "final alreadySavedRemotely = item['remoteSaved'] == true;",
+        );
+        final end = source.indexOf('return;', start);
+        final block = source.substring(start, end);
+
+        final catalogPendingIdx = block.indexOf("== 'catalog_pending'");
+        final elseIdx = block.indexOf('} else {', catalogPendingIdx);
+        final scheduleIdx = block.indexOf('_scheduleCatalogRefresh();');
+        expect(scheduleIdx, greaterThan(catalogPendingIdx));
+        expect(
+          scheduleIdx,
+          lessThan(elseIdx),
+          reason:
+              '_scheduleCatalogRefresh() must stay inside the catalog_pending '
+              'branch, not move into the immediate-fetch else branch',
+        );
+      },
+    );
   });
 
   // ------------------------------------------------------------------
