@@ -7,6 +7,35 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:631493992863:android:fd4710b607ac7f6a0a1daa",
+        "android_client_info": {
+          "package_name": "ai.ahvi.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "631493992863-bot70q2aioodufva2dj2p9s739vmt99t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgc40-2BOZhqCtlbrq-Y9wp_V_eosZX3U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "631493992863-bot70q2aioodufva2dj2p9s739vmt99t.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:631493992863:android:3b232b99acc9234d0a1daa",
         "android_client_info": {
           "package_name": "com.example.myapp"
