@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:myapp/app_localizations.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 
 /// Compact, AHVI-branded processing card shown while Style This builds
@@ -15,7 +16,14 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<AppThemeTokens>()!;
     final name = itemName.trim();
-    final title = name.isEmpty ? 'Styling your piece' : 'Styling your $name';
+    final title = AppLocalizations.t(
+      context,
+      'item_detail_style_processing_title',
+    ).replaceAll('{item}', name.isEmpty ? 'piece' : name);
+    final subtitle = AppLocalizations.t(
+      context,
+      'item_detail_style_processing_subtitle',
+    );
 
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
@@ -38,16 +46,8 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                '✦',
-                style: TextStyle(
-                  color: t.accent.primary,
-                  fontSize: 13,
-                  height: 1,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(width: 6),
+              Icon(Icons.auto_awesome, size: 10, color: t.accent.primary),
+              const SizedBox(width: 4),
               Text(
                 'AHVI',
                 style: GoogleFonts.inter(
@@ -57,6 +57,8 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
                   color: t.accent.primary,
                 ),
               ),
+              const SizedBox(width: 4),
+              Icon(Icons.auto_awesome, size: 10, color: t.accent.primary),
             ],
           ),
           const SizedBox(height: 6),
@@ -72,7 +74,7 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            'Finding the best pieces from your wardrobe…',
+            subtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.inter(

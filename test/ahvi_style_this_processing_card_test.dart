@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myapp/app_localizations.dart';
 import 'package:myapp/feature/chat/widgets/ahvi_processing_bubble.dart';
 import 'package:myapp/feature/chat/widgets/ahvi_style_this_processing_card.dart';
 import 'package:myapp/theme/accent_palette.dart';
@@ -11,6 +13,34 @@ const _accent = AccentPalette(
   tertiary: Color(0xFF04D7C8),
 );
 
+class _TestLocalizations extends AppLocalizations {
+  _TestLocalizations() : super(const Locale('en'));
+
+  @override
+  String translate(String key) =>
+      const {
+        'item_detail_style_processing_title': 'Styling your {item}',
+        'item_detail_style_processing_subtitle':
+            'Finding the best pieces from your wardrobe...',
+      }[key] ??
+      key;
+}
+
+class _TestLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
+  const _TestLocalizationsDelegate();
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<AppLocalizations> load(Locale locale) =>
+      SynchronousFuture<AppLocalizations>(_TestLocalizations());
+
+  @override
+  bool shouldReload(_TestLocalizationsDelegate old) => false;
+}
+
 Future<void> _pumpCard(
   WidgetTester tester, {
   required String itemName,
@@ -21,6 +51,8 @@ Future<void> _pumpCard(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: const [_TestLocalizationsDelegate()],
+      supportedLocales: const [Locale('en')],
       theme: ThemeData(
         useMaterial3: true,
         extensions: [dark ? AppThemeTokens.dark(_accent) : AppThemeTokens.light(_accent)],
@@ -52,7 +84,7 @@ void main() {
     testWidgets('shows the AHVI brand row', (tester) async {
       await _pumpCard(tester, itemName: 'White Shirt');
       expect(find.text('AHVI'), findsOneWidget);
-      expect(find.text('✦'), findsOneWidget);
+      expect(find.byIcon(Icons.auto_awesome), findsNWidgets(2));
     });
 
     testWidgets('shows the selected item name', (tester) async {
@@ -64,7 +96,7 @@ void main() {
     testWidgets('shows wardrobe-sourced wording, not technical copy', (tester) async {
       await _pumpCard(tester, itemName: 'Blazer');
       expect(
-        find.text('Finding the best pieces from your wardrobe…'),
+        find.text('Finding the best pieces from your wardrobe...'),
         findsOneWidget,
       );
       expect(find.textContaining('processing'), findsNothing);
@@ -93,6 +125,8 @@ void main() {
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: const [_TestLocalizationsDelegate()],
+          supportedLocales: const [Locale('en')],
           theme: ThemeData(
             useMaterial3: true,
             extensions: [AppThemeTokens.light(_accent)],
@@ -109,6 +143,8 @@ void main() {
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: const [_TestLocalizationsDelegate()],
+          supportedLocales: const [Locale('en')],
           theme: ThemeData(
             useMaterial3: true,
             extensions: [AppThemeTokens.light(_accent)],

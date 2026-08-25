@@ -340,7 +340,7 @@ void main() {
       expect(find.text('AHVI'), findsOneWidget);
       expect(find.text('Styling your ${_anchor.name}'), findsOneWidget);
       expect(
-        find.text('Finding the best pieces from your wardrobe…'),
+        find.text('Finding the best pieces from your wardrobe...'),
         findsOneWidget,
       );
 
@@ -600,6 +600,9 @@ class _TestLocalizations extends AppLocalizations {
         'common_edit': 'Edit',
         'item_detail_never_worn': 'Never worn',
         'item_detail_style_directions': 'Style Directions',
+        'item_detail_style_processing_title': 'Styling your {item}',
+        'item_detail_style_processing_subtitle':
+            'Finding the best pieces from your wardrobe...',
       }[key] ??
       'Label';
 }

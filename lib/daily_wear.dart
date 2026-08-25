@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,7 +7,6 @@ import 'package:myapp/feature/chat/widgets/ahvi_processing_bubble.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:myapp/home_card_summary_provider.dart';
 import 'package:myapp/services/appwrite_service.dart';
@@ -130,6 +128,32 @@ List<Map<String, dynamic>>? _rawMapsOrNull(List rawItems) {
     maps.add(Map<String, dynamic>.from(entry));
   }
   return maps.isEmpty ? null : maps;
+}
+
+/// Maps a BackendService.getCurrentWeather() response onto the (temp, feel,
+/// code) triple _applyWeather expects. The canonical /api/weather proxy
+/// requests temperature_2m/weather_code/wind_speed_10m from Open-Meteo and
+/// does not currently guarantee an apparent/feels-like value, so feel falls
+/// back to actual temperature rather than inventing one. Throws StateError
+/// on an unavailable/malformed response; callers should catch and fall back.
+({int temp, int feel, int code}) mapDailyWearWeather(
+  Map<String, dynamic> weather,
+) {
+  if (weather['status'] != 'available') {
+    throw StateError(weather['reason']?.toString() ?? 'weather_unavailable');
+  }
+  final raw = weather['raw'] as Map? ?? const {};
+  final tempRaw = weather['temperature_c'] ?? weather['temperature'];
+  final codeRaw = raw['code'] ?? weather['weather_code'];
+  if (tempRaw is! num || codeRaw is! num) {
+    throw StateError('weather_malformed');
+  }
+  // Feels-like is optional and not currently guaranteed by the backend
+  // contract -- a missing or malformed value degrades to actual temperature
+  // rather than discarding an otherwise-valid reading.
+  final feelCandidate = raw['apparent_temperature'] ?? weather['feels_like_c'];
+  final feelRaw = feelCandidate is num ? feelCandidate : tempRaw;
+  return (temp: tempRaw.round(), feel: feelRaw.round(), code: codeRaw.toInt());
 }
 
 class DailyWearScreen extends StatefulWidget {
@@ -906,24 +930,10 @@ class _DailyWearScreenState extends State<DailyWearScreen>
 
   Future<void> _fetchWeather() async {
     debugPrint('AHVI_HEAVY_SCREEN_LOAD start screen=DailyWear');
-    const fallbackLat = 16.5062;
-    const fallbackLon = 80.648;
     try {
-      final url = Uri.parse(
-        'https://api.open-meteo.com/v1/forecast'
-            '?latitude=$fallbackLat&longitude=$fallbackLon'
-            '&current=temperature_2m,weathercode,apparent_temperature'
-            '&timezone=auto',
-      );
-      final res = await http.get(url).timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final current = data['current'] as Map<String, dynamic>;
-        final temp = (current['temperature_2m'] as num).round();
-        final feel = (current['apparent_temperature'] as num).round();
-        final code = current['weathercode'] as int;
-        _applyWeather(temp, feel, code, context);
-      }
+      final weather = await BackendService().getCurrentWeather();
+      final mapped = mapDailyWearWeather(weather);
+      _applyWeather(mapped.temp, mapped.feel, mapped.code, context);
     } catch (_) {
       debugPrint('AHVI_HEAVY_SCREEN_LOAD timeout screen=DailyWear');
       final hour = DateTime.now().hour;
