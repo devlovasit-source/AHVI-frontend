@@ -588,7 +588,11 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     setState(() => item.worn++);
     await _saveWardrobeCache();
     try {
-      await _updateOutfitDocument(item.id, {'worn': item.worn});
+      // Canonical, authenticated wear lifecycle endpoint (WearEventService)
+      // instead of a direct client-side Appwrite write — see
+      // POST /api/style/wear-today in routers/style_memory.py.
+      final ok = await BackendService().wearToday(itemIds: [item.id]);
+      if (!ok) throw Exception('wearToday returned failure');
     } catch (e) {
       debugPrint('Failed to persist wear count: $e');
       item.worn = previousWorn;
@@ -989,24 +993,124 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       item: item,
       allItems: _wardrobe,
       onWore: _markWoreToday,
-      onLike: () {
+      onLike: () async {
+        final previousLiked = item.liked;
         setState(() => item.liked = !item.liked);
-        _saveWardrobeCache();
-        _updateOutfitDocument(item.id, {
-          'liked': item.liked,
-        }).catchError((_) {});
+        await _saveWardrobeCache();
         _showToast(
           item.liked
               ? 'Added "${item.name}" to favourites'
               : 'Removed from favourites',
         );
+        try {
+          if (_currentUserId == null) throw StateError('No authenticated user');
+          await BackendService().toggleGarmentFavorite(
+            _currentUserId!,
+            item.id,
+            item.liked,
+          );
+        } catch (e) {
+          debugPrint('Failed to persist favorite: $e');
+          item.liked = previousLiked;
+          if (mounted) setState(() {});
+          await _saveWardrobeCache();
+          if (mounted) _showToast('Favorite was not saved. Please try again.');
+        }
       },
       onEdit: () => _showEditSavedItem(item),
       onShare: () => _shareItem(item),
       onRemove: () => _showDeleteConfirm(id),
+      onViewWearHistory: () => _showWearHistory(item),
     ).whenComplete(() {
       debugPrint('AHVI_WARDROBE_NAV modal_dismissal type=item_detail');
     });
+  }
+
+  void _showWearHistory(WardrobeItem item) {
+    final t = context.themeTokens;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: t.panel,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return FutureBuilder<Map<String, dynamic>?>(
+          future: BackendService().getWearHistory(item.id),
+          builder: (context, snapshot) {
+            final loading =
+                snapshot.connectionState == ConnectionState.waiting;
+            final history = snapshot.data;
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Wear History',
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: t.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      item.name,
+                      style: GoogleFonts.inter(fontSize: 13, color: t.mutedText),
+                    ),
+                    const SizedBox(height: 16),
+                    if (loading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (history == null)
+                      Text(
+                        'Could not load wear history. Please try again.',
+                        style: GoogleFonts.inter(color: t.mutedText),
+                      )
+                    else ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _WearStat(
+                            label: 'Total wears',
+                            value: '${history['total_wears'] ?? 0}',
+                            t: t,
+                          ),
+                          _WearStat(
+                            label: 'Last 7 days',
+                            value: '${history['wears_last_7_days'] ?? 0}',
+                            t: t,
+                          ),
+                          _WearStat(
+                            label: 'Last 30 days',
+                            value: '${history['wears_last_30_days'] ?? 0}',
+                            t: t,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        history['last_worn_at'] != null
+                            ? 'Last worn ${history['days_since_last_worn'] ?? 0} day(s) ago'
+                            : 'Never worn yet',
+                        style: GoogleFonts.inter(fontSize: 13, color: t.mutedText),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showToast(String msg) {
@@ -8087,6 +8191,31 @@ class _AskAhviFabState extends State<_AskAhviFab>
           ),
         ),
       ),
+    );
+  }
+}
+
+class _WearStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final AppThemeTokens t;
+
+  const _WearStat({required this.label, required this.value, required this.t});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: GoogleFonts.inter(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: t.textPrimary,
+          ),
+        ),
+        Text(label, style: GoogleFonts.inter(fontSize: 11, color: t.mutedText)),
+      ],
     );
   }
 }

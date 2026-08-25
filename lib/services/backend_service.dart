@@ -437,6 +437,23 @@ class BackendService {
     }
   }
 
+  // --- WEAR HISTORY ---
+  Future<Map<String, dynamic>?> getWearHistory(String itemId) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/api/wardrobe/$itemId/wear-history'),
+            headers: await _authHeaders(),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Object _memoryPayload(
     String currentMemory, [
     Map<String, dynamic>? lastStyleContext,
