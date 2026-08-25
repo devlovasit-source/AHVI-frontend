@@ -1527,7 +1527,7 @@ class _InsightColumn extends StatelessWidget {
         const SizedBox(height: 8),
         if (items.isEmpty)
           Text(
-            'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â',
+            '—',
             style: GoogleFonts.inter(
               fontSize: 13,
               color: const Color(0xFF8A8A8E),
