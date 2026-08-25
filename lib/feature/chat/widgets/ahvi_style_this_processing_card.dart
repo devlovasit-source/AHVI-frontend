@@ -46,8 +46,8 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.auto_awesome, size: 10, color: t.accent.primary),
-              const SizedBox(width: 4),
+              Icon(Icons.auto_awesome, size: 14, color: t.accent.primary),
+              const SizedBox(width: 6),
               Text(
                 'AHVI',
                 // Locally bundled (assets/fonts/Anton-Regular.ttf, declared
@@ -56,9 +56,9 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
                 // correctly on first launch, no fallback-font flash.
                 style: TextStyle(
                   fontFamily: 'Anton',
-                  fontSize: 11,
+                  fontSize: 18,
                   fontWeight: FontWeight.w400,
-                  letterSpacing: 1.2,
+                  letterSpacing: 1.4,
                   height: 1.0,
                   color: t.accent.primary,
                   shadows: const [],
@@ -66,8 +66,8 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
                   decorationColor: Colors.transparent,
                 ),
               ),
-              const SizedBox(width: 4),
-              Icon(Icons.auto_awesome, size: 10, color: t.accent.primary),
+              const SizedBox(width: 6),
+              Icon(Icons.auto_awesome, size: 14, color: t.accent.primary),
             ],
           ),
           const SizedBox(height: 10),
