@@ -55,6 +55,15 @@ dev_dependencies:
   # picking (ImagePickerPlatform.instance) — was previously only a
   # transitive dependency via image_picker.
   image_picker_platform_interface: ^2.11.1
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/ahvi_app_icon.png"
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/icons/ahvi_app_icon_adaptive_fg.png"
+  remove_alpha_ios: true
 
 flutter:
   uses-material-design: true
@@ -62,6 +71,7 @@ flutter:
   # Environment Variables
   assets:
     - .env
+    - assets/icons/
     - assets/body_shapes/
     - assets/styles/
     - assets/shop/
