@@ -1,4 +1,4 @@
-package com.example.myapp
+package ai.ahvi.app
 
 import android.graphics.Color
 import android.os.Bundle
