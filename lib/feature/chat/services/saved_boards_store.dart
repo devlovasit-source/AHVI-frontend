@@ -162,7 +162,15 @@ class SavedBoardsStore {
     final current = await list();
     final filtered = current.where((b) {
       final entryBoardId = (b['board_id'] ?? '').toString();
-      if (boardId.isNotEmpty && entryBoardId == boardId) return false;
+      final entryHasCanonicalId = entryBoardId.isNotEmpty;
+
+      if (boardId.isNotEmpty && entryHasCanonicalId) {
+        // Entry has its own canonical id — only an exact board_id match removes it.
+        return entryBoardId != boardId;
+      }
+
+      // Entry predates board_id tracking (or we have no incoming board_id) —
+      // fall back to the legacy occasion+direction id.
       if (legacyId.isNotEmpty && b['id'] == legacyId) return false;
       return true;
     }).toList();

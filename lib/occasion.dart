@@ -6,7 +6,6 @@ import 'package:myapp/app_localizations.dart';
 import 'package:myapp/style_board/saved_board_card.dart';
 import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:myapp/feature/chat/services/saved_boards_store.dart';
-
 // ── Data model ───────────────────────────────────────────────────────────────
 class LookItem {
   final String id;
@@ -168,8 +167,8 @@ class _OccasionBoardState extends State<OccasionBoard> {
   }
 
   Map<String, Map<String, dynamic>> _buildIdMap(
-    List<Map<String, dynamic>> items,
-  ) {
+      List<Map<String, dynamic>> items,
+      ) {
     final byId = <String, Map<String, dynamic>>{};
     for (final item in items) {
       for (final rawId in [
@@ -235,35 +234,35 @@ class _OccasionBoardState extends State<OccasionBoard> {
                   color: _bg,
                   child: _isLoading
                       ? Center(
-                          child: CircularProgressIndicator(
-                            color: _t.accent.primary,
-                          ),
-                        )
+                    child: CircularProgressIndicator(
+                      color: _t.accent.primary,
+                    ),
+                  )
                       : _boards.isEmpty
                       ? RefreshIndicator(
-                          onRefresh: _fetchLooks,
-                          color: _t.accent.primary,
-                          backgroundColor: _t.card,
-                          child: ListView(
-                            children: [
-                              _EmptyState(
-                                titleKey: widget.titleKey,
-                                titleLabel: widget.titleLabel,
-                                occasion: widget.occasion,
-                                emoji: widget.emptyEmoji,
-                              ),
-                            ],
-                          ),
-                        )
-                      : RefreshIndicator(
-                          onRefresh: _fetchLooks,
-                          color: _t.accent.primary,
-                          backgroundColor: _t.card,
-                          child: _LooksGrid(
-                            boards: _boards,
-                            wardrobeById: _wardrobeById,
-                          ),
+                    onRefresh: _fetchLooks,
+                    color: _t.accent.primary,
+                    backgroundColor: _t.card,
+                    child: ListView(
+                      children: [
+                        _EmptyState(
+                          titleKey: widget.titleKey,
+                          titleLabel: widget.titleLabel,
+                          occasion: widget.occasion,
+                          emoji: widget.emptyEmoji,
                         ),
+                      ],
+                    ),
+                  )
+                      : RefreshIndicator(
+                    onRefresh: _fetchLooks,
+                    color: _t.accent.primary,
+                    backgroundColor: _t.card,
+                    child: _LooksGrid(
+                      boards: _boards,
+                      wardrobeById: _wardrobeById,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -531,32 +530,32 @@ class _LookCardState extends State<_LookCard> {
                 children: [
                   look.outfitImages.length >= 2
                       ? AspectRatio(
-                          aspectRatio: aspectRatio,
-                          child: _SavedLookImageGrid(images: look.outfitImages),
-                        )
+                    aspectRatio: aspectRatio,
+                    child: _SavedLookImageGrid(images: look.outfitImages),
+                  )
                       : look.imageUrl != null && look.imageUrl!.isNotEmpty
                       ? AspectRatio(
-                          aspectRatio: aspectRatio,
-                          child: Image.network(
-                            look.imageUrl!,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                          ),
-                        )
+                    aspectRatio: aspectRatio,
+                    child: Image.network(
+                      look.imageUrl!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                    ),
+                  )
                       : AspectRatio(
-                          aspectRatio: aspectRatio,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              gradient: _bgGradient(look.bg),
-                            ),
-                            child: Center(
-                              child: Text(
-                                look.emoji,
-                                style: const TextStyle(fontSize: 32),
-                              ),
-                            ),
-                          ),
+                    aspectRatio: aspectRatio,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: _bgGradient(look.bg),
+                      ),
+                      child: Center(
+                        child: Text(
+                          look.emoji,
+                          style: const TextStyle(fontSize: 32),
                         ),
+                      ),
+                    ),
+                  ),
                   // Delete button
                   Positioned(
                     top: 10,

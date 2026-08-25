@@ -118,6 +118,31 @@ void main() {
       expect(await SavedBoardsStore.isSaved(untouchedId), isTrue);
     });
 
+    test('does not remove a different canonical board sharing the same '
+        'legacy id', () async {
+      // board-B has its own canonical board_id but happens to share
+      // occasion + title with the board being deleted (board-A). The
+      // legacy occasion+title fallback must never override a
+      // non-matching canonical id.
+      await SavedBoardsStore.saveBoard(
+        occasion: 'Weekend',
+        directionName: 'Refined Weekend',
+        direction: direction(boardId: 'board-B'),
+      );
+
+      await SavedBoardsStore.removeForServerBoard({
+        'board_id': 'board-A',
+        'occasion': 'Weekend',
+        'title': 'Refined Weekend',
+      });
+
+      final id = SavedBoardsStore.idFor(
+        occasion: 'Weekend',
+        directionName: 'Refined Weekend',
+      );
+      expect(await SavedBoardsStore.isSaved(id), isTrue);
+    });
+
     test(
       'no-op when neither board_id nor occasion/title are present',
       () async {
