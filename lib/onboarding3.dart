@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
+import 'dart:convert';
 
 void main() {
   runApp(MaterialApp(
@@ -382,12 +383,74 @@ class _Screen3State extends State<Screen3> {
         _selectedFaceImage = imageFile;
         _isAnalyzingFace = false;
       });
+      _persistFaceScanToUserShopPrefs(analysisData);
 
       debugPrint('Advanced Face Analysis Complete');
     } catch (e) {
       debugPrint('Face analysis error: $e');
       _showValidationError('Failed to analyze face. Try again.');
       setState(() => _isAnalyzingFace = false);
+    }
+  }
+  Future<void> _persistFaceScanToUserShopPrefs(FaceAnalysisData data) async {
+    try {
+      final appwrite = context.read<AppwriteService>();
+      final doc = await appwrite.getCurrentUserProfileDocument(
+        createIfMissing: false,
+      );
+
+      final List<dynamic> existingPrefs = List<dynamic>.from(
+        doc?.data['shopPrefs'] ?? doc?.data['shop_prefs'] ?? [],
+      );
+
+      final hexColor =
+          '#${data.skinToneColor.value.toRadixString(16).padLeft(8, '0').substring(2)}';
+
+      final Map<String, dynamic> faceScanMap = {
+        'source': 'face_scan',
+        'skinTone': data.skinTone,
+        'skinToneColor': hexColor,
+        'faceShape': data.faceShape,
+        'skinQuality': data.skinQuality,
+        'acneDetected': data.acneDetected,
+        'pigmentationDetected': data.pigmentationDetected,
+        'eyeShape': data.eyeShape,
+        'lipColor': data.lipColor,
+        'darkerCircles': data.darkerCircles,
+        'recommendations': data.recommendations,
+      };
+
+      final jsonStr = jsonEncode(faceScanMap);
+
+      bool replaced = false;
+
+      for (int i = 0; i < existingPrefs.length; i++) {
+        final pref = existingPrefs[i];
+
+        if (pref is String && pref.contains('face_scan')) {
+          existingPrefs[i] = jsonStr;
+          replaced = true;
+          break;
+        } else if (pref is Map && pref['source'] == 'face_scan') {
+          existingPrefs[i] = jsonStr;
+          replaced = true;
+          break;
+        }
+      }
+
+      if (!replaced) {
+        existingPrefs.add(jsonStr);
+      }
+
+      await appwrite.updateCurrentUserProfileFields({
+        'shopPrefs': existingPrefs,
+      });
+
+      debugPrint(
+        'AHVI_FACE_SCAN_PERSISTED_TO_SHOPPREFS count=${existingPrefs.length}',
+      );
+    } catch (e) {
+      debugPrint('AHVI_FACE_SCAN_PERSIST_ERROR: $e');
     }
   }
 
