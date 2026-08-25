@@ -26,10 +26,10 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
     );
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+      padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
       decoration: BoxDecoration(
         color: t.card,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: t.cardBorder),
         boxShadow: [
           BoxShadow(
@@ -41,7 +41,7 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -61,10 +61,11 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
               Icon(Icons.auto_awesome, size: 10, color: t.accent.primary),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
             title,
-            maxLines: 1,
+            textAlign: TextAlign.center,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.inter(
               fontSize: 15,
@@ -72,10 +73,11 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
               color: t.textPrimary,
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 4),
           Text(
             subtitle,
-            maxLines: 1,
+            textAlign: TextAlign.center,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.inter(
               fontSize: 12.5,
@@ -83,11 +85,12 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
               color: t.mutedText,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: SizedBox(
               height: 3,
+              width: double.infinity,
               child: LinearProgressIndicator(
                 color: t.accent.primary,
                 backgroundColor: t.accent.primary.withValues(alpha: 0.15),

@@ -60,7 +60,10 @@ Future<void> _pumpCard(
       home: Scaffold(
         body: Center(
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: width * 0.82),
+            // Mirrors the clamp in ahvi_item_detail_modal.dart's dialog builder.
+            constraints: BoxConstraints(
+              maxWidth: (width - 24).clamp(280.0, 356.0),
+            ),
             child: AhviStyleThisProcessingCard(itemName: itemName),
           ),
         ),
@@ -111,6 +114,35 @@ void main() {
     testWidgets('renders without overflow at a narrow Android width', (tester) async {
       await _pumpCard(tester, itemName: 'Charcoal Wool Overcoat', width: 360);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('long item names wrap onto a second line without overflowing',
+        (tester) async {
+      for (final name in [
+        'Grey Button-down Shirt',
+        'White Short-Sleeved Button-Up Shirt',
+        'Cheetah Waistcoat Outerwear',
+      ]) {
+        await _pumpCard(tester, itemName: name, width: 360);
+        expect(tester.takeException(), isNull, reason: name);
+        final titleFinder = find.textContaining('Styling your $name');
+        expect(titleFinder, findsOneWidget, reason: name);
+        final titleWidget = tester.widget<Text>(titleFinder);
+        expect(titleWidget.maxLines, 2, reason: name);
+        expect(titleWidget.textAlign, TextAlign.center, reason: name);
+      }
+    });
+
+    testWidgets('title and subtitle are centered', (tester) async {
+      await _pumpCard(tester, itemName: 'White Shirt');
+      final titleWidget = tester.widget<Text>(
+        find.text('Styling your White Shirt'),
+      );
+      final subtitleWidget = tester.widget<Text>(
+        find.text('Finding the best pieces from your wardrobe...'),
+      );
+      expect(titleWidget.textAlign, TextAlign.center);
+      expect(subtitleWidget.textAlign, TextAlign.center);
     });
 
     testWidgets('renders without error in dark theme', (tester) async {

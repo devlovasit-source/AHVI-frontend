@@ -469,7 +469,8 @@ class _ItemDetailModal extends StatelessWidget {
         child: mode == 'style_this'
             ? ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(dialogContext).size.width * 0.82,
+                  maxWidth: (MediaQuery.of(dialogContext).size.width - 24)
+                      .clamp(280.0, 356.0),
                 ),
                 child: AhviStyleThisProcessingCard(itemName: item.name),
               )
