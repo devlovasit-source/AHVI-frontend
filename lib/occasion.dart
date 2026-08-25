@@ -4,7 +4,8 @@ import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/style_board/saved_board_card.dart';
-
+import 'package:myapp/style_board/saved_board_persistence.dart';
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 // ── Data model ───────────────────────────────────────────────────────────────
 class LookItem {
   final String id;
@@ -116,11 +117,42 @@ class _OccasionBoardState extends State<OccasionBoard> {
     }
   }
 
+  Map<String, dynamic> _boardData(dynamic board) {
+    try {
+      final data = board.data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+    } catch (_) {}
+    if (board is Map) {
+      final data = board['data'];
+      if (data is Map) return Map<String, dynamic>.from(data);
+    }
+    return const {};
+  }
+
   Future<void> _deleteLook(String id) async {
-    setState(() => _boards.removeWhere((board) => _boardId(board) == id));
+    // Server mutation first, UI mutation second — if the Appwrite delete
+    // fails, the board must still be visible/local instead of vanishing
+    // from the list only to reappear on next refresh.
+    final board = _boards.firstWhere(
+      (b) => _boardId(b) == id,
+      orElse: () => null,
+    );
     try {
       final appwrite = Provider.of<AppwriteService>(context, listen: false);
       await appwrite.deleteSavedBoard(id);
+
+      if (board != null) {
+        try {
+          await SavedBoardsStore.removeForServerBoard(
+            expandSavedBoardData(_boardData(board)),
+          );
+        } catch (e) {
+          debugPrint('AHVI_SAVED_BOARD_LOCAL_CLEANUP_FAILED err=$e');
+        }
+      }
+
+      if (!mounted) return;
+      setState(() => _boards.removeWhere((b) => _boardId(b) == id));
       _showToast(context.tr('wardrobe_remove'));
     } catch (e) {
       _showToast(context.tr('error'));

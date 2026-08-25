@@ -5,6 +5,8 @@ import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/style_board/saved_board_images.dart';
+import 'package:myapp/style_board/saved_board_persistence.dart';
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 
 // ── Data model ───────────────────────────────────────────────────────────────
 class FavouriteLookItem {
@@ -381,12 +383,26 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
       if (boardEntry.source == null) return;
 
       if (boardEntry.source is _WardrobeSource) {
-        // For wardrobe items, update the isLiked/isFavourite flag
+        // Wardrobe item: this is a "like" toggle, not a deletion — only
+        // clear the isLiked flag. Never touch SavedBoardsStore here, it
+        // has nothing to do with wardrobe favourites.
         final wardrobeSource = boardEntry.source as _WardrobeSource;
-        await appwrite.updateWardrobeItem(wardrobeSource.id, {'isLiked': false});
+        await appwrite.updateWardrobeItem(wardrobeSource.id, {
+          'isLiked': false,
+        });
       } else {
-        // For saved boards, use the dedicated delete method
+        // Saved board: delete the authoritative Appwrite document first.
         await appwrite.deleteSavedBoard(look.id);
+        // Best-effort local mirror cleanup so the chat "Saved" heart
+        // doesn't keep showing saved for this board. A failure here must
+        // not make the server delete look like it failed.
+        try {
+          await SavedBoardsStore.removeForServerBoard(
+            expandSavedBoardData(_boardData(boardEntry.source)),
+          );
+        } catch (e) {
+          debugPrint('AHVI_SAVED_BOARD_LOCAL_CLEANUP_FAILED err=$e');
+        }
       }
 
       setState(() {
