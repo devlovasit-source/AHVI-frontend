@@ -50,11 +50,20 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 'AHVI',
-                style: GoogleFonts.inter(
+                // Locally bundled (assets/fonts/Anton-Regular.ttf, declared
+                // in pubspec.yaml) rather than GoogleFonts.anton() - zero
+                // network/cache dependency so this deterministically renders
+                // correctly on first launch, no fallback-font flash.
+                style: TextStyle(
+                  fontFamily: 'Anton',
                   fontSize: 11,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w400,
                   letterSpacing: 1.2,
+                  height: 1.0,
                   color: t.accent.primary,
+                  shadows: const [],
+                  decoration: TextDecoration.none,
+                  decorationColor: Colors.transparent,
                 ),
               ),
               const SizedBox(width: 4),

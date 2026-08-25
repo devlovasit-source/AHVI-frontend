@@ -466,34 +466,43 @@ class _ItemDetailModal extends StatelessWidget {
       context: appContext,
       barrierDismissible: false,
       builder: (dialogContext) => Center(
-        child: mode == 'style_this'
-            ? ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: (MediaQuery.of(dialogContext).size.width - 24)
-                      .clamp(280.0, 356.0),
-                ),
-                child: AhviStyleThisProcessingCard(itemName: item.name),
-              )
-            : ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 300),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.20),
-                        blurRadius: 28,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
+        // Material ancestor: showDialog's DialogRoute doesn't wrap arbitrary
+        // builder content in one (unlike Dialog/AlertDialog), so Text below
+        // was rendering with Flutter's "no Material ancestor" debug fallback
+        // style - a visible yellow/black wavy underline. Transparency type
+        // keeps this invisible; it only supplies the missing text-rendering
+        // context, nothing visual changes otherwise.
+        child: Material(
+          type: MaterialType.transparency,
+          child: mode == 'style_this'
+              ? ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: (MediaQuery.of(dialogContext).size.width - 24)
+                        .clamp(280.0, 356.0),
                   ),
-                  child: AhviProcessingBubble(
-                    message: ahviProcessingMessage(
-                      AhviProcessingContext.buildOutfit,
+                  child: AhviStyleThisProcessingCard(itemName: item.name),
+                )
+              : ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 300),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.20),
+                          blurRadius: 28,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: AhviProcessingBubble(
+                      message: ahviProcessingMessage(
+                        AhviProcessingContext.buildOutfit,
+                      ),
                     ),
                   ),
                 ),
-              ),
+        ),
       ),
     );
 
