@@ -1730,8 +1730,8 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
       if (widget.interactionMode == BoardInteractionMode.recommendation) ...[
         _BoardAction(
           icon: _liked
-              ? Icons.thumb_up_alt_rounded
-              : Icons.thumb_up_off_alt_rounded,
+              ? Icons.thumb_up
+              : Icons.thumb_up_outlined,
           label: 'Like',
           enabled: true,
           onTap: _toggleLike,
