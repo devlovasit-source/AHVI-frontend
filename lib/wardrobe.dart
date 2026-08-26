@@ -1021,6 +1021,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       onShare: () => _shareItem(item),
       onRemove: () => _showDeleteConfirm(id),
       onViewWearHistory: () => _showWearHistory(item),
+      onSetWearReminder: () => _showWearReminderDialog(item),
     ).whenComplete(() {
       debugPrint('AHVI_WARDROBE_NAV modal_dismissal type=item_detail');
     });
@@ -1110,6 +1111,18 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
           },
         );
       },
+    );
+  }
+
+  void _showWearReminderDialog(WardrobeItem item) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: context.themeTokens.panel,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => _WearReminderSheet(item: item),
     );
   }
 
@@ -8216,6 +8229,218 @@ class _WearStat extends StatelessWidget {
         ),
         Text(label, style: GoogleFonts.inter(fontSize: 11, color: t.mutedText)),
       ],
+    );
+  }
+}
+
+class _WearReminderSheet extends StatefulWidget {
+  final WardrobeItem item;
+
+  const _WearReminderSheet({required this.item});
+
+  @override
+  State<_WearReminderSheet> createState() => _WearReminderSheetState();
+}
+
+class _WearReminderSheetState extends State<_WearReminderSheet> {
+  bool _loading = true;
+  bool _saving = false;
+  Map<String, dynamic>? _existing;
+  DateTime _selectedDate = DateTime.now().add(const Duration(days: 1));
+  TimeOfDay _selectedTime = const TimeOfDay(hour: 9, minute: 0);
+  final TextEditingController _messageController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExisting();
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadExisting() async {
+    final reminders = await BackendService().listWearReminders(widget.item.id);
+    if (!mounted) return;
+    setState(() {
+      _existing = reminders.isNotEmpty ? reminders.first : null;
+      _loading = false;
+    });
+  }
+
+  DateTime get _combinedLocalDateTime => DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        _selectedTime.hour,
+        _selectedTime.minute,
+      );
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate.isBefore(now) ? now : _selectedDate,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _selectedDate = picked);
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(context: context, initialTime: _selectedTime);
+    if (picked != null) setState(() => _selectedTime = picked);
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final ok = await BackendService().createWearReminder(
+      itemId: widget.item.id,
+      sendAt: _combinedLocalDateTime,
+      message: _messageController.text.trim(),
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (ok) {
+      Navigator.of(context).pop();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not set reminder. Please try again.')),
+      );
+    }
+  }
+
+  Future<void> _cancelExisting() async {
+    final id = _existing?['reminder_id'] as String?;
+    if (id == null || id.isEmpty) return;
+    setState(() => _saving = true);
+    final ok = await BackendService().cancelWearReminder(
+      itemId: widget.item.id,
+      reminderId: id,
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (ok) {
+      Navigator.of(context).pop();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not cancel reminder. Please try again.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.themeTokens;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: _loading
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Wear Reminder',
+                    style: GoogleFonts.inter(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: t.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    widget.item.name,
+                    style: GoogleFonts.inter(fontSize: 13, color: t.mutedText),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_existing != null) ...[
+                    Text(
+                      'Active reminder set for ${_existing!['send_at_iso'] ?? ''}',
+                      style: GoogleFonts.inter(fontSize: 13, color: t.textPrimary),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: _saving ? null : _cancelExisting,
+                        child: const Text('Cancel Reminder'),
+                      ),
+                    ),
+                    const Divider(height: 32),
+                    Text(
+                      'Set a new reminder',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: t.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _saving ? null : _pickDate,
+                          child: Text(
+                            '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _saving ? null : _pickTime,
+                          child: Text(_selectedTime.format(context)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _messageController,
+                    enabled: !_saving,
+                    decoration: const InputDecoration(hintText: 'Optional message'),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _saving ? null : _save,
+                          child: _saving
+                              ? const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('Set Reminder'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+      ),
     );
   }
 }

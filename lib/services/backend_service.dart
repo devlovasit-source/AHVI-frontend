@@ -454,6 +454,67 @@ class BackendService {
     }
   }
 
+  Future<bool> createWearReminder({
+    required String itemId,
+    required DateTime sendAt,
+    String message = '',
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/wardrobe/$itemId/wear-reminder'),
+            headers: await _authHeaders(),
+            body: jsonEncode({
+              'send_at_iso': sendAt.toUtc().toIso8601String(),
+              'message': message,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> listWearReminders(String itemId) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/api/wardrobe/$itemId/wear-reminder'),
+            headers: await _authHeaders(),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return const [];
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return const [];
+      final reminders = decoded['reminders'];
+      if (reminders is! List) return const [];
+      return reminders
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<bool> cancelWearReminder({
+    required String itemId,
+    required String reminderId,
+  }) async {
+    try {
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/api/wardrobe/$itemId/wear-reminder/$reminderId'),
+            headers: await _authHeaders(),
+          )
+          .timeout(const Duration(seconds: 15));
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Object _memoryPayload(
     String currentMemory, [
     Map<String, dynamic>? lastStyleContext,
