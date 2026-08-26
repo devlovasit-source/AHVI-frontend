@@ -74,9 +74,9 @@ const Color kTransparent = Colors.transparent;
 
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ PUBLIC HELPER ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 void showAddToWardrobeModal(
-    BuildContext context, {
-      void Function(Map<String, dynamic> item)? onSaved,
-    }) {
+  BuildContext context, {
+  void Function(Map<String, dynamic> item)? onSaved,
+}) {
   showDialog(
     context: context,
     useRootNavigator: true,
@@ -164,9 +164,9 @@ String _cleanUiText(Object? value, {String fallback = ''}) {
   if (raw.isEmpty) return fallback;
   final looksCorrupt =
       raw.contains('\\u00c3') ||
-          raw.contains('\\u00c2') ||
-          raw.contains('\\u00e2\\u20ac') ||
-          raw.contains('\\ufffd');
+      raw.contains('\\u00c2') ||
+      raw.contains('\\u00e2\\u20ac') ||
+      raw.contains('\\ufffd');
   if (!looksCorrupt) return raw;
   final cleaned = raw
       .replaceAll(RegExp(r'[^\x20-\x7E]+'), ' ')
@@ -409,7 +409,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   final Set<String> _pendingCatalogIds = {};
 
   bool _isLoading =
-  true; // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Loader state for initial fetch
+      true; // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Loader state for initial fetch
 
   AppThemeTokens get t => context.themeTokens;
   final FocusNode _keyboardFocusNode = FocusNode();
@@ -433,11 +433,11 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     final appwrite = Provider.of<AppwriteService>(context, listen: false);
     final cachedUser = appwrite.cachedUserProfileData;
     final newUid =
-    (cachedUser != null
-        ? (cachedUser['userId'] ?? cachedUser['\$id'] ?? '')
-        : '')
-        .toString()
-        .trim();
+        (cachedUser != null
+                ? (cachedUser['userId'] ?? cachedUser['\$id'] ?? '')
+                : '')
+            .toString()
+            .trim();
     if (newUid.isEmpty) return;
     if (_currentUserId != null && _currentUserId != newUid) {
       // Different authed user than last build. Hard reset.
@@ -490,9 +490,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       liked: data['liked'] == true,
       imageUrl: data['imageUrl']?.toString() ?? data['image_url']?.toString(),
       maskedUrl:
-      data['maskedUrl']?.toString() ?? data['masked_url']?.toString(),
+          data['maskedUrl']?.toString() ?? data['masked_url']?.toString(),
       normalizedUrl:
-      data['normalizedUrl']?.toString() ??
+          data['normalizedUrl']?.toString() ??
           data['normalized_url']?.toString(),
       raw: data['imageMetadata'] is Map
           ? Map<String, dynamic>.from(data['imageMetadata'] as Map)
@@ -566,9 +566,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   }
 
   Future<void> _updateOutfitDocument(
-      String id,
-      Map<String, dynamic> data,
-      ) async {
+    String id,
+    Map<String, dynamic> data,
+  ) async {
     final client = Client()
         .setEndpoint(Env.appwriteEndpoint)
         .setProject(Env.appwriteProjectId);
@@ -891,7 +891,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
               final willSilentRefresh = !_silentWardrobeRefreshScheduled;
               debugPrint(
                 'AHVI_WARDROBE_SAVE itemId=${savedItem.id} '
-                    'scheduleRefresh=$willSilentRefresh',
+                'scheduleRefresh=$willSilentRefresh',
               );
               if (willSilentRefresh) {
                 _silentWardrobeRefreshScheduled = true;
@@ -904,8 +904,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
                   }
                   try {
                     debugPrint('AHVI: Silent wardrobe refresh triggered...');
-                    await _fetchWardrobeItems()
-                        .timeout(const Duration(seconds: 8));
+                    await _fetchWardrobeItems().timeout(
+                      const Duration(seconds: 8),
+                    );
                   } catch (e) {
                     debugPrint('Silent refresh failed (non-critical): $e');
                   } finally {
@@ -932,7 +933,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
 
             if (mounted) {
               setState(
-                    () => _wardrobe.removeWhere((w) => w.id == localItem.id),
+                () => _wardrobe.removeWhere((w) => w.id == localItem.id),
               );
               await _saveWardrobeCache();
               _showToast('Save failed: ${e.message}');
@@ -943,7 +944,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
 
             if (mounted) {
               setState(
-                    () => _wardrobe.removeWhere((w) => w.id == localItem.id),
+                () => _wardrobe.removeWhere((w) => w.id == localItem.id),
               );
               await _saveWardrobeCache();
               _showToast('Save failed. Check logs.');
@@ -960,8 +961,8 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       final matchCat = _activeCat == 'All' || item.cat == _activeCat;
       final matchQ =
           q.isEmpty ||
-              item.name.toLowerCase().contains(q) ||
-              item.cat.toLowerCase().contains(q);
+          item.name.toLowerCase().contains(q) ||
+          item.cat.toLowerCase().contains(q);
       return matchCat && matchQ;
     }).toList();
   }
@@ -1072,16 +1073,26 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
               children: [
                 TextField(
                   controller: nameCtrl,
-                  decoration: InputDecoration(labelText: AppLocalizations.t(context, 'wardrobe_input_name')),
+                  decoration: InputDecoration(
+                    labelText: AppLocalizations.t(
+                      context,
+                      'wardrobe_input_name',
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   initialValue: selectedCat,
-                  decoration: InputDecoration(labelText: AppLocalizations.t(context, 'wardrobe_input_category')),
+                  decoration: InputDecoration(
+                    labelText: AppLocalizations.t(
+                      context,
+                      'wardrobe_input_category',
+                    ),
+                  ),
                   items: cats
                       .map(
                         (cat) => DropdownMenuItem(value: cat, child: Text(cat)),
-                  )
+                      )
                       .toList(),
                   onChanged: (value) {
                     if (value != null) {
@@ -1092,13 +1103,21 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: notesCtrl,
-                  decoration: InputDecoration(labelText: AppLocalizations.t(context, 'wardrobe_input_notes')),
+                  decoration: InputDecoration(
+                    labelText: AppLocalizations.t(
+                      context,
+                      'wardrobe_input_notes',
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: occCtrl,
                   decoration: InputDecoration(
-                    labelText: AppLocalizations.t(context, 'wardrobe_input_occasions'),
+                    labelText: AppLocalizations.t(
+                      context,
+                      'wardrobe_input_occasions',
+                    ),
                   ),
                 ),
               ],
@@ -1142,7 +1161,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       final backend = Provider.of<BackendService>(context, listen: false);
       debugPrint(
         'AHVI_LABEL_UPDATE item=${item.id} category=$selectedCat '
-            'name="$nextName" occasions=${nextOccasions.join(',')}',
+        'name="$nextName" occasions=${nextOccasions.join(',')}',
       );
       final result = await backend.updateWardrobeLabels(
         itemId: item.id,
@@ -1156,8 +1175,8 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       }
       if (result['success'] != true) {
         final reason =
-        (result['detail'] ?? result['error'] ?? result['message'] ?? '')
-            .toString();
+            (result['detail'] ?? result['error'] ?? result['message'] ?? '')
+                .toString();
         debugPrint('AHVI_LABEL_UPDATE_FAIL reason="$reason" raw=$result');
         _showToast(
           reason.isNotEmpty
@@ -1326,7 +1345,8 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     final t = context.themeTokens;
     return KeyboardListener(
       focusNode: _keyboardFocusNode,
-      autofocus: false, // Prevents stealing focus globally in IndexedStack, which breaks back swipes
+      autofocus:
+          false, // Prevents stealing focus globally in IndexedStack, which breaks back swipes
       onKeyEvent: (KeyEvent event) {
         if (event is KeyDownEvent &&
             event.logicalKey == LogicalKeyboardKey.escape) {
@@ -1357,42 +1377,42 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
             Expanded(
               child: _isLoading
                   ? Center(
-                child: CircularProgressIndicator(color: t.accent.primary),
-              )
+                      child: CircularProgressIndicator(color: t.accent.primary),
+                    )
                   : _activeTab == 0
                   ? _WardrobePanel(
-                items: _filtered,
-                allEmpty: _wardrobe.isEmpty,
-                onAddTap: _openAddModal,
-                wardrobe: _wardrobe,
-                onDelete: (id) => _showDeleteConfirm(id),
-                onToggleLike: (id) {
-                  HapticFeedback.selectionClick();
-                  final i = _wardrobe.firstWhere((e) => e.id == id);
-                  setState(() => i.liked = !i.liked);
-                  _saveWardrobeCache();
-                  _updateOutfitDocument(i.id, {
-                    'liked': i.liked,
-                  }).catchError((_) {});
-                  _showToast(
-                    i.liked
-                        ? 'Added "${i.name}" to favourites'
-                        : 'Removed from favourites',
-                  );
-                },
-                onWore: (id) {
-                  final i = _wardrobe.firstWhere((e) => e.id == id);
-                  _markWoreToday(i);
-                },
-                onShare: (id) {
-                  final i = _wardrobe.firstWhere((e) => e.id == id);
-                  _shareItem(i);
-                },
-                onTapCard: _openItemDetail,
-                onRefresh: () async {
-                  await _fetchWardrobeItems();
-                },
-              )
+                      items: _filtered,
+                      allEmpty: _wardrobe.isEmpty,
+                      onAddTap: _openAddModal,
+                      wardrobe: _wardrobe,
+                      onDelete: (id) => _showDeleteConfirm(id),
+                      onToggleLike: (id) {
+                        HapticFeedback.selectionClick();
+                        final i = _wardrobe.firstWhere((e) => e.id == id);
+                        setState(() => i.liked = !i.liked);
+                        _saveWardrobeCache();
+                        _updateOutfitDocument(i.id, {
+                          'liked': i.liked,
+                        }).catchError((_) {});
+                        _showToast(
+                          i.liked
+                              ? 'Added "${i.name}" to favourites'
+                              : 'Removed from favourites',
+                        );
+                      },
+                      onWore: (id) {
+                        final i = _wardrobe.firstWhere((e) => e.id == id);
+                        _markWoreToday(i);
+                      },
+                      onShare: (id) {
+                        final i = _wardrobe.firstWhere((e) => e.id == id);
+                        _shareItem(i);
+                      },
+                      onTapCard: _openItemDetail,
+                      onRefresh: () async {
+                        await _fetchWardrobeItems();
+                      },
+                    )
                   : _StatsPanel(wardrobe: _wardrobe),
             ),
           ],
@@ -1440,11 +1460,11 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
     );
     _slideAnim = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
         .animate(
-      CurvedAnimation(
-        parent: _slideCtrl,
-        curve: const Cubic(0.2, 0.8, 0.3, 1.0),
-      ),
-    );
+          CurvedAnimation(
+            parent: _slideCtrl,
+            curve: const Cubic(0.2, 0.8, 0.3, 1.0),
+          ),
+        );
     _fadeAnim = Tween<double>(
       begin: 0,
       end: 1,
@@ -1477,7 +1497,7 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
         'Makeup': 'MKP',
         'Skincare': 'SKN',
       }[cat] ??
-          'ITM';
+      'ITM';
 
   @override
   Widget build(BuildContext context) {
@@ -1581,7 +1601,12 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          item.worn == 0 ? AppLocalizations.t(context, 'wardrobe_never_worn') : 'Worn ${item.worn}',
+                          item.worn == 0
+                              ? AppLocalizations.t(
+                                  context,
+                                  'wardrobe_never_worn',
+                                )
+                              : 'Worn ${item.worn}',
                           style: TextStyle(
                             fontFamily: GoogleFonts.inter().fontFamily,
                             fontSize: 13,
@@ -1620,31 +1645,31 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
                                     borderRadius: BorderRadius.circular(16),
                                     image: item.displayUrl != null
                                         ? DecorationImage(
-                                      image: NetworkImage(
-                                        item.displayUrl!,
-                                      ),
-                                      fit: BoxFit.contain,
-                                    )
+                                            image: NetworkImage(
+                                              item.displayUrl!,
+                                            ),
+                                            fit: BoxFit.contain,
+                                          )
                                         : (item.imageBytes != null
-                                        ? DecorationImage(
-                                      image: MemoryImage(
-                                        item.imageBytes!,
-                                      ),
-                                      fit: BoxFit.contain,
-                                    )
-                                        : null),
+                                              ? DecorationImage(
+                                                  image: MemoryImage(
+                                                    item.imageBytes!,
+                                                  ),
+                                                  fit: BoxFit.contain,
+                                                )
+                                              : null),
                                   ),
                                   child:
-                                  (item.displayUrl == null &&
-                                      item.imageBytes == null)
+                                      (item.displayUrl == null &&
+                                          item.imageBytes == null)
                                       ? Center(
-                                    child: Text(
-                                      _catEmoji(item.cat),
-                                      style: const TextStyle(
-                                        fontSize: 56,
-                                      ),
-                                    ),
-                                  )
+                                          child: Text(
+                                            _catEmoji(item.cat),
+                                            style: const TextStyle(
+                                              fontSize: 56,
+                                            ),
+                                          ),
+                                        )
                                       : null,
                                 ),
                               ),
@@ -1658,7 +1683,7 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
                                   ),
                                   child: Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       _DetailInfoRow(
                                         label: AppLocalizations.t(
@@ -1699,26 +1724,26 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
                               children: item.occasions
                                   .map(
                                     (o) => Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: t.panel,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: t.cardBorder),
-                                  ),
-                                  child: Text(
-                                    o,
-                                    style: TextStyle(
-                                      fontFamily:
-                                      GoogleFonts.inter().fontFamily,
-                                      fontSize: 12,
-                                      color: t.mutedText,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: t.panel,
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(color: t.cardBorder),
+                                      ),
+                                      child: Text(
+                                        o,
+                                        style: TextStyle(
+                                          fontFamily:
+                                              GoogleFonts.inter().fontFamily,
+                                          fontSize: 12,
+                                          color: t.mutedText,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              )
+                                  )
                                   .toList(),
                             ),
                           ],
@@ -2464,9 +2489,12 @@ class _AddItemModalState extends State<_AddItemModal>
     final existing = _itemCtrls[item.id];
     if (existing != null) return existing;
     final created = _ItemEditCtrls(item)
-      ..bindTo(item, onPrivacyFieldChanged: () {
-        if (mounted) setState(() {});
-      });
+      ..bindTo(
+        item,
+        onPrivacyFieldChanged: () {
+          if (mounted) setState(() {});
+        },
+      );
     _itemCtrls[item.id] = created;
     return created;
   }
@@ -2984,7 +3012,9 @@ class _AddItemModalState extends State<_AddItemModal>
     // (now-removed) edit-confirm step used, so the backend payload can
     // never carry a private-wear item under its normal classification.
     for (final item in selected) {
-      if (isPrivateWearText('${item.name} ${item.category} ${item.subCategory}')) {
+      if (isPrivateWearText(
+        '${item.name} ${item.category} ${item.subCategory}',
+      )) {
         item.category = 'Innerwear';
         item.subCategory = 'Private Wear';
         item.occasions = const ['Home', 'Private', 'Lounge'];
@@ -4134,7 +4164,9 @@ class _AddItemModalState extends State<_AddItemModal>
             decoration: BoxDecoration(
               color: t.accent.primary.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: t.accent.primary.withValues(alpha: 0.2)),
+              border: Border.all(
+                color: t.accent.primary.withValues(alpha: 0.2),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4226,7 +4258,8 @@ class _AddItemModalState extends State<_AddItemModal>
             ?errorBanner,
             countRow,
             const SizedBox(height: 10),
-            if (_detected.isNotEmpty) _buildItemCard(_detected.first, large: true),
+            if (_detected.isNotEmpty)
+              _buildItemCard(_detected.first, large: true),
           ],
         ),
       );
@@ -4242,10 +4275,7 @@ class _AddItemModalState extends State<_AddItemModal>
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ?errorBanner,
-              countRow,
-            ],
+            children: [?errorBanner, countRow],
           ),
         ),
         const SizedBox(height: 10),
@@ -4297,6 +4327,57 @@ class _AddItemModalState extends State<_AddItemModal>
       }
     });
     if (tooMany) _toast('Maximum 6 items selected');
+  }
+
+  // 'Best for' chips = the fixed preset list plus any custom tags the user
+  // has already added to this item (so a custom tag stays visible/removable
+  // instead of disappearing once added).
+  List<String> _displayOccasions(_DetectedItem item) {
+    final custom = <String>[];
+    for (final o in item.occasions) {
+      final label = humanizeOccasion(o);
+      if (label.isEmpty) continue;
+      final alreadyListed =
+          _occs.any((b) => b.toLowerCase() == label.toLowerCase()) ||
+          custom.any((c) => c.toLowerCase() == label.toLowerCase());
+      if (!alreadyListed) custom.add(label);
+    }
+    return [..._occs, ...custom];
+  }
+
+  Future<void> _showAddOccasionDialog(_DetectedItem item) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Add a tag'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(hintText: 'e.g. Beach, Gym'),
+          onSubmitted: (v) => Navigator.of(dialogContext).pop(v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    final tag = humanizeOccasion(result ?? '');
+    if (tag.isEmpty) return;
+    final alreadyPresent = item.occasions.any(
+      (o) => humanizeOccasion(o).toLowerCase() == tag.toLowerCase(),
+    );
+    if (alreadyPresent) return;
+    if (!mounted) return;
+    setState(() => item.occasions = [...item.occasions, tag]);
   }
 
   Widget _buildItemCard(_DetectedItem item, {required bool large}) {
@@ -4513,74 +4594,94 @@ class _AddItemModalState extends State<_AddItemModal>
             child: Wrap(
               spacing: 7,
               runSpacing: 7,
-              children: _occs.map((occ) {
-                final active = item.occasions.any(
-                  (o) =>
-                      humanizeOccasion(o).toLowerCase() == occ.toLowerCase(),
-                );
-                final disabled =
-                    privateWear &&
-                    {
-                      'Work',
-                      'Dinner',
-                      'Travel',
-                      'Party',
-                      'Festive',
-                      'Wedding',
-                    }.contains(occ);
-                return GestureDetector(
-                  onTap: disabled
-                      ? null
-                      : () => setState(() {
-                          if (active) {
-                            item.occasions = item.occasions
-                                .where(
-                                  (o) =>
-                                      humanizeOccasion(o).toLowerCase() !=
-                                      occ.toLowerCase(),
-                                )
-                                .toList();
-                          } else {
-                            item.occasions = [...item.occasions, occ];
-                          }
-                        }),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 7,
+              children: [
+                ..._displayOccasions(item).map((occ) {
+                  final active = item.occasions.any(
+                    (o) =>
+                        humanizeOccasion(o).toLowerCase() == occ.toLowerCase(),
+                  );
+                  final disabled =
+                      privateWear &&
+                      {
+                        'Work',
+                        'Dinner',
+                        'Travel',
+                        'Party',
+                        'Festive',
+                        'Wedding',
+                      }.contains(occ);
+                  return GestureDetector(
+                    onTap: disabled
+                        ? null
+                        : () => setState(() {
+                            if (active) {
+                              item.occasions = item.occasions
+                                  .where(
+                                    (o) =>
+                                        humanizeOccasion(o).toLowerCase() !=
+                                        occ.toLowerCase(),
+                                  )
+                                  .toList();
+                            } else {
+                              item.occasions = [...item.occasions, occ];
+                            }
+                          }),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: active
+                            ? LinearGradient(
+                                colors: [t.accent.primary, t.accent.tertiary],
+                              )
+                            : null,
+                        color: active
+                            ? null
+                            : t.backgroundSecondary.withValues(
+                                alpha: disabled ? 0.45 : 1,
+                              ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: active ? t.accent.primary : t.cardBorder,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        occ,
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.inter().fontFamily,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: disabled
+                              ? t.mutedText.withValues(alpha: 0.45)
+                              : (active ? t.textPrimary : t.mutedText),
+                        ),
+                      ),
                     ),
+                  );
+                }),
+                GestureDetector(
+                  onTap: () => _showAddOccasionDialog(item),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      gradient: active
-                          ? LinearGradient(
-                              colors: [t.accent.primary, t.accent.tertiary],
-                            )
-                          : null,
-                      color: active
-                          ? null
-                          : t.backgroundSecondary.withValues(
-                              alpha: disabled ? 0.45 : 1,
-                            ),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: active ? t.accent.primary : t.cardBorder,
-                        width: 1.5,
-                      ),
+                      color: t.backgroundSecondary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: t.cardBorder, width: 1.5),
                     ),
-                    child: Text(
-                      occ,
-                      style: TextStyle(
-                        fontFamily: GoogleFonts.inter().fontFamily,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: disabled
-                            ? t.mutedText.withValues(alpha: 0.45)
-                            : (active ? t.textPrimary : t.mutedText),
-                      ),
+                    child: Icon(
+                      Icons.add_rounded,
+                      size: 18,
+                      color: t.accent.primary,
                     ),
                   ),
-                );
-              }).toList(),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 12),
@@ -5592,11 +5693,11 @@ class _FilterChipState extends State<_FilterChip> {
             gradient: widget.isActive ? widget.chip.activeGradient : null,
             color: widget.isActive
                 ? (widget.chip.activeGradient == null
-                ? widget.chip.activeBg
-                : null)
+                      ? widget.chip.activeBg
+                      : null)
                 : (_hovered
-                ? widget.chip.inactiveBg.withValues(alpha: 0.28)
-                : widget.chip.inactiveBg),
+                      ? widget.chip.inactiveBg.withValues(alpha: 0.28)
+                      : widget.chip.inactiveBg),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: widget.isActive
@@ -5606,21 +5707,21 @@ class _FilterChipState extends State<_FilterChip> {
             ),
             boxShadow: widget.isActive
                 ? [
-              BoxShadow(
-                color: widget.chip.activeShadow,
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ]
+                    BoxShadow(
+                      color: widget.chip.activeShadow,
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
                 : (_hovered
-                ? [
-              BoxShadow(
-                color: t.backgroundPrimary.withValues(alpha: 0.10),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ]
-                : null),
+                      ? [
+                          BoxShadow(
+                            color: t.backgroundPrimary.withValues(alpha: 0.10),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : null),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
           child: Row(
@@ -6112,7 +6213,7 @@ class _ItemCardState extends State<_ItemCard>
         'Makeup': 'MKP',
         'Skincare': 'SKN',
       }[cat] ??
-          'ITM';
+      'ITM';
 
   void _handleLike() {
     widget.onToggleLike();
@@ -6148,12 +6249,12 @@ class _ItemCardState extends State<_ItemCard>
             border: Border.all(color: t.cardBorder, width: 1),
             boxShadow: _hovered
                 ? [
-              BoxShadow(
-                color: t.backgroundPrimary.withValues(alpha: 0.4),
-                blurRadius: 40,
-                offset: const Offset(0, 12),
-              ),
-            ]
+                    BoxShadow(
+                      color: t.backgroundPrimary.withValues(alpha: 0.4),
+                      blurRadius: 40,
+                      offset: const Offset(0, 12),
+                    ),
+                  ]
                 : [],
           ),
           clipBehavior: Clip.hardEdge,
@@ -6178,24 +6279,24 @@ class _ItemCardState extends State<_ItemCard>
                         // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Prioritize Masked URL over Raw URL
                         image: resolvedImage.url != null
                             ? DecorationImage(
-                          image: NetworkImage(resolvedImage.url!),
-                          fit: BoxFit.contain,
-                        )
+                                image: NetworkImage(resolvedImage.url!),
+                                fit: BoxFit.contain,
+                              )
                             : (item.imageBytes != null
-                            ? DecorationImage(
-                          image: MemoryImage(item.imageBytes!),
-                          fit: BoxFit.contain,
-                        )
-                            : null),
+                                  ? DecorationImage(
+                                      image: MemoryImage(item.imageBytes!),
+                                      fit: BoxFit.contain,
+                                    )
+                                  : null),
                       ),
                       child:
-                      (resolvedImage.url == null && item.imageBytes == null)
+                          (resolvedImage.url == null && item.imageBytes == null)
                           ? Center(
-                        child: Text(
-                          _catEmoji(item.cat),
-                          style: const TextStyle(fontSize: 40),
-                        ),
-                      )
+                              child: Text(
+                                _catEmoji(item.cat),
+                                style: const TextStyle(fontSize: 40),
+                              ),
+                            )
                           : null,
                     ),
                   ),
@@ -6312,12 +6413,12 @@ class _ItemCardState extends State<_ItemCard>
                           color: item.liked
                               ? accent4.withValues(alpha: 0.2)
                               : (_likeHovered
-                              ? t.backgroundSecondary.withValues(
-                            alpha: 0.98,
-                          )
-                              : t.backgroundPrimary.withValues(
-                            alpha: 0.7,
-                          )),
+                                    ? t.backgroundSecondary.withValues(
+                                        alpha: 0.98,
+                                      )
+                                    : t.backgroundPrimary.withValues(
+                                        alpha: 0.7,
+                                      )),
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: t.textPrimary.withValues(alpha: 0.15),
@@ -6325,12 +6426,12 @@ class _ItemCardState extends State<_ItemCard>
                           ),
                           boxShadow: _likeHovered && !_likePressed
                               ? [
-                            BoxShadow(
-                              color: accent4.withValues(alpha: 0.18),
-                              blurRadius: 14,
-                              offset: const Offset(0, 4),
-                            ),
-                          ]
+                                  BoxShadow(
+                                    color: accent4.withValues(alpha: 0.18),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
                               : null,
                         ),
                         child: Icon(
@@ -6459,12 +6560,12 @@ class _DeleteHoverButtonState extends State<_DeleteHoverButton> {
           ),
           boxShadow: _hovered
               ? [
-            BoxShadow(
-              color: accent4.withValues(alpha: 0.14),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ]
+                  BoxShadow(
+                    color: accent4.withValues(alpha: 0.14),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
               : null,
         ),
         child: Icon(
@@ -6753,93 +6854,93 @@ class _StatsPanel extends StatelessWidget {
       children: neverWorn
           .map(
             (item) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: t.panel,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: t.cardBorder),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        t.accent.secondary.withValues(alpha: 0.12),
-                        t.accent.primary.withValues(alpha: 0.10),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Center(
-                    child: Text(
-                      _catEmoji(item.cat),
-                      style: const TextStyle(fontSize: 18),
-                    ),
-                  ),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: t.panel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: t.cardBorder),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.name,
-                        style: TextStyle(
-                          fontFamily: GoogleFonts.inter().fontFamily,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: t.textPrimary,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            t.accent.secondary.withValues(alpha: 0.12),
+                            t.accent.primary.withValues(alpha: 0.10),
+                          ],
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item.cat,
-                        style: TextStyle(
-                          fontFamily: GoogleFonts.inter().fontFamily,
-                          fontSize: 11,
-                          color: t.mutedText,
+                      child: Center(
+                        child: Text(
+                          _catEmoji(item.cat),
+                          style: const TextStyle(fontSize: 18),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: accent4.withValues(alpha: 0.07),
-                    border: Border.all(
-                      color: accent4.withValues(alpha: 0.28),
                     ),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'Unworn',
-                    style: TextStyle(
-                      fontFamily: GoogleFonts.inter().fontFamily,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: accent4,
-                      letterSpacing: 0.5,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.name,
+                            style: TextStyle(
+                              fontFamily: GoogleFonts.inter().fontFamily,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: t.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            item.cat,
+                            style: TextStyle(
+                              fontFamily: GoogleFonts.inter().fontFamily,
+                              fontSize: 11,
+                              color: t.mutedText,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accent4.withValues(alpha: 0.07),
+                        border: Border.all(
+                          color: accent4.withValues(alpha: 0.28),
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'Unworn',
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.inter().fontFamily,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: accent4,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-      )
+          )
           .toList(),
     );
   }
@@ -6857,7 +6958,7 @@ class _StatsPanel extends StatelessWidget {
         'Makeup': 'MKP',
         'Skincare': 'SKN',
       }[cat] ??
-          'ITM';
+      'ITM';
 
   Widget _buildDivider(BuildContext context, String label) => Row(
     children: [
@@ -6918,7 +7019,7 @@ class _StatsPanel extends StatelessWidget {
     return _BarSection(
       bars: List.generate(
         cats.length,
-            (i) => _BarItem(
+        (i) => _BarItem(
           label: cats[i],
           color: colors[i],
           value: max > 0 ? counts[i] / max : 0,
@@ -6952,7 +7053,7 @@ class _MostWornHoverCardState extends State<_MostWornHoverCard> {
         'Makeup': 'MKP',
         'Skincare': 'SKN',
       }[cat] ??
-          'ITM';
+      'ITM';
 
   @override
   Widget build(BuildContext context) {
@@ -7042,7 +7143,7 @@ class _HoverStatCardState extends State<_HoverStatCard> {
         curve: Curves.easeOut,
         transform: _hovered
             ? (Matrix4.translationValues(0.0, -2.0, 0.0)
-          ..multiply(Matrix4.diagonal3Values(1.01, 1.01, 1.0)))
+                ..multiply(Matrix4.diagonal3Values(1.01, 1.01, 1.0)))
             : Matrix4.identity(),
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
@@ -7050,19 +7151,19 @@ class _HoverStatCardState extends State<_HoverStatCard> {
           borderRadius: BorderRadius.circular(20),
           boxShadow: _hovered
               ? [
-            BoxShadow(
-              color: t.backgroundPrimary.withValues(alpha: 0.4),
-              blurRadius: 28,
-              offset: const Offset(0, 8),
-            ),
-          ]
+                  BoxShadow(
+                    color: t.backgroundPrimary.withValues(alpha: 0.4),
+                    blurRadius: 28,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
               : [
-            BoxShadow(
-              color: t.backgroundPrimary.withValues(alpha: 0.3),
-              blurRadius: 16,
-              offset: const Offset(0, 2),
-            ),
-          ],
+                  BoxShadow(
+                    color: t.backgroundPrimary.withValues(alpha: 0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -7171,63 +7272,63 @@ class _BarSectionState extends State<_BarSection>
         children: widget.bars
             .map(
               (bar) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 100,
-                  child: Text(
-                    bar.label,
-                    style: TextStyle(
-                      fontFamily: GoogleFonts.inter().fontFamily,
-                      fontSize: 13,
-                      color: t.mutedText,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Container(
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: t.panel,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: bar.value.clamp(0.0, 1.0) * _anim.value,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              bar.color.withValues(alpha: 0.7),
-                              bar.color,
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(4),
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 100,
+                      child: Text(
+                        bar.label,
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.inter().fontFamily,
+                          fontSize: 13,
+                          color: t.mutedText,
+                          fontWeight: FontWeight.w400,
                         ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 28,
-                  child: Text(
-                    '${(bar.value * 100).round()}',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontFamily: GoogleFonts.inter().fontFamily,
-                      fontSize: 12,
-                      color: t.mutedText,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Container(
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: t.panel,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: bar.value.clamp(0.0, 1.0) * _anim.value,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  bar.color.withValues(alpha: 0.7),
+                                  bar.color,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 28,
+                      child: Text(
+                        '${(bar.value * 100).round()}',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.inter().fontFamily,
+                          fontSize: 12,
+                          color: t.mutedText,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        )
+              ),
+            )
             .toList(),
       ),
     );
