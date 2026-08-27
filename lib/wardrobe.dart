@@ -4299,6 +4299,87 @@ class _AddItemModalState extends State<_AddItemModal>
     if (tooMany) _toast('Maximum 6 items selected');
   }
 
+  // Keep custom occasion tags small and bounded — an unbounded count or an
+  // arbitrarily long label would break the chip Wrap's layout and bloat the
+  // payload sent to the backend.
+  static const _maxCustomOccasions = 6;
+  static const _maxOccasionTagLength = 24;
+
+  // 'Best for' chips = the fixed preset list plus any custom tags the user
+  // has already added to this item (so a custom tag stays visible/removable
+  // instead of disappearing once added).
+  List<String> _displayOccasions(_DetectedItem item) {
+    final custom = <String>[];
+    for (final o in item.occasions) {
+      final label = humanizeOccasion(o);
+      if (label.isEmpty) continue;
+      final alreadyListed =
+          _occs.any((b) => b.toLowerCase() == label.toLowerCase()) ||
+          custom.any((c) => c.toLowerCase() == label.toLowerCase());
+      if (!alreadyListed) custom.add(label);
+    }
+    return [..._occs, ...custom];
+  }
+
+  int _customOccasionCount(_DetectedItem item) {
+    return item.occasions.where((o) {
+      final label = humanizeOccasion(o);
+      return label.isNotEmpty &&
+          !_occs.any((b) => b.toLowerCase() == label.toLowerCase());
+    }).length;
+  }
+
+  Future<void> _showAddOccasionDialog(_DetectedItem item) async {
+    if (_customOccasionCount(item) >= _maxCustomOccasions) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'You can add up to $_maxCustomOccasions custom tags per item.',
+          ),
+        ),
+      );
+      return;
+    }
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Add a tag'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          maxLength: _maxOccasionTagLength,
+          maxLines: 1,
+          decoration: const InputDecoration(hintText: 'e.g. Beach, Gym'),
+          onSubmitted: (v) => Navigator.of(dialogContext).pop(v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    final tag = humanizeOccasion(result ?? '');
+    if (tag.isEmpty) return;
+    final capped = tag.length > _maxOccasionTagLength
+        ? tag.substring(0, _maxOccasionTagLength)
+        : tag;
+    final alreadyPresent = item.occasions.any(
+      (o) => humanizeOccasion(o).toLowerCase() == capped.toLowerCase(),
+    );
+    if (alreadyPresent) return;
+    if (!mounted) return;
+    setState(() => item.occasions = [...item.occasions, capped]);
+  }
+
   Widget _buildItemCard(_DetectedItem item, {required bool large}) {
     if (!item.isSaveable) {
       return _buildUnapprovedCard(item);
@@ -4513,7 +4594,8 @@ class _AddItemModalState extends State<_AddItemModal>
             child: Wrap(
               spacing: 7,
               runSpacing: 7,
-              children: _occs.map((occ) {
+              children: [
+                ..._displayOccasions(item).map((occ) {
                 final active = item.occasions.any(
                   (o) =>
                       humanizeOccasion(o).toLowerCase() == occ.toLowerCase(),
@@ -4580,7 +4662,27 @@ class _AddItemModalState extends State<_AddItemModal>
                     ),
                   ),
                 );
-              }).toList(),
+                }),
+                GestureDetector(
+                  key: const ValueKey('wardrobe-add-occasion'),
+                  onTap: () => _showAddOccasionDialog(item),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: t.backgroundSecondary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: t.cardBorder, width: 1.5),
+                    ),
+                    child: Icon(
+                      Icons.add_rounded,
+                      size: 18,
+                      color: t.accent.primary,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 12),
