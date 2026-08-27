@@ -203,6 +203,29 @@ Future<void> _pumpUntilKeyFound(
   );
 }
 
+Future<void> _scrollToAndTapAddOccasion(WidgetTester tester) async {
+  final button = find.byKey(const ValueKey('wardrobe-add-occasion'));
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
+}
+
+Future<void> _tapAddOccasion(WidgetTester tester) async {
+  await _scrollToAndTapAddOccasion(tester);
+  await tester.pumpAndSettle();
+}
+
+Finder _customOccasionField() => find.byWidgetPredicate(
+  (w) => w is TextField && w.decoration?.hintText == 'e.g. Beach, Gym',
+);
+
+Future<void> _addCustomOccasion(WidgetTester tester, String tag) async {
+  await _tapAddOccasion(tester);
+  await tester.enterText(_customOccasionField(), tag);
+  await tester.tap(find.text('Add'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -505,6 +528,105 @@ void main() {
       );
       expect(find.byKey(const ValueKey('review')), findsOneWidget);
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // Custom "Best for" occasion tag (the "+" chip added alongside the
+  // fixed preset chips).
+  // ------------------------------------------------------------------
+
+  testWidgets(
+    '19: a custom occasion tag is added, shown, and saved unchanged',
+    (tester) async {
+      final backend = _FakeBackendService();
+      await _openReview(
+        tester,
+        backend: backend,
+        items: [
+          _detectedItemJson(occasions: const ['upload_occasion_everyday']),
+        ],
+      );
+
+      await _addCustomOccasion(tester, 'Beach');
+      expect(find.text('Beach'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+      await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+      // Custom values round-trip exactly as entered — no frontend
+      // canonicalization against the preset vocabulary.
+      final payload = backend.saveCalls.single.single;
+      expect(payload['occasions'], contains('Beach'));
+    },
+  );
+
+  testWidgets(
+    '20: custom occasion input is capped at 24 characters',
+    (tester) async {
+      final backend = _FakeBackendService();
+      await _openReview(
+        tester,
+        backend: backend,
+        items: [_detectedItemJson()],
+      );
+
+      await _tapAddOccasion(tester);
+      await tester.enterText(
+        _customOccasionField(),
+        'A Tag Name That Is Far Too Long To Fit',
+      );
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+
+      // Whatever got saved/displayed must be capped at 24 chars and must
+      // be a prefix of what was typed — check the pattern rather than one
+      // hand-computed exact string, since exact truncation point can shift
+      // slightly by platform/formatter behavior.
+      final chipTexts = tester
+          .widgetList<Text>(
+            find.byWidgetPredicate(
+              (w) => w is Text && (w.data ?? '').startsWith('A Tag'),
+            ),
+          )
+          .map((w) => w.data!)
+          .toList();
+      expect(chipTexts, isNotEmpty);
+      expect(chipTexts.first.length, lessThanOrEqualTo(24));
+      expect(
+        'A Tag Name That Is Far Too Long To Fit'.startsWith(chipTexts.first),
+        isTrue,
+      );
+      expect(
+        find.text('A Tag Name That Is Far Too Long To Fit'),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    '21: custom occasion tags are capped at 6 per item',
+    (tester) async {
+      final backend = _FakeBackendService();
+      await _openReview(
+        tester,
+        backend: backend,
+        items: [_detectedItemJson()],
+      );
+
+      for (var i = 1; i <= 6; i++) {
+        await _addCustomOccasion(tester, 'Tag$i');
+      }
+      expect(find.text('Tag6'), findsOneWidget);
+
+      // A 7th tap must be refused: no input dialog opens, and no 7th tag
+      // is ever added. (The SnackBar shown at this point is transient UI
+      // feedback, not asserted here — its exact visible window is timing-
+      // sensitive; the functional cap itself is what's load-bearing.)
+      await _scrollToAndTapAddOccasion(tester);
+      await tester.pump();
+      expect(_customOccasionField(), findsNothing);
+      expect(find.text('Tag7'), findsNothing);
     },
   );
 }
