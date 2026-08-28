@@ -1,18 +1,25 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/feature/chat/widgets/ahvi_processing_bubble.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:myapp/home_card_summary_provider.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/backend_service.dart';
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
+import 'package:myapp/feature/chat/widgets/blocks/visual_directions/shareable_outfit_board.dart';
 import 'package:myapp/tryon_safety.dart';
 import 'package:myapp/wardrobe.dart';
 import 'package:myapp/theme/theme_tokens.dart';
@@ -497,12 +504,15 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   /// outfit yet — the UI treats that as "still loading" and shows the bare
   /// layout shell instead.
   StyleBoardData? _styleBoardFromOutfit(Map<String, dynamic> outfit) {
-    final rawItems = outfit['items'];
+    final rawItems = outfit['items'] ??
+        outfit['board_items'] ??
+        outfit['composition_items'] ??
+        outfit['used_wardrobe_items'];
     if (rawItems is! List || rawItems.isEmpty) return null;
     final items = rawItems
         .whereType<Map>()
         .map((e) => _styleBoardItemFromMap(Map<String, dynamic>.from(e)))
-        .where((i) => i.imageUrl.isNotEmpty)
+        .where((i) => i.displayImageUrl.isNotEmpty || i.imageUrl.isNotEmpty)
         .toList();
     if (items.isEmpty) return null;
 
@@ -512,12 +522,12 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         : null;
 
     return StyleBoardData(
-      title: (outfit['name'] ?? '').toString(),
-      occasion: (outfit['desc'] ?? '').toString(),
-      whyItWorks: (outfit['tip'] ?? '').toString(),
+      title: (outfit['name'] ?? outfit['nameKey'] ?? '').toString(),
+      occasion: (outfit['desc'] ?? outfit['descKey'] ?? '').toString(),
+      whyItWorks: (outfit['tip'] ?? outfit['tipKey'] ?? '').toString(),
       items: items,
       story: story,
-      stylingTip: (outfit['tip'] ?? '').toString(),
+      stylingTip: (outfit['tip'] ?? outfit['tipKey'] ?? '').toString(),
     );
   }
 
@@ -1395,15 +1405,115 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     }).toList(growable: false);
   }
 
+  Future<SavedBoardSelection?> _showOccasionSaveSheet({
+    String defaultOccasion = 'everything_else',
+  }) {
+    var bucket = defaultOccasion;
+    var isFavourite = false;
+    const categories = <(String, String, IconData)>[
+      ('party_looks', 'Party Looks', Icons.celebration_rounded),
+      ('office_fits', 'Office Fits', Icons.work_outline_rounded),
+      ('vacation', 'Vacation', Icons.flight_takeoff_rounded),
+      ('occasion', 'Occasion', Icons.diamond_outlined),
+      ('everything_else', 'Everything Else', Icons.auto_awesome_rounded),
+    ];
+    return showModalBottomSheet<SavedBoardSelection>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final t = sheetContext.themeTokens;
+        return StatefulBuilder(
+          builder: (context, setSheetState) => SafeArea(
+            child: Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+              decoration: BoxDecoration(
+                color: t.panel,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: t.cardBorder),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Save this look to',
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  for (final category in categories)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(category.$3, color: t.accent.primary),
+                      title: Text(
+                        category.$2,
+                        style: TextStyle(color: t.textPrimary),
+                      ),
+                      trailing: Icon(
+                        bucket == category.$1
+                            ? Icons.radio_button_checked_rounded
+                            : Icons.radio_button_off_rounded,
+                        color: bucket == category.$1
+                            ? t.accent.primary
+                            : t.mutedText,
+                      ),
+                      onTap: () => setSheetState(() => bucket = category.$1),
+                    ),
+                  const Divider(),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      'Add to Favourites',
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    value: isFavourite,
+                    onChanged: (value) =>
+                        setSheetState(() => isFavourite = value),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(sheetContext).pop(
+                        SavedBoardSelection(
+                          bucket: bucket,
+                          isFavourite: isFavourite,
+                        ),
+                      ),
+                      child: const Text('Save look'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _persistCurrentLook() async {
     final outfit = _currentOutfit;
+    await _saveOutfitToBoards(outfit);
+  }
+
+  Future<bool> _saveOutfitToBoards(Map<String, dynamic> outfit) async {
     final board = _styleBoardFromOutfit(outfit);
     final title = (outfit['name'] ?? outfit['nameKey'] ?? 'Daily Look')
         .toString()
         .trim();
     if (board == null) {
       _showToast(AppLocalizations.t(context, 'daily_wear_save_failed'));
-      return;
+      return false;
     }
     final outfitItems = _savedDailyWearItems(board);
     final imageUrl = board.items
@@ -1414,8 +1524,11 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         );
     if (imageUrl.isEmpty) {
       _showToast(AppLocalizations.t(context, 'daily_wear_save_failed'));
-      return;
+      return false;
     }
+
+    final selection = await _showOccasionSaveSheet();
+    if (selection == null || !mounted) return false;
 
     try {
       final content = buildSavedBoardContent(
@@ -1425,7 +1538,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
           'source_policy': 'wardrobe',
         },
         items: outfitItems,
-        selection: const SavedBoardSelection(bucket: 'everything_else'),
+        selection: selection,
         title: title.isEmpty ? 'Saved Look' : title,
         originalOccasion: 'daily',
       );
@@ -1434,61 +1547,189 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         content: content,
       );
 
-      if (!mounted) return;
+      // Best-effort local cache
+      unawaited(
+        SavedBoardsStore.saveBoard(
+          occasion: selection.bucket,
+          directionName: title,
+          direction: outfit,
+        ),
+      );
+
+      if (!mounted) return false;
+      final bucketLabel = switch (selection.bucket) {
+        'party_looks' => 'Party Looks',
+        'office_fits' => 'Office Fits',
+        'vacation' => 'Vacation',
+        'occasion' => 'Occasion',
+        _ => 'Everything Else',
+      };
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             saved == null
                 ? AppLocalizations.t(context, 'daily_wear_save_failed')
-                : AppLocalizations.t(context, 'daily_wear_saved_boards'),
+                : 'Saved look to $bucketLabel',
           ),
         ),
       );
+      return saved != null;
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              '${AppLocalizations.t(context, 'daily_wear_save_error')}: $e'
+            '${AppLocalizations.t(context, 'daily_wear_save_error')}: $e',
           ),
         ),
       );
+      return false;
     }
   }
 
-  Future<void> _saveOutfitToBoards(Map<String, dynamic> outfit) async {
-    final board = _styleBoardFromOutfit(outfit);
+  Future<void> _shareDailyWearBoard(Map<String, dynamic> outfit) async {
     final title = (outfit['name'] ?? outfit['nameKey'] ?? 'Daily Look')
         .toString()
         .trim();
-    if (board == null) return;
-    final outfitItems = _savedDailyWearItems(board);
-    final imageUrl = board.items
-        .map((item) => item.displayImageUrl.trim())
-        .firstWhere(
-          (url) => url.isNotEmpty,
-          orElse: () => '',
-        );
-    if (imageUrl.isEmpty) return;
+    final desc = (outfit['desc'] ?? outfit['descKey'] ?? '')
+        .toString()
+        .trim();
+    final resolvedTitle = title.isEmpty ? 'Daily Look' : title;
+    final caption =
+        'My "$resolvedTitle" look, styled on AHVI.${desc.isNotEmpty ? '\n$desc' : ''}';
 
     try {
-      final content = buildSavedBoardContent(
-        board: {
-          'board_id': outfit['id'],
-          'revision': 1,
-          'source_policy': 'wardrobe',
-        },
-        items: outfitItems,
-        selection: const SavedBoardSelection(bucket: 'everything_else'),
-        title: title.isEmpty ? 'Saved Look' : title,
-        originalOccasion: 'daily',
+      Uint8List? pngBytes;
+      var board = _styleBoardFromOutfit(outfit);
+
+      if (board == null || board.items.isEmpty) {
+        final coverUrl = outfit['img']?.toString() ??
+            outfit['imageUrl']?.toString() ??
+            outfit['localImg']?.toString() ??
+            '';
+        if (coverUrl.isNotEmpty) {
+          board = StyleBoardData(
+            title: resolvedTitle,
+            occasion: 'Daily Wear',
+            whyItWorks: desc,
+            items: [
+              StyleBoardItem(
+                id: outfit['id']?.toString() ?? '1',
+                name: resolvedTitle,
+                imageUrl: coverUrl,
+                category: 'Outfit',
+                role: BoardItemRole.dress,
+                raw: {'image_url': coverUrl, 'img': coverUrl},
+              ),
+            ],
+          );
+        }
+      }
+
+      if (board != null && board.items.isNotEmpty && mounted) {
+        final shareItems = board.items;
+        final overlay = Overlay.maybeOf(context, rootOverlay: true);
+        if (overlay != null) {
+          final key = GlobalKey();
+          final entry = OverlayEntry(
+            builder: (_) => Positioned(
+              left: -10000,
+              top: -10000,
+              child: Directionality(
+                textDirection: TextDirection.ltr,
+                child: Material(
+                  color: Colors.transparent,
+                  child: ShareableOutfitBoard(
+                    boundaryKey: key,
+                    title: resolvedTitle,
+                    occasion: 'Daily Wear',
+                    items: shareItems,
+                  ),
+                ),
+              ),
+            ),
+          );
+          overlay.insert(entry);
+          try {
+            for (var i = 0; i < 6; i++) {
+              await WidgetsBinding.instance.endOfFrame;
+            }
+            await Future<void>.delayed(const Duration(milliseconds: 350));
+            await WidgetsBinding.instance.endOfFrame;
+            final ro = key.currentContext?.findRenderObject();
+            if (ro is RenderRepaintBoundary) {
+              final image = await ro.toImage(pixelRatio: 3.0);
+              try {
+                final data = await image.toByteData(
+                  format: ui.ImageByteFormat.png,
+                );
+                pngBytes = data?.buffer.asUint8List();
+              } finally {
+                image.dispose();
+              }
+            }
+          } finally {
+            entry.remove();
+          }
+        }
+      }
+
+      if (pngBytes == null || pngBytes.isEmpty) {
+        final imgUrl = outfit['img']?.toString() ??
+            outfit['imageUrl']?.toString() ??
+            outfit['localImg']?.toString() ??
+            '';
+        if (imgUrl.startsWith('http://') || imgUrl.startsWith('https://')) {
+          try {
+            final resp = await http.get(Uri.parse(imgUrl));
+            if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
+              pngBytes = resp.bodyBytes;
+            }
+          } catch (_) {}
+        } else if (imgUrl.startsWith('assets/')) {
+          try {
+            final byteData = await rootBundle.load(imgUrl);
+            pngBytes = byteData.buffer.asUint8List();
+          } catch (_) {}
+        }
+      }
+
+      if (pngBytes != null && pngBytes.isNotEmpty) {
+        final dir = await getTemporaryDirectory();
+        final file = File(
+          '${dir.path}/ahvi_daily_${DateTime.now().millisecondsSinceEpoch}.png',
+        );
+        await file.writeAsBytes(pngBytes, flush: true);
+        final result = await SharePlus.instance.share(
+          ShareParams(
+            files: [XFile(file.path, mimeType: 'image/png')],
+            text: caption,
+            subject: resolvedTitle,
+          ),
+        );
+        if (result.status == ShareResultStatus.unavailable) {
+          throw StateError('native_share_unavailable');
+        }
+        return;
+      }
+
+      final result = await SharePlus.instance.share(
+        ShareParams(text: caption, subject: resolvedTitle),
       );
-      await AppwriteService().saveBoardToCollection(
-        imageUrl: imageUrl,
-        content: content,
-      );
+      if (result.status == ShareResultStatus.unavailable) {
+        throw StateError('native_share_unavailable');
+      }
     } catch (e) {
-      debugPrint('Failed to save daily look to boards: $e');
+      debugPrint('Daily Wear share error: $e');
+      try {
+        await SharePlus.instance.share(
+          ShareParams(text: caption, subject: resolvedTitle),
+        );
+      } catch (_) {
+        if (!mounted) return;
+        _showToast(AppLocalizations.t(context, 'daily_wear_toast_link_copied'));
+        Clipboard.setData(ClipboardData(text: caption));
+      }
     }
   }
 
@@ -2566,22 +2807,18 @@ class _DailyWearScreenState extends State<DailyWearScreen>
               ),
               Row(
                 children: [
-                  _circleAction(saved ? '❤️' : '🤍', () {
-                    setState(() => _savedCarouselById[outfitId] = !saved);
+                  _circleAction(saved ? '❤️' : '🤍', () async {
                     if (!saved) {
-                      _showToast(
-                        AppLocalizations.t(
-                          context,
-                          'daily_wear_toast_saved_wardrobe',
-                        ),
-                      );
-                      _saveOutfitToBoards(outfit);
+                      final success = await _saveOutfitToBoards(outfit);
+                      if (success) {
+                        setState(() => _savedCarouselById[outfitId] = true);
+                      }
+                    } else {
+                      setState(() => _savedCarouselById[outfitId] = false);
                     }
                   }),
                   const SizedBox(width: 8),
-                  _circleShare(
-                    '${AppLocalizations.t(context, outfit['nameKey'] as String)} · ${AppLocalizations.t(context, outfit['descKey'] as String)}',
-                  ),
+                  _circleShare(outfit),
                 ],
               ),
             ],
@@ -2657,46 +2894,40 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                 spacing: 5,
                 runSpacing: 5,
                 children:
-                ((outfit['tags'] as List?)?.cast<String>() ?? <String>[])
-                    .map(
-                      (t) => Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 11,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.35),
-                      ),
-                    ),
-                    child: Text(
-                      t,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                )
-                    .toList(),
+                    ((outfit['tags'] as List?)?.cast<String>() ?? <String>[])
+                        .map(
+                          (t) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 11,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.35),
+                              ),
+                            ),
+                            child: Text(
+                              t,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
               ),
               const SizedBox(height: 14),
-              _PressScaleButton(
-                scaleDown: 0.98,
-                opacityDown: 0.85,
+              GestureDetector(
                 onTap: () => _openTryOn(outfitId),
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [accentColor, accent3Color],
-                    ),
+                    color: panelColor,
                     borderRadius: BorderRadius.circular(18),
                     boxShadow: [
                       BoxShadow(
@@ -2742,12 +2973,9 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     ),
   );
 
-  Widget _circleShare(String text) => _PressScaleButton(
+  Widget _circleShare(Map<String, dynamic> outfit) => _PressScaleButton(
     scaleDown: 0.92,
-    onTap: () {
-      Clipboard.setData(ClipboardData(text: text));
-      _showToast(AppLocalizations.t(context, 'daily_wear_toast_link_copied'));
-    },
+    onTap: () => _shareDailyWearBoard(outfit),
     child: Container(
       width: 40,
       height: 40,
@@ -2915,25 +3143,21 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                   const SizedBox(height: 9),
                   Row(
                     children: [
-                      _smallIcon(saved ? '❤️' : '🤍', () {
-                        setState(() => _savedOptionById[outfitId] = !saved);
+                      _smallIcon(saved ? '❤️' : '🤍', () async {
                         if (!saved) {
-                          _showToast(
-                            AppLocalizations.t(
-                              context,
-                              'daily_wear_toast_outfit_saved',
-                            ),
-                          );
                           final outfitData = _outfitById(outfitId);
-                          if (outfitData.isNotEmpty) {
-                            _saveOutfitToBoards(outfitData);
+                          final success = await _saveOutfitToBoards(
+                            outfitData.isNotEmpty ? outfitData : card,
+                          );
+                          if (success) {
+                            setState(() => _savedOptionById[outfitId] = true);
                           }
+                        } else {
+                          setState(() => _savedOptionById[outfitId] = false);
                         }
                       }),
                       const SizedBox(width: 5),
-                      _smallShare(
-                        AppLocalizations.t(context, card['nameKey'] as String),
-                      ),
+                      _smallShare(outfitId),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -2980,11 +3204,13 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     ),
   );
 
-  Widget _smallShare(String text) => _PressScaleButton(
+  Widget _smallShare(String outfitId) => _PressScaleButton(
     scaleDown: 0.92,
     onTap: () {
-      Clipboard.setData(ClipboardData(text: text));
-      _showToast(AppLocalizations.t(context, 'daily_wear_toast_link_copied'));
+      final outfitData = _outfitById(outfitId);
+      _shareDailyWearBoard(
+        outfitData.isNotEmpty ? outfitData : {'id': outfitId},
+      );
     },
     child: Container(
       width: 30,

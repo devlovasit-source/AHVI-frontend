@@ -52,7 +52,7 @@ void main() {
     );
 
     expect(saveSection, contains('buildSavedBoardContent('));
-    expect(saveSection, contains("bucket: 'everything_else'"));
+    expect(saveSection, contains('_showOccasionSaveSheet()'));
     expect(saveSection, contains("originalOccasion: 'daily'"));
     expect(saveSection, contains('_savedDailyWearItems(board)'));
     expect(saveSection, contains('content: content'));
