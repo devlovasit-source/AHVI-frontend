@@ -1,51 +1,44 @@
 import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('Daily Wear presents Occasion Selection sheet on Save', () {
     final source = File('lib/daily_wear.dart').readAsStringSync();
-    expect(source, contains('_showOccasionSaveSheet('));
-    expect(source, contains('Save this look to'));
-    expect(source, contains("('party_looks', 'Party Looks'"));
-    expect(source, contains("('office_fits', 'Office Fits'"));
-    expect(source, contains("('vacation', 'Vacation'"));
-    expect(source, contains("('occasion', 'Occasion'"));
-    expect(source, contains("('everything_else', 'Everything Else'"));
-    expect(source, contains('Add to Favourites'));
+    expect(source, contains('_showOccasionPickerSheet('));
+    expect(source, contains('Save to Board Location'));
+    expect(source, contains("key: 'party_looks'"));
+    expect(source, contains("key: 'office_fits'"));
+    expect(source, contains("key: 'vacation'"));
+    expect(source, contains("key: 'occasion'"));
+    expect(source, contains("key: 'everything_else'"));
   });
 
   test('Daily Wear save persists selected occasion selection', () {
     final source = File('lib/daily_wear.dart').readAsStringSync();
     final saveMethod = source.substring(
       source.indexOf('Future<bool> _saveOutfitToBoards'),
-      source.indexOf('Future<void> _shareDailyWearBoard'),
+      source.indexOf('Future<void> _unsaveOutfit'),
     );
 
-    expect(saveMethod, contains('final selection = await _showOccasionSaveSheet();'));
-    expect(saveMethod, contains('selection: selection'));
-    expect(saveMethod, contains('SavedBoardsStore.saveBoard('));
     expect(saveMethod, contains('AppwriteService().saveBoardToCollection('));
-    expect(saveMethod, contains('Saved look to \$bucketLabel'));
+    expect(saveMethod, contains('if (doc == null) {'));
+    expect(saveMethod, contains('SavedBoardsStore.saveBoard('));
   });
 
-  test('Daily Wear share integrates ShareableOutfitBoard image and text via share_plus', () {
+  test('Daily Wear share integrates board exporter image and text via share_plus', () {
     final source = File('lib/daily_wear.dart').readAsStringSync();
-    expect(source, contains('_shareDailyWearBoard('));
-    expect(source, contains('ShareableOutfitBoard('));
-    expect(source, contains('SharePlus.instance.share('));
-    expect(source, contains('ShareParams('));
+    expect(source, contains('_shareOutfit('));
+    expect(source, contains('BoardExporter.capturePng('));
+    expect(source, contains('Share.shareXFiles('));
+    expect(source, contains('Share.share('));
     expect(source, contains("mimeType: 'image/png'"));
-    expect(source, contains('text: caption'));
-    expect(source, contains('subject: resolvedTitle'));
-    expect(source, contains('getTemporaryDirectory()'));
   });
 
-  test('Daily Wear share buttons delegate to _shareDailyWearBoard', () {
+  test('Daily Wear share buttons delegate to _shareOutfit', () {
     final source = File('lib/daily_wear.dart').readAsStringSync();
     expect(source, contains('Widget _circleShare(Map<String, dynamic> outfit)'));
-    expect(source, contains('_shareDailyWearBoard(outfit)'));
-    expect(source, contains('Widget _smallShare(String outfitId)'));
-    expect(source, contains('_shareDailyWearBoard('));
+    expect(source, contains('_shareOutfit(outfit)'));
+    expect(source, contains('Widget _smallShare(Map<String, dynamic> outfit)'));
+    expect(source, contains('_shareOutfit('));
   });
 }

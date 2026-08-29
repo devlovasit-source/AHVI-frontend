@@ -2,10 +2,14 @@
 // WARDROBE.DART - DUAL R2 UPLOAD + APPWRITE FETCH/SAVE
 // ============================================================
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:myapp/services/backend_service.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/connectivity_watcher.dart';
@@ -363,13 +367,64 @@ String _cleanCategory(Object? value, {String fallback = 'Tops'}) {
     'gown',
     'jumpsuit',
     'saree',
-    'lehenga',
-    'sherwani',
   ])) {
     return 'Dresses';
   }
 
   return fallback;
+}
+
+Future<void> shareGarmentImage({
+  required String name,
+  required String category,
+  Uint8List? imageBytes,
+  String? imageUrl,
+  List<String>? occasions,
+  String? notes,
+}) async {
+  final occasionText = (occasions != null && occasions.isNotEmpty)
+      ? '\nOccasions: ${_cleanStringList(occasions).join(', ')}'
+      : '';
+
+  final notesText = (notes != null && _cleanUiText(notes).isNotEmpty)
+      ? '\nNotes: ${_cleanUiText(notes)}'
+      : '';
+
+  final shareText =
+      '${_cleanUiText(name, fallback: 'Garment Item')}\n'
+      'Category: ${_cleanCategory(category)}'
+      '$occasionText'
+      '$notesText';
+
+  try {
+    Uint8List? bytes = imageBytes;
+    if ((bytes == null || bytes.isEmpty) && imageUrl != null && imageUrl.isNotEmpty) {
+      final resp = await http.get(Uri.parse(imageUrl));
+      if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
+        bytes = resp.bodyBytes;
+      }
+    }
+
+    if (bytes != null && bytes.isNotEmpty) {
+      final tempDir = await getTemporaryDirectory();
+      final safeName = name.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_').toLowerCase();
+      final file = File(
+        '${tempDir.path}/garment_${safeName}_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'image/png')],
+        text: shareText,
+        subject: name,
+      );
+      return;
+    }
+  } catch (e) {
+    debugPrint('AHVI_GARMENT_SHARE_ERROR: $e');
+  }
+
+  await Share.share(shareText, subject: name);
 }
 
 List<String> _cleanStringList(Object? value) {
@@ -1017,24 +1072,19 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     );
   }
 
-  void _shareItem(WardrobeItem item) {
-    final occasionText = item.occasions.isNotEmpty
-        ? '\nOccasions: ${_cleanStringList(item.occasions).join(', ')}'
-        : '';
 
-    final notesText = _cleanUiText(item.notes).isNotEmpty
-        ? '\nNotes: ${_cleanUiText(item.notes)}'
-        : '';
-
-    final text =
-        '${_cleanUiText(item.name, fallback: 'Item')}\n'
-        'Category: ${_cleanCategory(item.cat)}'
-        '$occasionText'
-        '$notesText';
-
-    Clipboard.setData(ClipboardData(text: text));
-    _showToast(AppLocalizations.t(context, 'wardrobe_copy_clipboard'));
+  Future<void> _shareItem(WardrobeItem item) async {
+    await shareGarmentImage(
+      name: item.name,
+      category: item.cat,
+      imageBytes: item.imageBytes,
+      imageUrl: item.displayUrl,
+      occasions: item.occasions,
+      notes: item.notes,
+    );
   }
+
+
 
   Future<void> _showEditSavedItem(WardrobeItem item) async {
     final nameCtrl = TextEditingController(text: item.name);
@@ -2602,7 +2652,7 @@ class _AddItemModalState extends State<_AddItemModal>
       // Warn if user had more than 6 selected (some platforms ignore limit)
       final capped = files.take(6).toList();
       if (files.length > 6) {
-        _toast('Only the first 6 images were selected');
+        _toast('You can upload a maximum of 6 items.');
       }
 
       final bytesList = await Future.wait(capped.map((f) => f.readAsBytes()));
@@ -2973,7 +3023,7 @@ class _AddItemModalState extends State<_AddItemModal>
       return;
     }
     if (selected.length > 6) {
-      _toast('Maximum 6 items per outfit');
+      _toast('You can upload a maximum of 6 items.');
       return;
     }
     // Privacy safety net: inline edits keep item.name/subCategory live via
@@ -3196,25 +3246,229 @@ class _AddItemModalState extends State<_AddItemModal>
     _initCamera();
   }
 
+  OverlayEntry? _toastOverlayEntry;
+  Timer? _toastOverlayTimer;
+
   void _toast(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: TextStyle(
-            fontFamily: GoogleFonts.inter().fontFamily,
-            color: t.textPrimary,
+    try {
+      _toastOverlayEntry?.remove();
+    } catch (_) {}
+    _toastOverlayEntry = null;
+    _toastOverlayTimer?.cancel();
+
+    if (!mounted) return;
+
+    final overlayState = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlayState == null) return;
+
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (toastContext) {
+        final t = toastContext.themeTokens;
+        final topSafeArea = MediaQuery.of(toastContext).padding.bottom;
+        return Positioned(
+          top: topSafeArea + 16,
+          left: 16,
+          right: 16,
+          child: Material(
+            color: Colors.transparent,
+            elevation: 0,
+            child: Center(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 400),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+                decoration: BoxDecoration(
+                  color: t.backgroundSecondary,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: t.accent.primary.withValues(alpha: 0.4),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: t.accent.primary.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.info_outline_rounded,
+                        color: t.accent.primary,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        msg,
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.inter().fontFamily,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: t.textPrimary,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
-        backgroundColor: t.backgroundSecondary,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
+        );
+      },
+    );
+
+    _toastOverlayEntry = entry;
+    overlayState.insert(entry);
+
+    _toastOverlayTimer = Timer(const Duration(milliseconds: 3000), () {
+      try {
+        entry.remove();
+      } catch (_) {}
+      if (_toastOverlayEntry == entry) {
+        _toastOverlayEntry = null;
+      }
+    });
+  }
+
+  Future<void> _shareDetectedItem(_DetectedItem item) async {
+    final ctrls = _ctrlsFor(item);
+    final itemName = ctrls.name.text.isNotEmpty ? ctrls.name.text : item.name;
+
+    await shareGarmentImage(
+      name: itemName,
+      category: item.category,
+      imageBytes: item.previewBytes,
+      imageUrl: item.displayUrl,
+      occasions: item.occasions,
+      notes: item.notes,
+    );
+  }
+
+  void _showDetectedItemMoreOptions(_DetectedItem item) {
+    final ctrls = _ctrlsFor(item);
+    final itemName = ctrls.name.text.isNotEmpty ? ctrls.name.text : item.name;
+    final cat = item.category;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final t = ctx.themeTokens;
+        return SafeArea(
+          child: Container(
+            decoration: BoxDecoration(
+              color: t.panel,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 4),
+                  child: Container(
+                    width: 32,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: t.cardBorder,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        itemName,
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.inter().fontFamily,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: t.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        cat,
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.inter().fontFamily,
+                          fontSize: 12,
+                          color: t.mutedText,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 0.5, color: t.cardBorder),
+                ListTile(
+                  leading: Icon(Icons.share_outlined, color: t.accent.primary),
+                  title: Text(
+                    'Share Garment',
+                    style: TextStyle(
+                      fontFamily: GoogleFonts.inter().fontFamily,
+                      color: t.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _shareDetectedItem(item);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    item.selected ? Icons.check_circle : Icons.circle_outlined,
+                    color: item.selected ? t.accent.primary : t.mutedText,
+                  ),
+                  title: Text(
+                    item.selected ? 'Remove from upload' : 'Include in upload',
+                    style: TextStyle(
+                      fontFamily: GoogleFonts.inter().fontFamily,
+                      color: t.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    final selCount = _detected
+                        .where((d) => d.selected && d.isSaveable)
+                        .length;
+                    if (!item.selected && selCount >= 6) {
+                      _toast('You can upload a maximum of 6 items.');
+                      return;
+                    }
+                    setState(() => item.selected = !item.selected);
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
   @override
   void dispose() {
+    try {
+      _toastOverlayEntry?.remove();
+    } catch (_) {}
+    _toastOverlayTimer?.cancel();
     _slideCtrl.dispose();
     _camCtrl?.dispose();
     _reviewPageCtrl.dispose();
@@ -4296,7 +4550,7 @@ class _AddItemModalState extends State<_AddItemModal>
         if (i.selected) count++;
       }
     });
-    if (tooMany) _toast('Maximum 6 items selected');
+    if (tooMany) _toast('You can upload a maximum of 6 items.');
   }
 
   Widget _buildItemCard(_DetectedItem item, {required bool large}) {
@@ -4324,36 +4578,67 @@ class _AddItemModalState extends State<_AddItemModal>
         children: [
           Stack(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: large ? 240 : 140,
-                  child: Container(
-                    color: t.backgroundSecondary,
-                    child: item.previewBytes != null
-                        ? Image.memory(
-                            item.previewBytes!,
-                            fit: BoxFit.contain,
-                            gaplessPlayback: true,
-                          )
-                        : (item.displayUrl != null
-                              ? Image.network(
-                                  item.displayUrl!,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, _, _) => Center(
+              GestureDetector(
+                onTap: () => _showDetectedItemMoreOptions(item),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: large ? 240 : 140,
+                    child: Container(
+                      color: t.backgroundSecondary,
+                      child: item.previewBytes != null
+                          ? Image.memory(
+                              item.previewBytes!,
+                              fit: BoxFit.contain,
+                              gaplessPlayback: true,
+                            )
+                          : (item.displayUrl != null
+                                ? Image.network(
+                                    item.displayUrl!,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, _, _) => Center(
+                                      child: Text(
+                                        _DetectedItem.catEmoji(item.category),
+                                        style: const TextStyle(fontSize: 28),
+                                      ),
+                                    ),
+                                  )
+                                : Center(
                                     child: Text(
                                       _DetectedItem.catEmoji(item.category),
                                       style: const TextStyle(fontSize: 28),
                                     ),
-                                  ),
-                                )
-                              : Center(
-                                  child: Text(
-                                    _DetectedItem.catEmoji(item.category),
-                                    style: const TextStyle(fontSize: 28),
-                                  ),
-                                )),
+                                  )),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Semantics(
+                  button: true,
+                  label: 'More options for ${ctrls.name.text.isEmpty ? item.category : ctrls.name.text}',
+                  child: GestureDetector(
+                    onTap: () => _showDetectedItemMoreOptions(item),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withOpacity(0.45),
+                        border: Border.all(
+                          color: Colors.white70,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.more_vert,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -4373,7 +4658,7 @@ class _AddItemModalState extends State<_AddItemModal>
                                 .where((d) => d.selected && d.isSaveable)
                                 .length;
                             if (!item.selected && selCount >= 6) {
-                              _toast('Maximum 6 items per outfit');
+                              _toast('You can upload a maximum of 6 items.');
                               return;
                             }
                             setState(() => item.selected = !item.selected);
@@ -4411,14 +4696,27 @@ class _AddItemModalState extends State<_AddItemModal>
             ],
           ),
           const SizedBox(height: 12),
-          Text(
-            ctrls.name.text.isEmpty ? item.category : ctrls.name.text,
-            style: TextStyle(
-              fontFamily: GoogleFonts.inter().fontFamily,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: t.textPrimary,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  ctrls.name.text.isEmpty ? item.category : ctrls.name.text,
+                  style: TextStyle(
+                    fontFamily: GoogleFonts.inter().fontFamily,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: t.textPrimary,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.more_vert, size: 20),
+                color: t.textPrimary,
+                onPressed: () => _showDetectedItemMoreOptions(item),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
           ),
           if ([
             item.color,
