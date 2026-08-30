@@ -133,16 +133,13 @@ void main() {
       // `board_items` (sometimes `composition_items`) — the same field
       // names the canonical chat block parser checks. Reading `items`
       // alone silently dropped every real card, leaving the Daily Wear
-      // board permanently blank.
+      // board permanently blank. Precedence now lives in the centralized
+      // DailyWearScreen.firstNonEmptyBoardItems helper (shared with
+      // _recordWear) rather than an inline chain here.
       expect(
         normalizer,
-        contains("card['board_items']"),
+        contains('DailyWearScreen.firstNonEmptyBoardItems(card)'),
       );
-      expect(
-        normalizer,
-        contains("card['composition_items']"),
-      );
-      expect(normalizer, contains("card['items']"));
     },
   );
 
@@ -150,9 +147,9 @@ void main() {
     'Daily Board card normalizer prefers board_items over raw items — Build 2013',
     () {
       final source = File('lib/daily_wear.dart').readAsStringSync();
-      final normalizer = source.substring(
-        source.indexOf('Map<String, dynamic> _normalizeDailyBoardCard'),
-        source.indexOf('String _localOutfitImage'),
+      final helper = source.substring(
+        source.indexOf('static List<dynamic> firstNonEmptyBoardItems'),
+        source.indexOf('@override', source.indexOf('static List<dynamic> firstNonEmptyBoardItems')),
       );
 
       // Build 2013: raw `items` is the pre-enrichment list (name/category/
@@ -161,14 +158,14 @@ void main() {
       // normalized/cutout field before trusting an image as board-safe.
       // `board_items` is the adapted, enriched field the canonical chat
       // board renderer (ahvi_outfit_board_card.dart) reads first, so the
-      // Daily Board normalizer must match that same priority or every
+      // centralized precedence helper must check it before composition_items,
+      // used_wardrobe_items, and items (in that order) or every
       // populated-wardrobe card renders as a permanent blank shell.
-      expect(
-        normalizer,
-        contains(
-          "card['board_items'] ?? card['composition_items'] ?? card['items']",
-        ),
-      );
+      final order = ['board_items', 'composition_items', 'used_wardrobe_items', 'items']
+          .map((key) => helper.indexOf("'$key'"))
+          .toList();
+      expect(order, everyElement(greaterThanOrEqualTo(0)));
+      expect(order, orderedEquals(List.of(order)..sort()));
     },
   );
 

@@ -3,13 +3,13 @@ import 'dart:convert';
 import 'package:appwrite/models.dart' as appwrite_models;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/style_board/saved_board_images.dart';
 import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:myapp/style_board/saved_board_thumb.dart';
+import 'package:myapp/style_board/board_exporter.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/util/wardrobe_image_resolver.dart';
 
@@ -140,6 +140,7 @@ class SavedBoardCard extends StatelessWidget {
   }
 
   void _openDetails(BuildContext context, Map<String, dynamic> data) {
+    final shareBoundaryKey = GlobalKey();
     final boardId = _boardId();
     final title = (data['title'] ?? data['boardCategoryLabel'] ?? 'Saved look')
         .toString();
@@ -235,15 +236,18 @@ class SavedBoardCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: SizedBox(
-                      height: 340,
-                      width: double.infinity,
-                      child: SavedBoardThumb(
-                        source: source,
-                        wardrobeById: wardrobeById,
-                        radius: BorderRadius.circular(16),
+                  RepaintBoundary(
+                    key: shareBoundaryKey,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: SizedBox(
+                        height: 340,
+                        width: double.infinity,
+                        child: SavedBoardThumb(
+                          source: source,
+                          wardrobeById: wardrobeById,
+                          radius: BorderRadius.circular(16),
+                        ),
                       ),
                     ),
                   ),
@@ -342,11 +346,10 @@ class SavedBoardCard extends StatelessWidget {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () async {
-                            await SharePlus.instance.share(
-                              ShareParams(
-                                text: '$title\n\n$description',
-                                subject: title,
-                              ),
+                            await BoardExporter.shareBoard(
+                              shareBoundaryKey,
+                              subject: title,
+                              text: '$title\n\n$description',
                             );
                           },
                           icon: const Icon(Icons.ios_share_rounded, size: 18),

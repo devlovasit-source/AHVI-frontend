@@ -365,7 +365,12 @@ class BackendService {
   Future<Map<String, dynamic>?> getDailyBoard() async {
     final response = await sendModuleChat(
       domain: 'style',
-      message: 'Build my wardrobe-first looks for today',
+      // Deliberately avoids "wardrobe-first" (a compound "wardrobe" phrase
+      // the backend's owned-item-mention resolver can misparse as a named
+      // garment -- see services.style_item_contract._extract_my_phrases).
+      // The resolver fix is the real defense; this wording is belt-and-
+      // braces so a future backend regression fails softer for this call.
+      message: "Show me today's outfit from my wardrobe",
       context: const {'surface': 'daily_wear', 'request': 'daily_board'},
     );
     final rawData = response['data'];

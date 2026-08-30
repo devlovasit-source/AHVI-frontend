@@ -17,6 +17,8 @@ import 'package:myapp/tryon_safety.dart';
 import 'package:myapp/wardrobe.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/style_board/board_models.dart';
+import 'package:myapp/style_board/board_exporter.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:myapp/widgets/ahvi_chat_prompt_bar.dart';
 import 'package:myapp/widgets/ahvi_home_text.dart';
@@ -27,8 +29,36 @@ import 'package:myapp/widgets/ahvi_unified_outfit_grid.dart';
 
 enum _TryOnStage { preview, loading, camera, captured }
 
+/// (canonicalBucket, label, icon) options for the Daily Wear save sheet.
+/// Buckets must be members of [savedBoardBuckets] -- no invented strings.
+const dailyWearSaveOccasionOptions = <(String, String, IconData)>[
+  ('everything_else', 'Daily Wear', Icons.wb_sunny_outlined),
+  ('party_looks', 'Party Looks', Icons.celebration_rounded),
+  ('office_fits', 'Office Fits', Icons.work_outline_rounded),
+  ('vacation', 'Vacation & Travel', Icons.flight_takeoff_rounded),
+  ('occasion', 'Occasions & Events', Icons.diamond_outlined),
+  ('everything_else', 'Everything Else', Icons.auto_awesome_rounded),
+];
+
 class DailyWearScreen extends StatefulWidget {
   const DailyWearScreen({super.key});
+
+  /// Returns the first non-empty list from board_items, composition_items,
+  /// used_wardrobe_items, or items in exact precedence order.
+  static List<dynamic> firstNonEmptyBoardItems(Map<String, dynamic> outfit) {
+    for (final key in [
+      'board_items',
+      'composition_items',
+      'used_wardrobe_items',
+      'items',
+    ]) {
+      final val = outfit[key];
+      if (val is List && val.isNotEmpty) {
+        return val;
+      }
+    }
+    return const [];
+  }
 
   @override
   State<DailyWearScreen> createState() => _DailyWearScreenState();
@@ -70,6 +100,10 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   bool _tryOnOpen = false;
   bool _isLoading = true;
   bool _needsMoreClothes = false;
+  // Distinct from _needsMoreClothes: a board-generation hiccup with no
+  // explicit insufficient_wardrobe signal from the backend. Must never say
+  // "add more clothes" -- the wardrobe may be perfectly fine.
+  bool _loadUnavailable = false;
   String _emptyStateMessage = '';
   final PageController _pageController = PageController();
   final TextEditingController _chatController = TextEditingController();
@@ -429,13 +463,13 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     // every entry, leaving _styleBoardFromOutfit permanently null even
     // though the card itself is non-empty. `items` stays as the last
     // resort for cards that never got an adapted board_items at all.
-    final rawItems =
-        card['board_items'] ?? card['composition_items'] ?? card['items'];
-    final items = rawItems is List
-        ? List<Map<String, dynamic>>.from(
+    // `used_wardrobe_items` sits between composition_items and items in
+    // precedence (see DailyWearScreen.firstNonEmptyBoardItems) for cards
+    // shaped by the wardrobe-recommendation response path.
+    final rawItems = DailyWearScreen.firstNonEmptyBoardItems(card);
+    final items = List<Map<String, dynamic>>.from(
       rawItems.whereType<Map>().map((e) => Map<String, dynamic>.from(e)),
-    )
-        : <Map<String, dynamic>>[];
+    );
     final cover = (card['image_url'] ??
         card['imageUrl'] ??
         card['thumbnailUrl'] ??
@@ -570,15 +604,20 @@ class _DailyWearScreenState extends State<DailyWearScreen>
 
   bool _isInsufficientWardrobeResponse(Map<String, dynamic>? response) {
     final data = response?['data'];
-    final intent = response?['intent']?.toString().toLowerCase().trim();
-    final alert = response?['alert'] == true;
-    final nestedIntent =
-    data is Map ? data['intent']?.toString().toLowerCase().trim() : null;
-    final nestedAlert = data is Map ? data['alert'] == true : false;
-    return intent == 'insufficient_wardrobe' ||
-        nestedIntent == 'insufficient_wardrobe' ||
-        alert ||
-        nestedAlert;
+    final meta = response?['meta'];
+    // Explicit machine-readable signal only (routers.chat._demo_style_board_
+    // payload's no-cards branch: type/reason/status/meta.reason all set to
+    // "insufficient_wardrobe" only when the wardrobe genuinely lacks
+    // required role coverage). Do NOT infer this from cards.isEmpty alone --
+    // any other board-generation hiccup must fall through to a neutral
+    // retry state instead of falsely claiming the wardrobe is too small.
+    bool isFlag(dynamic v) => v?.toString().toLowerCase().trim() == 'insufficient_wardrobe';
+    return isFlag(response?['type']) ||
+        isFlag(response?['reason']) ||
+        isFlag(response?['status']) ||
+        (data is Map && isFlag(data['type'])) ||
+        (data is Map && isFlag(data['reason'])) ||
+        (meta is Map && isFlag(meta['reason']));
   }
 
   Future<void> _fetchDailyBoard() async {
@@ -586,6 +625,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     setState(() {
       _isLoading = true;
       _needsMoreClothes = false;
+      _loadUnavailable = false;
       _emptyStateMessage = '';
     });
 
@@ -619,14 +659,15 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     // insufficient_wardrobe. The local demo-outfits helper used to fill this
     // gap with garments shaped for the old renderer (no `items`), which
     // _styleBoardFromOutfit always rejects — a permanent blank white board
-    // that also misrepresented demo pieces as the user's own wardrobe. The
-    // canonical empty-wardrobe state is the honest outcome here.
+    // that also misrepresented demo pieces as the user's own wardrobe.
+    // Never claim "add more clothes" without the backend's explicit signal
+    // (already checked and returned above) -- an unexplained empty result
+    // is a generic unavailable/retry state instead.
     if (outfits.isEmpty) {
       setState(() {
         _isLoading = false;
-        _needsMoreClothes = true;
-        _emptyStateMessage =
-            AppLocalizations.t(context, 'daily_wear_add_clothes_unlock');
+        _loadUnavailable = true;
+        _emptyStateMessage = AppLocalizations.t(context, 'daily_wear_unavailable_retry');
       });
       return;
     }
@@ -635,6 +676,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       _applyOutfits(outfits);
       _isLoading = false;
       _needsMoreClothes = false;
+      _loadUnavailable = false;
       _emptyStateMessage = '';
     });
   }
@@ -945,6 +987,28 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     required String detail,
     required String weatherCtx,
   }) {
+    // A genuinely empty _displayedOutfits (still loading, or the real fetch
+    // legitimately came back with nothing) must never be backfilled with
+    // the demo catalog here -- that would silently make _currentOutfit
+    // (used for wear/save/share and the current_outfit chat payload) a
+    // fake outfit even while the empty-state UI is correctly shown.
+    // Weather chrome still updates; outfit sort/banner waits for real data.
+    if (_displayedOutfits.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_weatherTemp != '$temp°') {
+          setState(() {
+            _weatherIcon = icon;
+            _weatherLabel = label;
+            _weatherDetail = detail;
+            _weatherTemp = '$temp°';
+            _weatherContext = weatherCtx;
+          });
+        }
+      });
+      return;
+    }
+
     int score(Map<String, dynamic> outfit) {
       final range = ((outfit['range'] as List?)?.cast<int>() ?? [0, 99]);
       final low = range[0];
@@ -954,9 +1018,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       return delta <= 5 ? 1 : 0;
     }
 
-    final baseOutfits = _displayedOutfits.isNotEmpty
-        ? List<Map<String, dynamic>>.from(_displayedOutfits)
-        : _fallbackOutfits();
+    final baseOutfits = List<Map<String, dynamic>>.from(_displayedOutfits);
     final sorted = baseOutfits..sort((a, b) => score(b).compareTo(score(a)));
     final hero = sorted.first;
     final tempIcon = temp >= 30
@@ -1116,7 +1178,68 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     }
   }
 
+  final Set<String> _wearInFlight = {};
+  final Map<String, GlobalKey> _boardCanvasKeys = {};
+
+  GlobalKey _boardCanvasKeyFor(String outfitId) =>
+      _boardCanvasKeys.putIfAbsent(outfitId, () => GlobalKey());
+
+  /// Captures the on-screen Daily Wear board (via RepaintBoundary) and
+  /// shares it as an image with descriptive text. Never changes the board
+  /// renderer or item parser -- purely captures whatever is already
+  /// rendered. Falls back to a text-only share if image capture fails for
+  /// any reason (missing boundary, network image not yet painted, etc.), and
+  /// never throws back into the caller.
+  Future<void> _shareOutfit(Map<String, dynamic> outfit) async {
+    final outfitId = (outfit['id'] ?? '').toString();
+    final title = (outfit['name'] ?? outfit['nameKey'] ?? 'Daily Look')
+        .toString()
+        .trim();
+    final shareText = title.isEmpty
+        ? 'My AHVI daily look'
+        : '$title — styled by AHVI';
+    final key = _boardCanvasKeys[outfitId];
+    try {
+      final bytes = key == null ? null : await BoardExporter.capturePng(key);
+      if (bytes != null && bytes.isNotEmpty) {
+        final file = await BoardExporter.writeToTempFile(
+          bytes,
+          filename: 'ahvi_daily_board_${outfitId.isEmpty ? DateTime.now().millisecondsSinceEpoch : outfitId}.png',
+        );
+        if (file != null) {
+          await SharePlus.instance.share(
+            ShareParams(
+              files: [XFile(file.path, mimeType: 'image/png')],
+              subject: title.isEmpty ? 'AHVI Look' : title,
+              text: shareText,
+            ),
+          );
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('AHVI_DAILY_WEAR_SHARE_IMAGE_FAILED: $e');
+    }
+    // Text fallback -- image capture unavailable/failed, but sharing must
+    // still work and must never crash the screen.
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text: shareText,
+          subject: title.isEmpty ? 'AHVI Look' : title,
+        ),
+      );
+    } catch (e) {
+      debugPrint('AHVI_DAILY_WEAR_SHARE_TEXT_FAILED: $e');
+    }
+  }
+
   void _recordWear(Map<String, dynamic> outfit) {
+    final outfitId = (outfit['id'] ?? '').toString();
+    if (outfitId.isNotEmpty && _wearInFlight.contains(outfitId)) {
+      return; // duplicate fast tap on the same outfit -- already recording.
+    }
+
     final ids = <String>[];
     void addFrom(dynamic v) {
       if (v is List) {
@@ -1133,24 +1256,35 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       }
     }
 
-    addFrom(outfit['items']);
-    addFrom(outfit['used_wardrobe_items']);
+    // Canonical precedence (board_items > composition_items >
+    // used_wardrobe_items > items), same helper Daily Board card
+    // normalization uses -- never falls back to demo/fallback ids.
+    addFrom(DailyWearScreen.firstNonEmptyBoardItems(outfit));
     addFrom(outfit['item_ids']);
     if (ids.isEmpty) return; // demo outfit — nothing real to record.
 
+    if (outfitId.isNotEmpty) _wearInFlight.add(outfitId);
     BackendService()
         .wearToday(
       itemIds: ids,
-      boardId: (outfit['id'] ?? '').toString(),
+      boardId: outfitId,
       occasion: (outfit['occasion'] ?? '').toString(),
     )
         .then((ok) {
+      if (outfitId.isNotEmpty) _wearInFlight.remove(outfitId);
       if (!mounted) return;
       _showToast(
         ok
             ? AppLocalizations.t(context, 'daily_wear_toast_style_history_added')
             : AppLocalizations.t(context, 'daily_wear_toast_update_failed'),
         green: ok,
+      );
+    }).catchError((_) {
+      if (outfitId.isNotEmpty) _wearInFlight.remove(outfitId);
+      if (!mounted) return;
+      _showToast(
+        AppLocalizations.t(context, 'daily_wear_toast_update_failed'),
+        green: false,
       );
     });
   }
@@ -1456,12 +1590,80 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     }
   }
 
-  Future<void> _saveOutfitToBoards(Map<String, dynamic> outfit) async {
+  /// Same categories/canonical buckets as the chat style-board save sheet
+  /// (ahvi_outfit_board_card.dart) -- Daily Wear has no bucket of its own,
+  /// so "Daily Wear" maps to everything_else like any other unmatched look.
+  Future<String?> _showSaveOccasionSheet(Map<String, dynamic> outfit) {
+    const categories = dailyWearSaveOccasionOptions;
+    var selectedLabel = categories.first.$2;
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Container(
+            margin: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Save this look to',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 10),
+                for (final category in categories)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(category.$3),
+                    title: Text(category.$2),
+                    trailing: Icon(
+                      selectedLabel == category.$2
+                          ? Icons.radio_button_checked_rounded
+                          : Icons.radio_button_off_rounded,
+                    ),
+                    onTap: () =>
+                        setSheetState(() => selectedLabel = category.$2),
+                  ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(
+                      categories
+                          .firstWhere((c) => c.$2 == selectedLabel)
+                          .$1,
+                    ),
+                    child: const Text('Save look'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Returns true only after authoritative persistence succeeds -- callers
+  /// must gate any "saved" UI state on this return value, never flip it
+  /// optimistically before the Appwrite write is confirmed.
+  Future<bool> _saveOutfitToBoards(
+    Map<String, dynamic> outfit, {
+    String occasionBucket = 'everything_else',
+  }) async {
     final board = _styleBoardFromOutfit(outfit);
     final title = (outfit['name'] ?? outfit['nameKey'] ?? 'Daily Look')
         .toString()
         .trim();
-    if (board == null) return;
+    if (board == null) return false;
     final outfitItems = _savedDailyWearItems(board);
     final imageUrl = board.items
         .map((item) => item.displayImageUrl.trim())
@@ -1469,7 +1671,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
           (url) => url.isNotEmpty,
           orElse: () => '',
         );
-    if (imageUrl.isEmpty) return;
+    if (imageUrl.isEmpty) return false;
 
     try {
       final content = buildSavedBoardContent(
@@ -1479,16 +1681,18 @@ class _DailyWearScreenState extends State<DailyWearScreen>
           'source_policy': 'wardrobe',
         },
         items: outfitItems,
-        selection: const SavedBoardSelection(bucket: 'everything_else'),
+        selection: SavedBoardSelection(bucket: occasionBucket),
         title: title.isEmpty ? 'Saved Look' : title,
         originalOccasion: 'daily',
       );
-      await AppwriteService().saveBoardToCollection(
+      final saved = await AppwriteService().saveBoardToCollection(
         imageUrl: imageUrl,
         content: content,
       );
+      return saved != null;
     } catch (e) {
       debugPrint('Failed to save daily look to boards: $e');
+      return false;
     }
   }
 
@@ -1944,7 +2148,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                     const SizedBox(height: 16),
                     if (_isLoading)
                       _buildDailyBoardLoadingState()
-                    else if (_needsMoreClothes)
+                    else if (_needsMoreClothes || _loadUnavailable)
                       _buildDailyBoardEmptyState()
                     else ...[
                         _buildCarousel(),
@@ -2051,11 +2255,17 @@ class _DailyWearScreenState extends State<DailyWearScreen>
               color: accentColor.withValues(alpha: 0.14),
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.checkroom_rounded, color: accentColor, size: 28),
+            child: Icon(
+              _loadUnavailable ? Icons.refresh_rounded : Icons.checkroom_rounded,
+              color: accentColor,
+              size: 28,
+            ),
           ),
           const SizedBox(height: 16),
           Text(
-            AppLocalizations.t(context, 'daily_wear_wardrobe_alert'),
+            _loadUnavailable
+                ? AppLocalizations.t(context, 'daily_wear_unavailable_title')
+                : AppLocalizations.t(context, 'daily_wear_wardrobe_alert'),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w700,
@@ -2077,9 +2287,15 @@ class _DailyWearScreenState extends State<DailyWearScreen>
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => showAddToWardrobeModal(context),
-              icon: const Icon(Icons.add_a_photo_outlined),
-              label: Text(AppLocalizations.t(context, 'daily_wear_add_wardrobe')),
+              onPressed: _loadUnavailable
+                  ? () => _fetchDailyBoard()
+                  : () => showAddToWardrobeModal(context),
+              icon: Icon(_loadUnavailable ? Icons.refresh_rounded : Icons.add_a_photo_outlined),
+              label: Text(
+                _loadUnavailable
+                    ? AppLocalizations.t(context, 'daily_wear_retry')
+                    : AppLocalizations.t(context, 'daily_wear_add_wardrobe'),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: accentColor,
                 foregroundColor: Colors.white,
@@ -2511,7 +2727,10 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       children: [
         Padding(
           padding: const EdgeInsets.all(10),
-          child: _buildUnifiedOutfitGrid(styleBoard),
+          child: RepaintBoundary(
+            key: _boardCanvasKeyFor(outfitId),
+            child: _buildUnifiedOutfitGrid(styleBoard),
+          ),
         ),
         Positioned.fill(
           child: DecoratedBox(
@@ -2566,22 +2785,35 @@ class _DailyWearScreenState extends State<DailyWearScreen>
               ),
               Row(
                 children: [
-                  _circleAction(saved ? '❤️' : '🤍', () {
-                    setState(() => _savedCarouselById[outfitId] = !saved);
-                    if (!saved) {
+                  _circleAction(saved ? '❤️' : '🤍', () async {
+                    if (saved) {
+                      setState(() => _savedCarouselById[outfitId] = false);
+                      return;
+                    }
+                    final bucket = await _showSaveOccasionSheet(outfit);
+                    if (bucket == null || !mounted) return;
+                    final ok = await _saveOutfitToBoards(
+                      outfit,
+                      occasionBucket: bucket,
+                    );
+                    if (!mounted) return;
+                    if (ok) {
+                      setState(() => _savedCarouselById[outfitId] = true);
                       _showToast(
                         AppLocalizations.t(
                           context,
                           'daily_wear_toast_saved_wardrobe',
                         ),
                       );
-                      _saveOutfitToBoards(outfit);
+                    } else {
+                      _showToast(
+                        AppLocalizations.t(context, 'daily_wear_save_failed'),
+                        green: false,
+                      );
                     }
                   }),
                   const SizedBox(width: 8),
-                  _circleShare(
-                    '${AppLocalizations.t(context, outfit['nameKey'] as String)} · ${AppLocalizations.t(context, outfit['descKey'] as String)}',
-                  ),
+                  _circleShare(outfit),
                 ],
               ),
             ],
@@ -2742,12 +2974,9 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     ),
   );
 
-  Widget _circleShare(String text) => _PressScaleButton(
+  Widget _circleShare(Map<String, dynamic> outfit) => _PressScaleButton(
     scaleDown: 0.92,
-    onTap: () {
-      Clipboard.setData(ClipboardData(text: text));
-      _showToast(AppLocalizations.t(context, 'daily_wear_toast_link_copied'));
-    },
+    onTap: () => _shareOutfit(outfit),
     child: Container(
       width: 40,
       height: 40,
@@ -2915,19 +3144,35 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                   const SizedBox(height: 9),
                   Row(
                     children: [
-                      _smallIcon(saved ? '❤️' : '🤍', () {
-                        setState(() => _savedOptionById[outfitId] = !saved);
-                        if (!saved) {
+                      _smallIcon(saved ? '❤️' : '🤍', () async {
+                        if (saved) {
+                          setState(() => _savedOptionById[outfitId] = false);
+                          return;
+                        }
+                        final outfitData = _outfitById(outfitId);
+                        if (outfitData.isEmpty) return;
+                        final bucket = await _showSaveOccasionSheet(
+                          outfitData,
+                        );
+                        if (bucket == null || !mounted) return;
+                        final ok = await _saveOutfitToBoards(
+                          outfitData,
+                          occasionBucket: bucket,
+                        );
+                        if (!mounted) return;
+                        if (ok) {
+                          setState(() => _savedOptionById[outfitId] = true);
                           _showToast(
                             AppLocalizations.t(
                               context,
                               'daily_wear_toast_outfit_saved',
                             ),
                           );
-                          final outfitData = _outfitById(outfitId);
-                          if (outfitData.isNotEmpty) {
-                            _saveOutfitToBoards(outfitData);
-                          }
+                        } else {
+                          _showToast(
+                            AppLocalizations.t(context, 'daily_wear_save_failed'),
+                            green: false,
+                          );
                         }
                       }),
                       const SizedBox(width: 5),

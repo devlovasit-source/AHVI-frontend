@@ -6,6 +6,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:myapp/services/backend_service.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/connectivity_watcher.dart';
@@ -370,6 +373,59 @@ String _cleanCategory(Object? value, {String fallback = 'Tops'}) {
   }
 
   return fallback;
+}
+
+Future<void> shareGarmentImage({
+  required String name,
+  required String category,
+  Uint8List? imageBytes,
+  String? imageUrl,
+  List<String>? occasions,
+  String? notes,
+}) async {
+  final occasionText = (occasions != null && occasions.isNotEmpty)
+      ? '\nOccasions: ${_cleanStringList(occasions).join(', ')}'
+      : '';
+
+  final notesText = (notes != null && _cleanUiText(notes).isNotEmpty)
+      ? '\nNotes: ${_cleanUiText(notes)}'
+      : '';
+
+  final shareText =
+      '${_cleanUiText(name, fallback: 'Garment Item')}\n'
+      'Category: ${_cleanCategory(category)}'
+      '$occasionText'
+      '$notesText';
+
+  try {
+    Uint8List? bytes = imageBytes;
+    if ((bytes == null || bytes.isEmpty) && imageUrl != null && imageUrl.isNotEmpty) {
+      final resp = await http.get(Uri.parse(imageUrl));
+      if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
+        bytes = resp.bodyBytes;
+      }
+    }
+
+    if (bytes != null && bytes.isNotEmpty) {
+      final tempDir = await getTemporaryDirectory();
+      final safeName = name.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_').toLowerCase();
+      final file = File(
+        '${tempDir.path}/garment_${safeName}_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'image/png')],
+        text: shareText,
+        subject: name,
+      );
+      return;
+    }
+  } catch (e) {
+    debugPrint('AHVI_GARMENT_SHARE_ERROR: $e');
+  }
+
+  await Share.share(shareText, subject: name);
 }
 
 List<String> _cleanStringList(Object? value) {
@@ -1017,23 +1073,15 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     );
   }
 
-  void _shareItem(WardrobeItem item) {
-    final occasionText = item.occasions.isNotEmpty
-        ? '\nOccasions: ${_cleanStringList(item.occasions).join(', ')}'
-        : '';
-
-    final notesText = _cleanUiText(item.notes).isNotEmpty
-        ? '\nNotes: ${_cleanUiText(item.notes)}'
-        : '';
-
-    final text =
-        '${_cleanUiText(item.name, fallback: 'Item')}\n'
-        'Category: ${_cleanCategory(item.cat)}'
-        '$occasionText'
-        '$notesText';
-
-    Clipboard.setData(ClipboardData(text: text));
-    _showToast(AppLocalizations.t(context, 'wardrobe_copy_clipboard'));
+  Future<void> _shareItem(WardrobeItem item) async {
+    await shareGarmentImage(
+      name: item.name,
+      category: item.cat,
+      imageBytes: item.imageBytes,
+      imageUrl: item.displayUrl,
+      occasions: item.occasions,
+      notes: item.notes,
+    );
   }
 
   Future<void> _showEditSavedItem(WardrobeItem item) async {
