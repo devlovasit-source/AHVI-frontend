@@ -4,7 +4,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:myapp/app_localizations.dart';
-import 'package:myapp/feature/chat/widgets/ahvi_processing_bubble.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -13,22 +12,90 @@ import 'package:provider/provider.dart';
 import 'package:myapp/home_card_summary_provider.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/backend_service.dart';
-import 'package:myapp/tryon_safety.dart';
 import 'package:myapp/wardrobe.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/style_board/board_models.dart';
-import 'package:myapp/style_board/saved_board_persistence.dart';
+import 'package:myapp/style_board/editorial_board_renderer.dart';
 import 'package:myapp/widgets/ahvi_chat_prompt_bar.dart';
 import 'package:myapp/widgets/ahvi_home_text.dart';
-import 'package:myapp/widgets/basic_markdown_text.dart';
-import 'package:myapp/widgets/clear_chat_dialog.dart';
-import 'package:myapp/widgets/try_on_coming_soon.dart';
-import 'package:myapp/widgets/ahvi_unified_outfit_grid.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
+import 'package:myapp/style_board/board_exporter.dart';
 
 enum _TryOnStage { preview, loading, camera, captured }
 
+class _DailyOccasionOption {
+  final String key;
+  final String label;
+  final IconData icon;
+  final String occasionCode;
+
+  const _DailyOccasionOption({
+    required this.key,
+    required this.label,
+    required this.icon,
+    required this.occasionCode,
+  });
+}
+
+const List<_DailyOccasionOption> _dailyOccasionOptions = [
+  _DailyOccasionOption(
+    key: 'daily',
+    label: 'Daily Wear',
+    icon: Icons.wb_sunny_rounded,
+    occasionCode: 'daily',
+  ),
+  _DailyOccasionOption(
+    key: 'office_fits',
+    label: 'Office Fits',
+    icon: Icons.work_outline_rounded,
+    occasionCode: 'office',
+  ),
+  _DailyOccasionOption(
+    key: 'party_looks',
+    label: 'Party Looks',
+    icon: Icons.celebration_rounded,
+    occasionCode: 'party',
+  ),
+  _DailyOccasionOption(
+    key: 'vacation',
+    label: 'Vacation & Travel',
+    icon: Icons.flight_takeoff_rounded,
+    occasionCode: 'travel',
+  ),
+  _DailyOccasionOption(
+    key: 'occasion',
+    label: 'Occasions & Events',
+    icon: Icons.diamond_outlined,
+    occasionCode: 'wedding',
+  ),
+  _DailyOccasionOption(
+    key: 'everything_else',
+    label: 'Everything Else',
+    icon: Icons.auto_awesome_rounded,
+    occasionCode: 'casual',
+  ),
+];
+
 class DailyWearScreen extends StatefulWidget {
   const DailyWearScreen({super.key});
+
+  /// Returns the first non-empty list from board_items, composition_items,
+  /// used_wardrobe_items, or items in exact precedence order.
+  static List<dynamic> firstNonEmptyBoardItems(Map<String, dynamic> outfit) {
+    for (final key in [
+      'board_items',
+      'composition_items',
+      'used_wardrobe_items',
+      'items',
+    ]) {
+      final val = outfit[key];
+      if (val is List && val.isNotEmpty) {
+        return val;
+      }
+    }
+    return const [];
+  }
 
   @override
   State<DailyWearScreen> createState() => _DailyWearScreenState();
@@ -44,9 +111,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   Color get _accent4 => _t.accent.primary;
   Color get _accent5 => _t.accent.secondary;
 
-  // Daily Wear is intentionally rendered as a bright editorial board in both
-  // app themes. On Samsung night mode, dark/translucent tokens were being
-  // composited into a permanent grey wash on this page.
   Color get bgColor => const Color(0xFFF9FBFF);
   Color get bg2Color => Colors.white;
   Color get panelColor => Colors.white;
@@ -68,6 +132,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   int get _carouselIndex => _carouselIndexNotifier.value;
   bool _chatOpen = false;
   bool _tryOnOpen = false;
+  bool _hasLoggedWear = false;
   bool _isLoading = true;
   bool _needsMoreClothes = false;
   String _emptyStateMessage = '';
@@ -77,6 +142,8 @@ class _DailyWearScreenState extends State<DailyWearScreen>
 
   Map<String, bool> _savedCarouselById = {};
   Map<String, bool> _savedOptionById = {};
+  final Map<String, String> _savedBoardDocIds = {};
+  final Map<String, GlobalKey> _boardCanvasKeys = {};
 
   String? _wornOutfitId;
   Timer? _autoPlayTimer;
@@ -86,14 +153,11 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   bool _quickPromptsVisible = true;
   Timer? _chatGreetingTimer;
 
-  // ── Chat History ─────────────────────────────────────────────────────
   final List<_ChatSession> _chatHistory = [];
   String _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
   final GlobalKey<ScaffoldState> _chatScaffoldKey = GlobalKey<ScaffoldState>();
 
   int? _speakingMessageId;
-
-  // ── Plus button ───────────────────────────────────────────────────────────
 
   final ValueNotifier<String> _liveDayNotifier = ValueNotifier('THU');
   final ValueNotifier<String> _liveDateNotifier = ValueNotifier('FEB 19');
@@ -109,7 +173,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   String _weatherTemp = '--°';
   String _weatherContext = '';
   String? _suggestionBanner;
-  bool _bannerVisible = false; // kept for API compat, unused
+  bool _bannerVisible = false;
 
   List<Map<String, dynamic>> _buildAllOutfits(BuildContext context) => [
     {
@@ -296,8 +360,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   late AnimationController _scanCtrl;
   late Animation<double> _scanLineY;
 
-  late AnimationController _screenFadeCtrl;
-  late Animation<double> _screenFade;
+
 
   OverlayEntry? _toastEntry;
   Timer? _toastTimer;
@@ -328,7 +391,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       ];
       _quickPromptsInited = true;
     } else {
-      // Refresh quick prompts text on language change
       quickPrompts = [
         AppLocalizations.t(context, 'wear_chip_today'),
         AppLocalizations.t(context, 'wear_chip_style_tips'),
@@ -396,6 +458,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     _savedOptionById = {
       for (final outfit in outfits) outfit['id'] as String: false,
     };
+    _checkSavedStates(outfits);
     if (_displayedOutfits.isNotEmpty) {
       final nextIndex = currentId == null
           ? 0
@@ -409,6 +472,37 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     }
   }
 
+  Future<void> _checkSavedStates(List<Map<String, dynamic>> outfits) async {
+    try {
+      final savedList = await SavedBoardsStore.list();
+      final savedIds = <String>{};
+      for (final s in savedList) {
+        final dir = s['direction'];
+        if (dir is Map && dir['id'] != null) {
+          savedIds.add(dir['id'].toString());
+        }
+        if (s['id'] != null) {
+          savedIds.add(s['id'].toString());
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        for (final outfit in outfits) {
+          final id = (outfit['id'] ?? '').toString();
+          if (id.isEmpty) continue;
+          final rawTitle = (outfit['name'] ?? outfit['nameKey'] ?? 'Daily Look').toString().trim();
+          final title = AppLocalizations.t(context, rawTitle);
+          final storeId = SavedBoardsStore.idFor(occasion: 'daily', directionName: title);
+          final isSaved = savedIds.contains(id) || savedIds.contains(storeId);
+          _savedCarouselById[id] = isSaved;
+          _savedOptionById[id] = isSaved;
+        }
+      });
+    } catch (e) {
+      debugPrint('Failed checking saved states: $e');
+    }
+  }
+
   Map<String, dynamic> _outfitById(String id) {
     final found = _displayedOutfits.where((o) => o['id'] == id);
     if (found.isNotEmpty) return found.first;
@@ -417,25 +511,18 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     return fallbackFound.isNotEmpty ? fallbackFound.first : <String, dynamic>{};
   }
 
+  static List<dynamic> _firstNonEmptyBoardItems(Map<String, dynamic> outfit) =>
+      DailyWearScreen.firstNonEmptyBoardItems(outfit);
+
   Map<String, dynamic> _normalizeDailyBoardCard(
       Map<String, dynamic> card,
       int index,
       ) {
-    // The backend's board contract carries garments under `board_items`
-    // (sometimes `composition_items`) — the same field the canonical chat
-    // board renderer (ahvi_outfit_board_card.dart) prefers first. Raw
-    // `items` is the pre-enrichment list (name/category/raw photo only,
-    // no masked/normalized cutout) and resolves to an empty imageUrl for
-    // every entry, leaving _styleBoardFromOutfit permanently null even
-    // though the card itself is non-empty. `items` stays as the last
-    // resort for cards that never got an adapted board_items at all.
-    final rawItems =
-        card['board_items'] ?? card['composition_items'] ?? card['items'];
-    final items = rawItems is List
-        ? List<Map<String, dynamic>>.from(
-      rawItems.whereType<Map>().map((e) => Map<String, dynamic>.from(e)),
-    )
-        : <Map<String, dynamic>>[];
+    final rawItems = _firstNonEmptyBoardItems(card);
+    final items = rawItems
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
     final cover = (card['image_url'] ??
         card['imageUrl'] ??
         card['thumbnailUrl'] ??
@@ -487,18 +574,58 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     return (fallback[index % fallback.length]['localImg'] ?? '').toString();
   }
 
-  StyleBoardItem _styleBoardItemFromMap(Map<String, dynamic> item) {
-    return StyleBoardItem.fromJson(item);
+  BoardItemRole _boardItemRoleFromString(String? raw) {
+    switch ((raw ?? '').toLowerCase().trim()) {
+      case 'top':
+        return BoardItemRole.top;
+      case 'bottom':
+        return BoardItemRole.bottom;
+      case 'footwear':
+      case 'shoe':
+      case 'shoes':
+        return BoardItemRole.footwear;
+      case 'outerwear':
+      case 'jacket':
+      case 'coat':
+        return BoardItemRole.outerwear;
+      case 'dress':
+        return BoardItemRole.dress;
+      case 'accessory':
+      case 'accessories':
+        return BoardItemRole.accessory;
+      default:
+        return BoardItemRole.unknown;
+    }
   }
 
-  /// Builds the Style Board for [outfit] from the wardrobe items the
-  /// backend attached to its daily-board card (see `_normalizeDailyBoardCard`).
-  /// Returns null when the backend hasn't supplied item-level data for this
-  /// outfit yet — the UI treats that as "still loading" and shows the bare
-  /// layout shell instead.
+  StyleBoardItem _styleBoardItemFromMap(Map<String, dynamic> item) {
+    final imageUrl = (item['image_url'] ??
+        item['imageUrl'] ??
+        item['img'] ??
+        item['photo_url'] ??
+        '')
+        .toString()
+        .trim();
+    final id = (item['id'] ?? item['item_id'] ?? item['itemId'] ?? imageUrl)
+        .toString();
+    final name = (item['name'] ?? item['title'] ?? item['label'] ?? '')
+        .toString();
+    final category = (item['category'] ?? item['type'] ?? '').toString();
+    return StyleBoardItem(
+      id: id,
+      name: name,
+      imageUrl: imageUrl,
+      category: category,
+      role: _boardItemRoleFromString(
+        (item['role'] ?? item['category'] ?? item['type'])?.toString(),
+      ),
+      raw: item,
+    );
+  }
+
   StyleBoardData? _styleBoardFromOutfit(Map<String, dynamic> outfit) {
-    final rawItems = outfit['items'];
-    if (rawItems is! List || rawItems.isEmpty) return null;
+    final rawItems = _firstNonEmptyBoardItems(outfit);
+    if (rawItems.isEmpty) return null;
     final items = rawItems
         .whereType<Map>()
         .map((e) => _styleBoardItemFromMap(Map<String, dynamic>.from(e)))
@@ -521,9 +648,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     );
   }
 
-  /// Bare Style Board canvas shown while item-level data for this outfit
-  /// hasn't arrived from the backend yet. Intentionally carries no text,
-  /// titles, chips, or buttons — just the outfit layout surface.
   Widget _buildStyleBoardLoadingShell() => Container(
     width: double.infinity,
     height: double.infinity,
@@ -533,29 +657,11 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     ),
   );
 
-  /// The real Style Board once the backend has supplied item-level data for
-  /// [outfit], otherwise the bare loading shell placeholder.
   Widget _buildOutfitVisual(Map<String, dynamic> outfit) {
     final styleBoard = _styleBoardFromOutfit(outfit);
     if (styleBoard == null) return _buildStyleBoardLoadingShell();
-    return _buildUnifiedOutfitGrid(styleBoard);
+    return EditorialBoardCanvas(board: styleBoard);
   }
-
-  Widget _buildUnifiedOutfitGrid(StyleBoardData board) =>
-      AhviUnifiedOutfitGrid(
-        items: board.items
-            .map(
-              (item) => AhviUnifiedOutfitGridItem.fromStyleBoardItem(
-                item,
-                // 'style_board' prefix is required for
-                // wardrobe_image_resolver's board-safe, cutout-first
-                // candidate ordering to apply to the canonical Daily Wear
-                // board.
-                surface: 'style_board_daily_wear_unified_grid',
-              ),
-            )
-            .toList(growable: false),
-      );
 
   List<Map<String, dynamic>> _normalizeDailyBoardCards(List<dynamic> cards) {
     return cards
@@ -613,23 +719,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         (response is Map<String, dynamic> ? response['cards'] as List? : null);
     final outfits = cards is List && cards.isNotEmpty
         ? _normalizeDailyBoardCards(cards)
-        : const <Map<String, dynamic>>[];
-
-    // No usable Daily Board came back and the backend didn't explicitly flag
-    // insufficient_wardrobe. The local demo-outfits helper used to fill this
-    // gap with garments shaped for the old renderer (no `items`), which
-    // _styleBoardFromOutfit always rejects — a permanent blank white board
-    // that also misrepresented demo pieces as the user's own wardrobe. The
-    // canonical empty-wardrobe state is the honest outcome here.
-    if (outfits.isEmpty) {
-      setState(() {
-        _isLoading = false;
-        _needsMoreClothes = true;
-        _emptyStateMessage =
-            AppLocalizations.t(context, 'daily_wear_add_clothes_unlock');
-      });
-      return;
-    }
+        : _fallbackOutfits();
 
     setState(() {
       _applyOutfits(outfits);
@@ -652,49 +742,29 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       end: 0.85,
     ).animate(CurvedAnimation(parent: _scanCtrl, curve: Curves.easeInOut));
 
-    // Screen fade-in removed — instant display
-    _screenFadeCtrl = AnimationController(
-      vsync: this,
-      duration: Duration.zero,
-      value: 1.0,
-    );
-    _screenFade = CurvedAnimation(
-      parent: _screenFadeCtrl,
-      curve: Curves.linear,
-    );
+
 
     _pageController.addListener(_onPageScroll);
 
-    // ── Deferred startup ──────────────────────────────────────────────────
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // Defensive reset: guarantees the chat / try-on overlay flags are
-      // false on every fresh entry into Daily Wear.
       if (_chatOpen || _tryOnOpen) {
         setState(() {
           _chatOpen = false;
           _tryOnOpen = false;
         });
       }
-      // Pop any stuck root-level modal (e.g. a loading dialog from the
-      // AHVI Lens sheet that failed to dismiss because its backend call
-      // threw before Navigator.pop fired). Without this a stale modal
-      // scrim sits on top of Daily Wear and blocks every tap — the
-      // reported "whole screen greyed out, nothing responds" symptom.
       try {
         final rootNav = Navigator.of(context, rootNavigator: true);
         while (rootNav.canPop()) {
           final route = ModalRoute.of(rootNav.context);
-          // Only pop transient overlay routes; keep the page route.
           if (route is PopupRoute || route is RawDialogRoute) {
             rootNav.pop();
           } else {
             break;
           }
         }
-      } catch (_) {
-        // Best-effort cleanup; never crash Daily Wear because of it.
-      }
+      } catch (_) {}
       _clearTransientInputOverlay();
       _startAutoPlay();
       _fetchDailyBoard();
@@ -749,7 +819,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       'NOV',
       'DEC',
     ];
-    // Update without setState — no Scaffold rebuild
     _liveDayNotifier.value = days[now.weekday % 7];
     _liveDateNotifier.value = '${months[now.month - 1]} ${now.day}';
     _liveTimeNotifier.value =
@@ -772,17 +841,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   void _startAutoPlay() {
     _autoPlayTimer?.cancel();
     _autoPlayTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      // `_displayedOutfits` can go non-empty (weather-driven fallback sort)
-      // before the PageView carrying `_pageController` has actually mounted
-      // (still behind `_isLoading`) — animateToPage on an unattached
-      // controller throws "Bad state: No element". hasClients is the direct
-      // signal that a Scrollable is actually attached.
-      if (!mounted ||
-          _userScrolling ||
-          _displayedOutfits.isEmpty ||
-          !_pageController.hasClients) {
-        return;
-      }
+      if (!mounted || !_pageController.hasClients || _userScrolling || _displayedOutfits.isEmpty) return;
       final next = (_carouselIndex + 1) % _displayedOutfits.length;
       _pageController.animateToPage(
         next,
@@ -927,8 +986,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         : w[2];
     if (!mounted) return;
 
-    // Merge weather data + outfit reorder into ONE deferred setState
-    // to prevent the double-rebuild flash/fade.
     _applyWeatherAndSort(
       temp: temp,
       icon: w[0],
@@ -979,9 +1036,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       'banner_sorted_for',
     ).replaceAll('{icon}', tempIcon).replaceAll('{temp}', '$temp');
 
-    // Single postFrameCallback — ONE setState for both weather + outfit data.
-    // Previously: setState (weather) → _sortOutfitsForWeather → setState (outfits)
-    // = 2 rebuilds = flash. Now: 1 rebuild = no flash.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (_weatherTemp != '$temp°') {
@@ -995,7 +1049,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
           _carouselIndexNotifier.value = 0;
           _suggestionBanner = banner;
           _bannerVisible = true;
-          _tryOnOutfitId ??= nullableText(sorted.first['id']);
+          _tryOnOutfitId ??= sorted.first['id'] as String;
         });
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _pageController.hasClients) {
@@ -1006,25 +1060,12 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     });
   }
 
-  void _sortOutfitsForWeather(int temp) {
-    // Delegate to merged method — preserves existing weather display values
-    _applyWeatherAndSort(
-      temp: temp,
-      icon: _weatherIcon,
-      label: _weatherLabel,
-      detail: _weatherDetail,
-      weatherCtx: _weatherContext,
-    );
-  }
-
   void _removeOverlay() {
     try {
       _toastEntry?.remove();
     } catch (_) {}
     _toastEntry = null;
   }
-
-  // ──────────────────────────────────────────────────────────────────────
 
   @override
   void dispose() {
@@ -1034,7 +1075,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     _removeOverlay();
     _chatScrollController.dispose();
     _scanCtrl.dispose();
-    _screenFadeCtrl.dispose();
     _autoPlayTimer?.cancel();
     _toastTimer?.cancel();
     _liveDayNotifier.dispose();
@@ -1053,7 +1093,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     for (final timer in _arTagTimers) {
       timer.cancel();
     }
-    super.dispose(); // ✅ ADD THIS
+    super.dispose();
   }
 
   void _showToast(String message, {bool green = false}) {
@@ -1069,8 +1109,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     _toastEntry = entry;
     Overlay.of(context).insert(entry);
     _toastTimer = Timer(const Duration(milliseconds: 2800), () {
-      if (!mounted)
-        return; // guard: widget may have been disposed before timer fires
+      if (!mounted) return;
       try {
         entry.remove();
       } catch (_) {}
@@ -1092,17 +1131,10 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       ),
       green: true,
     );
-    // Record the wear so AHVI learns. Best-effort: only fires when the outfit
-    // carries real wardrobe item ids; demo outfits without ids are skipped.
     _recordWear(outfit);
-    // 🆕 Push to Home: marks the "Wear" routine bubble/card as done today,
-    // with this outfit's name as the subtitle. Home's routine cards section
-    // already watches HomeCardSummaryProvider, so this updates it live —
-    // no navigation-return refresh needed.
     _pushWearToHome(outfit);
   }
 
-  /// Notify HomeCardSummaryProvider that today's outfit has been picked.
   void _pushWearToHome(Map<String, dynamic> outfit) {
     try {
       final outfitName = AppLocalizations.t(context, outfit['nameKey'] as String);
@@ -1110,10 +1142,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         done: true,
         outfitName: outfitName,
       );
-    } catch (_) {
-      // HomeCardSummaryProvider not found above this screen in the tree —
-      // fail silently so wearing an outfit never breaks on this alone.
-    }
+    } catch (_) {}
   }
 
   void _recordWear(Map<String, dynamic> outfit) {
@@ -1136,7 +1165,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     addFrom(outfit['items']);
     addFrom(outfit['used_wardrobe_items']);
     addFrom(outfit['item_ids']);
-    if (ids.isEmpty) return; // demo outfit — nothing real to record.
+    if (ids.isEmpty) return;
 
     BackendService()
         .wearToday(
@@ -1223,8 +1252,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       if (mounted) {
         setState(() {
           _chatOpen = false;
-          // Defensive: ensure the try-on flag is also low after any
-          // bottom-sheet closure so no stale overlay state survives.
           _tryOnOpen = false;
         });
       }
@@ -1237,17 +1264,15 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     Navigator.of(context).pop();
   }
 
-  void _showTryOnError() {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Try On could not be completed. Please try again.'),
-      ),
-    );
-  }
-
   void _openTryOn([String? outfitId]) {
-    unawaited(showTryOnComingSoon(context));
+    HapticFeedback.lightImpact();
+    _clearTransientInputOverlay();
+    _resetTryOnSimulation();
+    setState(() {
+      _tryOnOutfitId = outfitId ?? _currentOutfit['id'] as String;
+      _tryOnOpen = true;
+      _tryOnStage = _TryOnStage.preview;
+    });
   }
 
   void _closeTryOn() {
@@ -1360,78 +1385,56 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     return items;
   }
 
-  List<Map<String, dynamic>> _savedDailyWearItems(StyleBoardData board) {
-    return board.items.map((item) {
-      final saved = Map<String, dynamic>.from(item.raw)
-        ..['id'] = item.id
-        ..['item_id'] = item.id
-        ..['role'] = item.role.name
-        ..['name'] = item.name
-        ..['source'] = item.source;
-      final originalImage = (saved['image_url'] ?? saved['imageUrl'])
-          ?.toString()
-          .trim();
-      final resolved = item.resolveImage(surface: 'style_board');
-      if (originalImage != null &&
-          originalImage.isNotEmpty &&
-          resolved.field != 'image_url') {
-        saved['original_image_url'] = originalImage;
-      }
-      if (resolved.field != 'image_url') {
-        saved.remove('image_url');
-        saved.remove('imageUrl');
-      }
-      if (item.maskedUrl.isNotEmpty) saved['masked_url'] = item.maskedUrl;
-      if (item.normalizedUrl.isNotEmpty) {
-        saved['normalized_url'] = item.normalizedUrl;
-      }
-      if (item.boardImageUrl.isNotEmpty) {
-        saved['board_image_url'] = item.boardImageUrl;
-      }
-      if (resolved.field == 'image_url' && resolved.url != null) {
-        saved['image_url'] = resolved.url;
-      }
-      return saved;
-    }).toList(growable: false);
+  List<String> _currentOutfitItemIds() {
+    final ids = <String>{};
+    for (final item in _currentOutfitItems()) {
+      final rawId =
+          item['id'] ?? item['item_id'] ?? item['itemId'] ?? item[r'$id'];
+      final id = rawId?.toString().trim() ?? '';
+      if (id.isNotEmpty) ids.add(id);
+    }
+    return ids.toList(growable: false);
   }
 
   Future<void> _persistCurrentLook() async {
     final outfit = _currentOutfit;
-    final board = _styleBoardFromOutfit(outfit);
+    final imageUrl = (outfit['img'] ?? '').toString().trim();
     final title = (outfit['name'] ?? outfit['nameKey'] ?? 'Daily Look')
         .toString()
         .trim();
-    if (board == null) {
-      _showToast(AppLocalizations.t(context, 'daily_wear_save_failed'));
-      return;
-    }
-    final outfitItems = _savedDailyWearItems(board);
-    final imageUrl = board.items
-        .map((item) => item.displayImageUrl.trim())
-        .firstWhere(
-          (url) => url.isNotEmpty,
-          orElse: () => '',
-        );
-    if (imageUrl.isEmpty) {
-      _showToast(AppLocalizations.t(context, 'daily_wear_save_failed'));
-      return;
-    }
+    final description =
+    (outfit['desc'] ?? outfit['tip'] ?? 'AHVI curated daily drop')
+        .toString()
+        .trim();
+    final itemIds = _currentOutfitItemIds();
+    final outfitItems = _currentOutfitItems();
 
     try {
-      final content = buildSavedBoardContent(
-        board: {
-          'board_id': outfit['id'],
-          'revision': 1,
-          'source_policy': 'wardrobe',
-        },
-        items: outfitItems,
-        selection: const SavedBoardSelection(bucket: 'everything_else'),
-        title: title.isEmpty ? 'Saved Look' : title,
-        originalOccasion: 'daily',
-      );
       final saved = await AppwriteService().saveBoardToCollection(
-        imageUrl: imageUrl,
-        content: content,
+        occasion: 'daily',
+        outfitDescription:
+        description.isEmpty ? 'AHVI curated daily drop' : description,
+        imageUrl: imageUrl.isEmpty ? null : imageUrl,
+        boardCategory: 'daily',
+        boardCategoryLabel: 'Daily Wear',
+        title: title.isEmpty ? 'Daily Look' : title,
+        prompt: 'Saved from Daily Wear',
+        extra: {
+          'itemIds': itemIds,
+          'outfitItems': outfitItems,
+          'items': outfitItems,
+          'board_payload': {
+            'title': title.isEmpty ? 'Daily Look' : title,
+            'occasion': 'daily',
+            'items': outfitItems,
+          },
+          'boardPayload': {
+            'title': title.isEmpty ? 'Daily Look' : title,
+            'occasion': 'daily',
+            'items': outfitItems,
+          },
+        },
+        emoji: '✨',
       );
 
       if (!mounted) return;
@@ -1456,39 +1459,371 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     }
   }
 
-  Future<void> _saveOutfitToBoards(Map<String, dynamic> outfit) async {
-    final board = _styleBoardFromOutfit(outfit);
-    final title = (outfit['name'] ?? outfit['nameKey'] ?? 'Daily Look')
-        .toString()
-        .trim();
-    if (board == null) return;
-    final outfitItems = _savedDailyWearItems(board);
-    final imageUrl = board.items
-        .map((item) => item.displayImageUrl.trim())
-        .firstWhere(
-          (url) => url.isNotEmpty,
-          orElse: () => '',
-        );
-    if (imageUrl.isEmpty) return;
+  Future<void> _shareOutfit(Map<String, dynamic> outfit) async {
+    final outfitId = (outfit['id'] ?? '').toString();
+    final titleKey = (outfit['nameKey'] ?? outfit['name'] ?? 'Daily Look').toString();
+    final descKey = (outfit['descKey'] ?? outfit['desc'] ?? outfit['tip'] ?? '').toString();
+
+    final title = AppLocalizations.t(context, titleKey);
+    final desc = AppLocalizations.t(context, descKey);
+
+    final shareText = '✨ AHVI Daily Wear Pick: $title\n\n'
+        '${desc.isNotEmpty ? "$desc\n\n" : ""}'
+        'Styled by AHVI — Your AI Personal Stylist';
+
+    final canvasKey = _boardCanvasKeys[outfitId];
+    if (canvasKey != null && canvasKey.currentContext != null) {
+      try {
+        final rawItems = _firstNonEmptyBoardItems(outfit);
+        for (final item in rawItems.whereType<Map>()) {
+          final imgUrl = (item['image_url'] ?? item['imageUrl'] ?? item['img'] ?? '').toString();
+          if (imgUrl.isNotEmpty && imgUrl.startsWith('http')) {
+            try {
+              await precacheImage(NetworkImage(imgUrl), context);
+            } catch (_) {}
+          }
+        }
+
+        final bytes = await BoardExporter.capturePng(canvasKey);
+        if (bytes != null) {
+          final file = await BoardExporter.writeToTempFile(bytes, filename: 'ahvi_daily_board_$outfitId.png');
+          if (file != null) {
+            await Share.shareXFiles(
+              [XFile(file.path, mimeType: 'image/png')],
+              subject: 'AHVI Daily Wear: $title',
+              text: shareText,
+            );
+            return;
+          }
+        }
+      } catch (e) {
+        debugPrint('Failed sharing daily board image: $e');
+      }
+    }
 
     try {
-      final content = buildSavedBoardContent(
-        board: {
-          'board_id': outfit['id'],
-          'revision': 1,
-          'source_policy': 'wardrobe',
-        },
-        items: outfitItems,
-        selection: const SavedBoardSelection(bucket: 'everything_else'),
-        title: title.isEmpty ? 'Saved Look' : title,
-        originalOccasion: 'daily',
+      final result = await Share.share(
+        shareText,
+        subject: 'AHVI Daily Wear: $title',
       );
-      await AppwriteService().saveBoardToCollection(
-        imageUrl: imageUrl,
-        content: content,
+      if (result.status == ShareResultStatus.success) {
+        _showToast(AppLocalizations.t(context, 'daily_wear_toast_link_copied'));
+      }
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: shareText));
+      _showToast(AppLocalizations.t(context, 'daily_wear_toast_link_copied'));
+    }
+  }
+
+  Future<_DailyOccasionOption?> _showOccasionPickerSheet(
+    BuildContext context,
+    Map<String, dynamic> outfit,
+  ) async {
+    final titleKey = (outfit['nameKey'] ?? outfit['name'] ?? 'Daily Look').toString();
+    final outfitTitle = AppLocalizations.t(context, titleKey);
+
+    return showModalBottomSheet<_DailyOccasionOption>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          decoration: BoxDecoration(
+            color: panelColor,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: cardBorderColor),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 20,
+                offset: const Offset(0, -4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: cardBorderColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Icon(Icons.bookmark_add_rounded, color: accentColor, size: 22),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Save to Board Location',
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Choose occasion board for "$outfitTitle"',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: mutedColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (final option in _dailyOccasionOptions) ...[
+                        Material(
+                          color: Colors.transparent,
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: panel2Color,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(option.icon, color: accentColor, size: 20),
+                            ),
+                            title: Text(
+                              option.label,
+                              style: TextStyle(
+                                color: textColor,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            trailing: Icon(
+                              Icons.chevron_right_rounded,
+                              color: mutedColor,
+                              size: 20,
+                            ),
+                            onTap: () => Navigator.of(ctx).pop(option),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleSaveOutfit(Map<String, dynamic> outfit) async {
+    final outfitId = (outfit['id'] ?? '').toString().trim();
+    if (outfitId.isEmpty) return;
+
+    final currentlySaved = (_savedCarouselById[outfitId] ?? false) || (_savedOptionById[outfitId] ?? false);
+
+    if (!currentlySaved) {
+      final selectedOccasion = await _showOccasionPickerSheet(context, outfit);
+      if (selectedOccasion == null) {
+        return;
+      }
+
+      final success = await _saveOutfitToBoards(outfit, selectedOccasion: selectedOccasion);
+      if (success) {
+        setState(() {
+          _savedCarouselById[outfitId] = true;
+          _savedOptionById[outfitId] = true;
+        });
+        _showToast('Saved to ${selectedOccasion.label}');
+      } else {
+        setState(() {
+          _savedCarouselById[outfitId] = false;
+          _savedOptionById[outfitId] = false;
+        });
+        _showToast(AppLocalizations.t(context, 'daily_wear_save_failed'));
+      }
+    } else {
+      setState(() {
+        _savedCarouselById[outfitId] = false;
+        _savedOptionById[outfitId] = false;
+      });
+
+      final toastMsg = AppLocalizations.t(context, 'daily_wear_toast_removed_wardrobe');
+      _showToast(toastMsg == 'daily_wear_toast_removed_wardrobe' ? 'Removed from Saved Boards' : toastMsg);
+      await _unsaveOutfit(outfitId, outfit);
+    }
+  }
+
+  Future<bool> _saveOutfitToBoards(
+    Map<String, dynamic> outfit, {
+    _DailyOccasionOption selectedOccasion = const _DailyOccasionOption(
+      key: 'daily',
+      label: 'Daily Wear',
+      icon: Icons.wb_sunny_rounded,
+      occasionCode: 'daily',
+    ),
+  }) async {
+    final outfitId = (outfit['id'] ?? '').toString().trim();
+    final imageUrl = (outfit['img'] ?? '').toString().trim();
+    final rawTitle = (outfit['name'] ?? outfit['nameKey'] ?? 'Daily Look').toString().trim();
+    final title = AppLocalizations.t(context, rawTitle);
+
+    final rawDesc = (outfit['desc'] ?? outfit['descKey'] ?? outfit['tip'] ?? 'AHVI curated daily drop').toString().trim();
+    final description = AppLocalizations.t(context, rawDesc);
+
+    final rawItems = _firstNonEmptyBoardItems(outfit);
+    final outfitItems = rawItems
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+
+    final itemIds = outfitItems
+        .map(
+          (item) =>
+              (item['id'] ??
+                      item['item_id'] ??
+                      item['itemId'] ??
+                      item[r'$id'])
+                  ?.toString()
+                  .trim() ??
+              '',
+        )
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    dynamic doc;
+    try {
+      doc = await AppwriteService().saveBoardToCollection(
+        occasion: selectedOccasion.occasionCode,
+        outfitDescription: description.isEmpty ? 'AHVI curated daily drop' : description,
+        imageUrl: imageUrl.isEmpty ? null : imageUrl,
+        boardCategory: selectedOccasion.key,
+        boardCategoryLabel: selectedOccasion.label,
+        title: title.isEmpty ? 'Daily Look' : title,
+        prompt: 'Saved from Daily Wear to ${selectedOccasion.label}',
+        extra: {
+          'outfitId': outfitId,
+          'itemIds': itemIds,
+          'outfitItems': outfitItems,
+          'items': outfitItems,
+          'board_payload': {
+            'title': title.isEmpty ? 'Daily Look' : title,
+            'occasion': selectedOccasion.occasionCode,
+            'board_category': selectedOccasion.key,
+            'items': outfitItems,
+          },
+        },
+        emoji: '✨',
       );
     } catch (e) {
-      debugPrint('Failed to save daily look to boards: $e');
+      debugPrint('Failed to save daily look to Appwrite boards: $e');
+      return false;
+    }
+
+    if (doc == null) {
+      debugPrint('Appwrite saveBoardToCollection returned null; aborting local cache write.');
+      return false;
+    }
+
+    if (outfitId.isNotEmpty) {
+      _savedBoardDocIds[outfitId] = doc.$id;
+    }
+
+    try {
+      await SavedBoardsStore.saveBoard(
+        occasion: selectedOccasion.occasionCode,
+        directionName: title.isEmpty ? 'Daily Look' : title,
+        direction: {
+          'id': outfitId,
+          'direction_name': title,
+          'title': title,
+          'why_it_works': description,
+          'short_note': description,
+          'board_category': selectedOccasion.key,
+          'board_category_label': selectedOccasion.label,
+          'owned_items': outfitItems,
+          'items': outfitItems,
+        },
+        editorialCover: {'image_url': imageUrl},
+      );
+    } catch (e) {
+      debugPrint('Failed local saved boards store save: $e');
+    }
+
+    return true;
+  }
+
+  Future<void> _unsaveOutfit(String outfitId, Map<String, dynamic> outfit) async {
+    final rawTitle = (outfit['name'] ?? outfit['nameKey'] ?? 'Daily Look').toString().trim();
+    final title = AppLocalizations.t(context, rawTitle);
+    final boardStoreId = SavedBoardsStore.idFor(occasion: 'daily', directionName: title);
+
+    try {
+      await SavedBoardsStore.remove(boardStoreId);
+    } catch (e) {
+      debugPrint('Failed to remove from local saved boards store: $e');
+    }
+
+    final docId = _savedBoardDocIds[outfitId];
+    if (docId != null && docId.isNotEmpty) {
+      try {
+        await AppwriteService().deleteSavedBoard(docId);
+        _savedBoardDocIds.remove(outfitId);
+      } catch (e) {
+        debugPrint('Failed to delete saved board from Appwrite: $e');
+      }
+    }
+  }
+
+  Future<void> _logWearForCurrentLook() async {
+    final itemIds = _currentOutfitItemIds();
+    if (itemIds.isEmpty || _hasLoggedWear) return;
+
+    setState(() => _hasLoggedWear = true);
+    try {
+      final ok = await BackendService().wearToday(
+        itemIds: itemIds,
+        boardId: (_currentOutfit['id'] ?? '').toString(),
+        occasion: (_currentOutfit['occasion'] ?? '').toString(),
+      );
+      if (!ok) {
+        if (!mounted) return;
+        setState(() => _hasLoggedWear = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to log outfit. Try again.')),
+        );
+        return;
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Outfit logged! We'll rotate these pieces tomorrow."),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _hasLoggedWear = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to log outfit. Try again.')),
+      );
     }
   }
 
@@ -1533,35 +1868,35 @@ class _DailyWearScreenState extends State<DailyWearScreen>
 
   Future<void> _callBackendStylist(String userText) async {
     final currentOutfit = _currentOutfit;
+    final wornNote = _wornOutfitId != null
+        ? 'Wearing today: "${_outfitById(_wornOutfitId!)['name']}"'
+        : 'No outfit chosen yet.';
+    final prompt =
+        '$userText\n\n'
+        'Current outfit: ${currentOutfit['name']} - ${currentOutfit['desc']}. '
+        'Tags: ${((currentOutfit['tags'] as List?)?.cast<String>() ?? <String>[]).join(', ')}. '
+        'Occasions: ${((currentOutfit['occ'] as List?)?.cast<String>() ?? <String>[]).join(', ')}. '
+        'Weather: ${_weatherContext.isEmpty ? 'unknown' : _weatherContext}. $wornNote';
 
     final history = _messages
         .take(_messages.length - 1)
-        .where((m) => !m.excludeFromSemanticHistory)
         .map(
           (m) => {'role': m.isUser ? 'user' : 'assistant', 'content': m.text},
     )
         .toList();
 
     try {
-      final response = await BackendService().sendModuleChat(
-        domain: 'daily_wear',
-        message: userText,
-        chatHistory: List<Map<String, String>>.from(history),
-        context: {
-          'surface': 'daily_wear',
-          // Keep the local session identity with the canonical request while
-          // the backend continues to use bounded history for continuity.
-          'conversation_id': _currentSessionId,
-          'session_id': _currentSessionId,
-          'current_outfit': Map<String, dynamic>.from(currentOutfit),
-          'weather_context': _weatherContext,
-          'worn_outfit_id': _wornOutfitId,
-        },
+      final response = await BackendService().sendChatQuery(
+        prompt,
+        '',
+        List<Map<String, String>>.from(history),
+        '',
+        moduleContext: 'style',
       );
       if (!mounted) return;
-      final rawMessage = response?['message'];
+      final rawMessage = response['message'];
       final replyText =
-      (response?['message_text'] ??
+      (response['message_text'] ??
           (rawMessage is Map ? rawMessage['content'] : rawMessage) ??
           '')
           .toString()
@@ -1573,8 +1908,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
             : "I'm having a moment - try again.",
         isUser: false,
         createdAt: DateTime.now(),
-        excludeFromSemanticHistory:
-            !shouldAppendModuleChatResponseToSemanticHistory(response),
       );
       setState(() {
         _isTyping = false;
@@ -1587,7 +1920,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       if (!mounted) return;
       final message = _ChatMessage(
         id: DateTime.now().microsecondsSinceEpoch,
-        text: "I'm having a moment - try again.",
+        text: 'AHVI style request failed: $err',
         isUser: false,
         createdAt: DateTime.now(),
       );
@@ -1603,7 +1936,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
 
   void _speakMessage(_ChatMessage message) {
     setState(() => _speakingMessageId = message.id);
-    // ignore: deprecated_member_use
     SemanticsService.announce(_stripMarkdown(message.text), TextDirection.ltr);
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && _speakingMessageId == message.id) {
@@ -1645,33 +1977,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       _chatController.clear();
     });
     Future.delayed(const Duration(milliseconds: 400), () {
-      if (!mounted || _messages.isNotEmpty) return;
-      setState(() {
-        _messages.add(
-          _ChatMessage(
-            id: DateTime.now().millisecondsSinceEpoch,
-            text: AppLocalizations.t(context, 'daily_wear_ahvi_greeting'),
-            isUser: false,
-            createdAt: DateTime.now(),
-          ),
-        );
-      });
-    });
-  }
-
-  Future<void> _clearCurrentChat() async {
-    if (!await confirmClearChat(context) || !mounted) return;
-
-    setState(() {
-      _chatHistory.clear();
-      _currentSessionId = DateTime.now().microsecondsSinceEpoch.toString();
-      _messages.clear();
-      _isTyping = false;
-      _quickPromptsVisible = true;
-      _chatController.clear();
-    });
-    _chatGreetingTimer?.cancel();
-    _chatGreetingTimer = Timer(const Duration(milliseconds: 400), () {
       if (!mounted || _messages.isNotEmpty) return;
       setState(() {
         _messages.add(
@@ -1975,9 +2280,9 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                 child: _buildTryOnOverlay(),
               ),
           ],
-        ), // Stack
-      ), // Scaffold
-    ); // PopScope
+        ),
+      ),
+    );
   }
 
   Widget _buildDailyBoardLoadingState() => Padding(
@@ -2500,18 +2805,17 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     final styleBoard = _styleBoardFromOutfit(outfit);
 
     if (styleBoard == null) {
-      // Style Board data for this outfit hasn't come back from the
-      // backend yet: show only the outfit layout, with no title, chips,
-      // counter, or buttons on top of it.
       return _buildStyleBoardLoadingShell();
     }
+
+    final canvasKey = _boardCanvasKeys.putIfAbsent(outfitId, () => GlobalKey());
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        Padding(
-          padding: const EdgeInsets.all(10),
-          child: _buildUnifiedOutfitGrid(styleBoard),
+        RepaintBoundary(
+          key: canvasKey,
+          child: EditorialBoardCanvas(board: styleBoard),
         ),
         Positioned.fill(
           child: DecoratedBox(
@@ -2519,11 +2823,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                // Bottom-only darkening so the white outfit name +
-                // counter chip stay legible. Previous gradient leaked
-                // ~2 % alpha at the very top + 10 % at the midpoint,
-                // which read as a permanent faded grey overlay across
-                // the whole image. The top half is now fully clear.
                 stops: const [0.0, 0.55, 0.78, 1.0],
                 colors: [
                   Colors.transparent,
@@ -2566,22 +2865,14 @@ class _DailyWearScreenState extends State<DailyWearScreen>
               ),
               Row(
                 children: [
-                  _circleAction(saved ? '❤️' : '🤍', () {
-                    setState(() => _savedCarouselById[outfitId] = !saved);
-                    if (!saved) {
-                      _showToast(
-                        AppLocalizations.t(
-                          context,
-                          'daily_wear_toast_saved_wardrobe',
-                        ),
-                      );
-                      _saveOutfitToBoards(outfit);
-                    }
-                  }),
-                  const SizedBox(width: 8),
-                  _circleShare(
-                    '${AppLocalizations.t(context, outfit['nameKey'] as String)} · ${AppLocalizations.t(context, outfit['descKey'] as String)}',
+                  _circleAction(
+                    saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                    () {
+                      _toggleSaveOutfit(outfit);
+                    },
                   ),
+                  const SizedBox(width: 8),
+                  _circleShare(outfit),
                 ],
               ),
             ],
@@ -2708,7 +2999,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                   ),
                   child: Center(
                     child: Text(
-                      'Try-On',
+                      'Build Outfit',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -2725,7 +3016,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     );
   }
 
-  Widget _circleAction(String icon, VoidCallback onTap) => _PressScaleButton(
+  Widget _circleAction(dynamic icon, VoidCallback onTap) => _PressScaleButton(
     scaleDown: 0.92,
     onTap: onTap,
     child: Container(
@@ -2737,17 +3028,16 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         border: Border.all(color: cardBorderColor),
       ),
       child: Center(
-        child: Text(icon, style: TextStyle(fontSize: 15, color: textColor)),
+        child: icon is IconData
+            ? Icon(icon, size: 18, color: icon == Icons.bookmark_rounded ? accentColor : textColor)
+            : Text(icon.toString(), style: TextStyle(fontSize: 15, color: textColor)),
       ),
     ),
   );
 
-  Widget _circleShare(String text) => _PressScaleButton(
+  Widget _circleShare(Map<String, dynamic> outfit) => _PressScaleButton(
     scaleDown: 0.92,
-    onTap: () {
-      Clipboard.setData(ClipboardData(text: text));
-      _showToast(AppLocalizations.t(context, 'daily_wear_toast_link_copied'));
-    },
+    onTap: () => _shareOutfit(outfit),
     child: Container(
       width: 40,
       height: 40,
@@ -2823,9 +3113,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     );
 
     if (styleBoard == null) {
-      // Style Board data for this outfit hasn't come back from the
-      // backend yet: show only the outfit layout, with no title, chips,
-      // or buttons on top of it.
       return Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
@@ -2838,6 +3125,8 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         ),
       );
     }
+
+    final optionCanvasKey = _boardCanvasKeys.putIfAbsent(outfitId, () => GlobalKey());
 
     return Container(
       decoration: BoxDecoration(
@@ -2858,15 +3147,9 @@ class _DailyWearScreenState extends State<DailyWearScreen>
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.all(6),
-                    child: FittedBox(
-                      fit: BoxFit.contain,
-                      child: SizedBox(
-                        width: 320,
-                        child: _buildUnifiedOutfitGrid(styleBoard),
-                      ),
-                    ),
+                  RepaintBoundary(
+                    key: optionCanvasKey,
+                    child: EditorialBoardCanvas(board: styleBoard),
                   ),
                   Positioned.fill(
                     child: DecoratedBox(
@@ -2915,24 +3198,36 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                   const SizedBox(height: 9),
                   Row(
                     children: [
-                      _smallIcon(saved ? '❤️' : '🤍', () {
-                        setState(() => _savedOptionById[outfitId] = !saved);
-                        if (!saved) {
-                          _showToast(
-                            AppLocalizations.t(
-                              context,
-                              'daily_wear_toast_outfit_saved',
-                            ),
-                          );
+                      _smallIcon(
+                        saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                        () {
                           final outfitData = _outfitById(outfitId);
-                          if (outfitData.isNotEmpty) {
-                            _saveOutfitToBoards(outfitData);
-                          }
-                        }
-                      }),
+                          _toggleSaveOutfit(
+                            outfitData.isNotEmpty
+                                ? outfitData
+                                : {
+                                    'id': outfitId,
+                                    'nameKey': card['nameKey'],
+                                    'name': card['name'],
+                                    'descKey': card['sub'],
+                                    'desc': card['sub'],
+                                    'img': card['img'],
+                                  },
+                          );
+                        },
+                      ),
                       const SizedBox(width: 5),
                       _smallShare(
-                        AppLocalizations.t(context, card['nameKey'] as String),
+                        fullOutfit.isNotEmpty
+                            ? fullOutfit
+                            : {
+                                'id': outfitId,
+                                'nameKey': card['nameKey'],
+                                'name': card['name'],
+                                'descKey': card['sub'],
+                                'desc': card['sub'],
+                                'img': card['img'],
+                              },
                       ),
                     ],
                   ),
@@ -2957,7 +3252,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     );
   }
 
-  Widget _smallIcon(String icon, VoidCallback onTap) => _PressScaleButton(
+  Widget _smallIcon(dynamic icon, VoidCallback onTap) => _PressScaleButton(
     scaleDown: 0.92,
     onTap: onTap,
     child: Container(
@@ -2969,23 +3264,22 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         border: Border.all(color: cardBorderColor),
       ),
       child: Center(
-        child: Text(
-          icon,
-          style: TextStyle(
-            fontSize: 13,
-            color: icon == '❤️' ? accent4Color : mutedColor,
-          ),
-        ),
+        child: icon is IconData
+            ? Icon(icon, size: 16, color: icon == Icons.bookmark_rounded ? accentColor : mutedColor)
+            : Text(
+                icon.toString(),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: icon == '❤️' ? accent4Color : mutedColor,
+                ),
+              ),
       ),
     ),
   );
 
-  Widget _smallShare(String text) => _PressScaleButton(
+  Widget _smallShare(Map<String, dynamic> outfit) => _PressScaleButton(
     scaleDown: 0.92,
-    onTap: () {
-      Clipboard.setData(ClipboardData(text: text));
-      _showToast(AppLocalizations.t(context, 'daily_wear_toast_link_copied'));
-    },
+    onTap: () => _shareOutfit(outfit),
     child: Container(
       width: 30,
       height: 30,
@@ -3090,12 +3384,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       ),
     ),
   );
-  int _cacheWidth(BuildContext context, double logicalWidth) {
-    final ratio = MediaQuery.of(context).devicePixelRatio;
-    // Cap at 2x to prevent over-sampling on high-DPI Android devices
-    // which causes a visible fade/flash while Flutter resizes the image
-    return (logicalWidth * math.min(ratio, 2.0)).round();
-  }
 
   Widget _chatHeader() => Padding(
     padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
@@ -3145,17 +3433,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
               child: Icon(Icons.history_rounded, color: mutedColor, size: 18),
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        PopupMenuButton<String>(
-          tooltip: 'Chat options',
-          onSelected: (value) {
-            if (value == 'clear') _clearCurrentChat();
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem<String>(value: 'clear', child: Text('Clear chat')),
-          ],
-          icon: Icon(Icons.more_horiz_rounded, color: mutedColor),
         ),
       ],
     ),
@@ -3228,7 +3505,6 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Attachment preview chip — shown when a file / image / web search is pending
           AhviChatPromptBar(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             controller: _chatController,
@@ -3256,14 +3532,12 @@ class _DailyWearScreenState extends State<DailyWearScreen>
 
   Widget _buildTryOnOverlay() => Stack(
     children: [
-      // Scrim
       Positioned.fill(
         child: GestureDetector(
           onTap: _closeTryOn,
           child: const ColoredBox(color: Color(0x00000000)),
         ),
       ),
-      // Sheet — no animation
       Align(
         alignment: Alignment.bottomCenter,
         child: GestureDetector(
@@ -3447,7 +3721,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                       enabled: _tryOnOpen && _tryOnStage == _TryOnStage.camera,
                       child: AnimatedBuilder(
                         animation: _scanCtrl,
-                        builder: (_, _) => Positioned(
+                        builder: (_, __) => Positioned(
                           top: constraints.maxHeight * _scanLineY.value,
                           left: 0,
                           right: 0,
@@ -3646,6 +3920,15 @@ class _DailyWearScreenState extends State<DailyWearScreen>
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: _actionBtn(
+              AppLocalizations.t(context, 'daily_wear_wear_today'),
+              _logWearForCurrentLook,
+              primary: true,
+            ),
+          ),
         ],
       );
     }
@@ -3750,6 +4033,14 @@ class _DailyWearScreenState extends State<DailyWearScreen>
               child: _actionBtn(
                 AppLocalizations.t(context, 'daily_wear_start_tryon'),
                 _startTryOnCamera,
+                primary: true,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _actionBtn(
+                AppLocalizations.t(context, 'daily_wear_wear_today'),
+                _logWearForCurrentLook,
                 primary: true,
               ),
             ),
@@ -3860,13 +4151,11 @@ class _ChatMessage {
   final String text;
   final bool isUser;
   final DateTime createdAt;
-  final bool excludeFromSemanticHistory;
   _ChatMessage({
     required this.id,
     required this.text,
     required this.isUser,
     required this.createdAt,
-    this.excludeFromSemanticHistory = false,
   });
 }
 
@@ -3938,23 +4227,10 @@ class _ChatBubble extends StatelessWidget {
                     ),
                     border: Border.all(color: t.cardBorder),
                   ),
-                  child: isUser
-                      ? Text(
-                          message.text,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            height: 1.6,
-                            color: t.textPrimary,
-                          ),
-                        )
-                      : BasicMarkdownText(
-                          message.text,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            height: 1.6,
-                            color: t.textPrimary,
-                          ),
-                        ),
+                  child: _RichChatText(
+                    text: message.text,
+                    color: t.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Row(
@@ -3996,15 +4272,146 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-/// Chat-facing wrapper — delegates to the shared branded [AhviProcessingBubble].
-class _TypingBubble extends StatelessWidget {
-  final String message;
-  const _TypingBubble({String? message})
-      : message = message ?? 'AHVI is thinking';
+class _TypingBubble extends StatefulWidget {
+  const _TypingBubble();
+  @override
+  State<_TypingBubble> createState() => _TypingBubbleState();
+}
+
+class _TypingBubbleState extends State<_TypingBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
 
   @override
-  Widget build(BuildContext context) =>
-      AhviProcessingBubble(message: message);
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.themeTokens;
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 15,
+          backgroundColor: t.accent.primary,
+          child: Icon(Icons.auto_awesome_rounded, size: 14),
+        ),
+        const SizedBox(width: 9),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          decoration: BoxDecoration(
+            color: t.panel,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: t.cardBorder),
+          ),
+          child: Row(
+            children: List.generate(
+              3,
+                  (i) => _BounceDot(controller: _ctrl, delay: i * 0.18),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BounceDot extends StatelessWidget {
+  final AnimationController controller;
+  final double delay;
+  const _BounceDot({required this.controller, required this.delay});
+  @override
+  Widget build(BuildContext context) {
+    final t = context.themeTokens;
+    final anim =
+    TweenSequence([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0, end: -6),
+        weight: 30,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: -6, end: 0),
+        weight: 30,
+      ),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 40),
+    ]).animate(
+      CurvedAnimation(
+        parent: controller,
+        curve: Interval(
+          delay,
+          (delay + 0.5).clamp(0, 1.0),
+          curve: Curves.easeInOut,
+        ),
+      ),
+    );
+    return AnimatedBuilder(
+      animation: anim,
+      builder: (_, __) => Transform.translate(
+        offset: Offset(0, anim.value),
+        child: Container(
+          width: 7,
+          height: 7,
+          margin: const EdgeInsets.symmetric(horizontal: 2.5),
+          decoration: BoxDecoration(
+            color: t.accent.primary.withValues(alpha: 0.55),
+            shape: BoxShape.circle,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RichChatText extends StatelessWidget {
+  final String text;
+  final Color color;
+  const _RichChatText({required this.text, required this.color});
+  @override
+  Widget build(BuildContext context) => Text.rich(
+    TextSpan(
+      style: TextStyle(fontSize: 13.5, height: 1.6, color: color),
+      children: _parse(text),
+    ),
+  );
+  List<InlineSpan> _parse(String raw) {
+    final spans = <InlineSpan>[];
+    final regex = RegExp(r'(\*\*.*?\*\*|\*.*?\*)');
+    var last = 0;
+    for (final match in regex.allMatches(raw)) {
+      if (match.start > last) {
+        spans.add(TextSpan(text: raw.substring(last, match.start)));
+      }
+      final token = match.group(0)!;
+      spans.add(
+        TextSpan(
+          text: token.startsWith('**')
+              ? token.substring(2, token.length - 2)
+              : token.substring(1, token.length - 1),
+          style: TextStyle(
+            fontWeight: token.startsWith('**')
+                ? FontWeight.w700
+                : FontWeight.w400,
+            fontStyle: token.startsWith('**')
+                ? FontStyle.normal
+                : FontStyle.italic,
+          ),
+        ),
+      );
+      last = match.end;
+    }
+    if (last < raw.length) spans.add(TextSpan(text: raw.substring(last)));
+    return spans;
+  }
 }
 
 class _LiveDot extends StatefulWidget {

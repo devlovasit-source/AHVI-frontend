@@ -365,7 +365,10 @@ ResolvedWardrobeImage resolveWardrobeImage(
     _ => 4,
   };
   final isStyleThisPresentation = _isStyleThisPresentationSurface(surface);
-  final isBoardSurface = _isStyleBoardSurface(surface) || isStyleThisPresentation;
+  final isSavedBoardPresentation =
+      surface.trim().toLowerCase() == 'style_board_saved';
+  final isBoardSurface =
+      _isStyleBoardSurface(surface) || isStyleThisPresentation;
   bool explicitMaskIsSafeForBoard(String? url) =>
       isBoardSurface &&
       url != null &&
@@ -807,15 +810,13 @@ ResolvedWardrobeImage resolveWardrobeImage(
       : 0;
   final selected = boardPool.isEmpty
       ? const _Candidate('none', null, 'missing', 5, false, false)
-      : isStyleThisPresentation
-      // Style This live grid: normalized/catalog asset first (matches the
-      // backend's own normalized_url -> masked_url -> image_url ordering for
-      // supporting pieces), falling back to the board-safe cutout ranking
-      // below only when no normalized candidate survived admission.
+      : (isStyleThisPresentation || isSavedBoardPresentation)
       ? boardPool.firstWhere(
           (c) => c.field == 'normalized_url',
           orElse: () => boardPool.reduce((a, b) => b.tier < a.tier ? b : a),
         )
+      : isBoardSurface
+      ? boardPool.reduce((a, b) => b.tier < a.tier ? b : a)
       : isBoardSurface
       // Board canvas: cutout-first over garment-only sources. `tier` is a
       // priority RANK, lower = higher preference (validated_cutout=0,
