@@ -3265,7 +3265,7 @@ class _AddItemModalState extends State<_AddItemModal>
     entry = OverlayEntry(
       builder: (toastContext) {
         final t = toastContext.themeTokens;
-        final topSafeArea = MediaQuery.of(toastContext).padding.bottom;
+        final topSafeArea = MediaQuery.of(toastContext).padding.top;
         return Positioned(
           top: topSafeArea + 16,
           left: 16,
@@ -3278,7 +3278,7 @@ class _AddItemModalState extends State<_AddItemModal>
                 constraints: const BoxConstraints(maxWidth: 400),
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
                 decoration: BoxDecoration(
-                  color: t.backgroundSecondary,
+                  color: const Color(0xFF1E1E2C),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: t.accent.primary.withValues(alpha: 0.4),
@@ -3315,7 +3315,7 @@ class _AddItemModalState extends State<_AddItemModal>
                           fontFamily: GoogleFonts.inter().fontFamily,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
-                          color: t.textPrimary,
+                          color: Colors.white,
                           height: 1.2,
                         ),
                       ),
