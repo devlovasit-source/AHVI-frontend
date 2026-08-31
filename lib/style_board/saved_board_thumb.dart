@@ -55,11 +55,16 @@ class SavedBoardThumb extends StatelessWidget {
   List<Map<String, dynamic>> _hydrateItems() {
     final savedItems = _savedBoardItems(_data);
     if (savedItems.isNotEmpty) {
+      // Frozen items already carry their own saved provenance (masked_url /
+      // normalized_url / selected_field / source_kind) -- resolving with an
+      // empty wardrobe map keeps the thumbnail immune to the item's current
+      // wardrobe state, matching the same invariant already applied in
+      // SavedBoardCard._itemsForBoard().
       return savedItems
           .map(
             (item) => resolveStyleBoardItemImage(
               item,
-              wardrobeById,
+              const {},
               surface: 'style_board_saved',
             ),
           )
