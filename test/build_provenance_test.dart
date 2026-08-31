@@ -3,25 +3,39 @@ import 'package:myapp/config/env.dart';
 
 void main() {
   test('runtime provenance does not use the stale placeholder version', () {
-    expect(Env.appBuildVersion, isNot('1.0.0+1'));
+    expect(Env.build, isNot('1.0.0+1'));
     expect(Env.canonicalRendererVersion, 'editorial_board_canonical_v1');
   });
 
   test('runtime provenance exposes supplied compile-time values', () {
-    const expectedSha = String.fromEnvironment('AHVI_EXPECTED_GIT_SHA');
-    const expectedName = String.fromEnvironment('AHVI_EXPECTED_BUILD_NAME');
-    const expectedNumber = String.fromEnvironment('AHVI_EXPECTED_BUILD_NUMBER');
+    const expectedSha = String.fromEnvironment(
+      'AHVI_EXPECTED_FRONTEND_SHA',
+      defaultValue: '',
+    );
+    const expectedBuild = String.fromEnvironment(
+      'AHVI_EXPECTED_BUILD',
+      defaultValue: '',
+    );
 
-    if (expectedSha.isEmpty && expectedName.isEmpty && expectedNumber.isEmpty) {
-      expect(Env.gitSha, 'unknown');
-      expect(Env.buildName, 'dev');
-      expect(Env.buildNumber, '0');
+    if (expectedSha.isEmpty && expectedBuild.isEmpty) {
+      expect(Env.frontendSha, 'unknown');
+      expect(Env.build, 'dev_0');
       return;
     }
 
-    expect(Env.gitSha, expectedSha);
-    expect(Env.buildName, expectedName);
-    expect(Env.buildNumber, expectedNumber);
-    expect(Env.appBuildVersion, '$expectedName+$expectedNumber');
+    expect(expectedSha, isNotEmpty);
+    expect(expectedBuild, isNotEmpty);
+    expect(Env.frontendSha, expectedSha);
+    expect(Env.build, expectedBuild);
+    expect(Env.runtimeProvenanceLog, 'frontend_sha=$expectedSha build=$expectedBuild');
+  });
+
+  test('runtime provenance contains only non-sensitive identity fields', () {
+    expect(Env.runtimeProvenance, {
+      'frontend_sha': Env.frontendSha,
+      'build': Env.build,
+    });
+    expect(Env.runtimeProvenance.keys, isNot(contains('API_KEY')));
+    expect(Env.runtimeProvenance.keys, isNot(contains('SECRET')));
   });
 }

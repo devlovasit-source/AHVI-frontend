@@ -2,22 +2,29 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class Env {
-  static const String gitSha = String.fromEnvironment(
-    'AHVI_GIT_SHA',
-    defaultValue: 'unknown',
+  static const String frontendSha = String.fromEnvironment(
+    'AHVI_FRONTEND_SHA',
+    defaultValue: String.fromEnvironment('AHVI_GIT_SHA', defaultValue: 'unknown'),
   );
-  static const String buildName = String.fromEnvironment(
-    'AHVI_BUILD_NAME',
-    defaultValue: 'dev',
+
+  static const String build = String.fromEnvironment(
+    'AHVI_BUILD',
+    defaultValue: 'dev_0',
   );
-  static const String buildNumber = String.fromEnvironment(
-    'AHVI_BUILD_NUMBER',
-    defaultValue: '0',
-  );
-  static const String appBuildVersion = String.fromEnvironment(
-    'AHVI_APP_BUILD_VERSION',
-    defaultValue: '$buildName+$buildNumber',
-  );
+
+  // Keep the existing names used by style diagnostics while sourcing the
+  // values from the release provenance contract above.
+  static const String gitSha = frontendSha;
+  static const String appBuildVersion = build;
+
+  static String get runtimeProvenanceLog =>
+      'frontend_sha=$frontendSha build=$build';
+
+  static Map<String, String> get runtimeProvenance => {
+    'frontend_sha': frontendSha,
+    'build': build,
+  };
+
   static const String buildMode = bool.fromEnvironment('dart.vm.product')
       ? 'release'
       : bool.fromEnvironment('dart.vm.profile')
@@ -93,15 +100,13 @@ class Env {
   }
 
   static void debugPrintRuntimeTarget() {
-    debugPrint('AHVI backend configured=${isConfigured}');
+    debugPrint('AHVI backend configured=$isConfigured');
   }
 
   static void debugPrintBuildProvenance() {
     debugPrint(
       'AHVI_BUILD_PROVENANCE '
-      'git_sha=$gitSha '
-      'build_name=$buildName '
-      'build_number=$buildNumber '
+      '$runtimeProvenanceLog '
       'build_mode=$buildMode '
       'app_version=$appBuildVersion '
       'canonical_renderer=$canonicalRendererVersion',

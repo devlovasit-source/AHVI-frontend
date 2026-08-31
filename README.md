@@ -59,3 +59,26 @@ flutter run
 ```
 
 Backend must be running separately with Appwrite auth configured, or local emergency `AUTH_REQUIRED=false` for isolated demo testing.
+
+## Release Candidate Provenance
+
+The release candidate build must inject provenance at build time. Do not edit a
+SHA into Dart source, and do not manually type the SHA in the command:
+
+```powershell
+$FrontendSha = (git rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $FrontendSha -notmatch '^[0-9a-fA-F]{40}$') {
+  throw "Could not resolve a 40-character frontend Git SHA"
+}
+$CandidateBuild = "rc3_$($FrontendSha.Substring(0, 12).ToLowerInvariant())"
+
+flutter build apk --release `
+  --dart-define="AHVI_FRONTEND_SHA=$FrontendSha" `
+  --dart-define="AHVI_BUILD=$CandidateBuild"
+```
+
+At runtime, capture the `AHVI_BUILD_PROVENANCE` log line containing
+`frontend_sha=<40-char SHA> build=rc3_<12-char SHA prefix>`. For the same
+candidate session, correlate the style request ID from the app/backend logs
+with the backend response header `X-AHVI-Revision` or the `/health` response
+fields `revision`, `cloud_run_service`, and `cloud_run_configuration`.
