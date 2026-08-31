@@ -187,7 +187,17 @@ class SavedBoardThumb extends StatelessWidget {
           padding: const EdgeInsets.all(8),
           child: FittedBox(
             fit: BoxFit.contain,
-            child: AhviUnifiedOutfitGrid(items: gridItems),
+            // FittedBox gives its child unbounded constraints to measure
+            // natural size, but AhviUnifiedOutfitGrid's LayoutBuilder-based
+            // layouts (e.g. the 5-item layout) do width arithmetic like
+            // `total - part - gap` that becomes Infinity - Infinity = NaN
+            // under unbounded width. A fixed reference width sidesteps
+            // that; FittedBox still scales the result to fit the box
+            // (same fix already used in shareable_outfit_board.dart).
+            child: SizedBox(
+              width: 320,
+              child: AhviUnifiedOutfitGrid(items: gridItems),
+            ),
           ),
         ),
       );

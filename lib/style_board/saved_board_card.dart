@@ -44,11 +44,16 @@ class SavedBoardCard extends StatelessWidget {
   List<Map<String, dynamic>> _itemsForBoard(Map<String, dynamic> data) {
     final savedItems = _savedBoardItems(data);
     if (savedItems.isNotEmpty) {
+      // Frozen items already carry their own saved provenance (masked_url /
+      // normalized_url / selected_field / source_kind) -- resolving with an
+      // empty wardrobe map keeps that image immune to the item's current
+      // wardrobe state, so re-processing or editing the wardrobe item later
+      // never changes what an already-saved board shows.
       return savedItems
           .map(
             (item) => resolveStyleBoardItemImage(
               item,
-              wardrobeById,
+              const {},
               surface: 'style_board_saved',
             ),
           )

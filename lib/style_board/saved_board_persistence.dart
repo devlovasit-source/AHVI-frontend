@@ -474,7 +474,17 @@ Map<String, dynamic> _compactItem(Map<String, dynamic> raw) {
       'This look contains an item without a stable role.',
     );
   }
-  final resolved = resolveWardrobeImage(raw, emitDiagnostic: false);
+  // Must reproduce the same board surface used for the live on-screen
+  // render (e.g. daily_wear.dart's _savedDailyWearItems / style_board.dart's
+  // canonical board build) -- freezing under the default 'wardrobe' surface
+  // here would apply wardrobe-grid rules (no board-safety guard, no
+  // cutout-first ranking) and could freeze a different image than what the
+  // user actually saw and chose to save.
+  final resolved = resolveWardrobeImage(
+    raw,
+    surface: 'style_board_saved',
+    emitDiagnostic: false,
+  );
   if (!isValidSavedBoardHttpUrl(resolved.url)) {
     throw const SavedBoardPersistenceException(
       'invalid_item_image',
