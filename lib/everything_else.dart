@@ -249,7 +249,10 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
           Column(
             children: [
               // ── HEADER ──
-              _Header(countText: countText),
+              _Header(
+                countText: countText,
+                activeFilter: _activeFilter,
+              ),
               // ── FILTER ROW ──
               _FilterRow(
                 filters: _filters,
@@ -334,7 +337,33 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
 // ── Header ───────────────────────────────────────────────────────────────────
 class _Header extends StatelessWidget {
   final String countText;
-  const _Header({required this.countText});
+  final String activeFilter;
+
+  const _Header({
+    required this.countText,
+    required this.activeFilter,
+  });
+
+  String _title(BuildContext context) {
+    switch (activeFilter) {
+      case 'favourites':
+        return context.tr('boards_favourites');
+      case 'party_looks':
+        return 'Party Looks';
+      case 'office_fits':
+        return 'Office Fits';
+      case 'vacation':
+        return 'Vacation';
+      case 'occasion':
+        return 'Occasion';
+      case 'everything_else':
+        return context.tr('boards_everything_else');
+      case 'all':
+        return context.tr('wardrobe_all');
+      default:
+        return context.tr('boards_everything_else');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -342,10 +371,10 @@ class _Header extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
-        14,
-        MediaQuery.of(context).padding.top + 12,
-        14,
-        16,
+        MediaQuery.sizeOf(context).width < 360 ? 10 : 14,
+        MediaQuery.paddingOf(context).top + (MediaQuery.sizeOf(context).height < 700 ? 8 : 12),
+        MediaQuery.sizeOf(context).width < 360 ? 10 : 14,
+        MediaQuery.sizeOf(context).height < 700 ? 10 : 16,
       ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -380,10 +409,10 @@ class _Header extends StatelessWidget {
             text: TextSpan(
               children: [
                 TextSpan(
-                  text: '${context.tr('boards_everything_else')} ',
+                  text: '${_title(context)} ',
                   style: TextStyle(
                     fontFamily: 'Inter',
-                    fontSize: 26,
+                    fontSize: MediaQuery.sizeOf(context).width < 360 ? 23 : 26,
                     fontWeight: FontWeight.w700,
                     color: t.textPrimary,
                     letterSpacing: -0.5,
@@ -422,11 +451,14 @@ class _FilterRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.themeTokens;
+    final width = MediaQuery.sizeOf(context).width;
+    final horizontalPadding = width < 360 ? 8.0 : 12.0;
+    final pillPadding = width < 360 ? 11.0 : 14.0;
     return SizedBox(
       height: 44,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 6),
         itemCount: filters.length,
         itemBuilder: (context, index) {
           final pill = filters[index];
@@ -436,7 +468,7 @@ class _FilterRow extends StatelessWidget {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: EdgeInsets.symmetric(horizontal: pillPadding),
               decoration: BoxDecoration(
                 color: isActive ? t.accent.primary : t.panel,
                 borderRadius: BorderRadius.circular(20),
@@ -474,13 +506,22 @@ class _LooksGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final columns = width < 360 ? 1 : 2;
+    final gap = width < 360 ? 8.0 : 10.0;
+    final ratio = width < 360 ? 0.82 : 0.54;
     return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: 0.54,
+      padding: EdgeInsets.fromLTRB(
+        width < 360 ? 8 : 12,
+        12,
+        width < 360 ? 8 : 12,
+        24 + MediaQuery.paddingOf(context).bottom,
+      ),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columns,
+        crossAxisSpacing: gap,
+        mainAxisSpacing: gap,
+        childAspectRatio: ratio,
       ),
       itemCount: boards.length,
       itemBuilder: (context, index) => SavedBoardCard(

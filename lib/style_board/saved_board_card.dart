@@ -510,11 +510,22 @@ class SavedBoardCard extends StatelessWidget {
     if (!context.mounted) return null;
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return null;
+    // NOTE: items are already image-validated upstream by _itemsForBoard
+    // (via resolveWardrobeImage(...).url != null / extractSavedBoardImages),
+    // so we don't re-filter on StyleBoardItem.fromJson(item).displayImageUrl
+    // here — a field-name mismatch between the resolved map's keys and what
+    // StyleBoardItem.fromJson/.displayImageUrl expect would silently empty
+    // this list, drop the whole branded composition, and fall back to the
+    // plain thumbnail (which never shows title/occasion/"why this works").
+    if (items.isEmpty) return null;
     final boardItems = items
         .map((item) => StyleBoardItem.fromJson(item))
-        .where((item) => item.displayImageUrl.isNotEmpty)
         .toList(growable: false);
-    if (boardItems.isEmpty) return null;
+    debugPrint(
+      'AHVI_SAVED_BOARD_SHARE_COMPOSITION_ITEMS '
+          'input_items=${items.length} board_items=${boardItems.length} '
+          'why_text_chars=${whyText.trim().length}',
+    );
     final key = GlobalKey();
     final entry = OverlayEntry(
       builder: (_) => Positioned(
