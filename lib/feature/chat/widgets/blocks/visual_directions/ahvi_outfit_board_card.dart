@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show mapEquals;
+import 'package:flutter/foundation.dart' show mapEquals, visibleForTesting;
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -2342,6 +2342,10 @@ StyleBoardData _toStyleBoardData(
     );
   }
   final rendered = _enforceSlots(items);
+  final storyValue = direction['story'];
+  final story = BoardStory.fromJson(
+    storyValue is Map ? Map<String, dynamic>.from(storyValue) : null,
+  );
   final totalInput = model.items.length;
   final totalRendered = rendered.length;
   debugPrint(
@@ -2379,8 +2383,20 @@ StyleBoardData _toStyleBoardData(
         direction['explanation'] ??
         '',
     items: rendered,
+    story: story.isEmpty ? null : story,
   );
 }
+
+@visibleForTesting
+StyleBoardData styleBoardDataFromOutfitBoardForTesting(
+  OutfitBoardModel model,
+  Map<String, dynamic> direction, {
+  Map<String, Map<String, dynamic>> wardrobeById = const {},
+}) => _toStyleBoardData(
+  model,
+  direction,
+  wardrobeById: wardrobeById,
+);
 
 /// Per-role slot caps so a board never paints a random collage (e.g. three
 /// bottoms). Keeps the first item per role (hero-first order), drops extras.
@@ -2546,6 +2562,21 @@ String _selectedArchetypeTitle(Map<String, dynamic> direction) {
 
 /// Canonical primary title shared by the live card and its detail sheet.
 String resolveOutfitBoardTitle(Map<String, dynamic> direction) {
+  final rawStory = direction['story'];
+  final story = BoardStory.fromJson(
+    rawStory is Map ? Map<String, dynamic>.from(rawStory) : null,
+  );
+  if (story.headline?.trim().isNotEmpty == true) return story.headline!.trim();
+
+  final explicitTitle = _text(
+    direction['title'] ?? direction['board_title'] ?? direction['boardTitle'],
+  );
+  if (explicitTitle.isNotEmpty) {
+    return explicitTitle.toLowerCase().startsWith('build outfit')
+        ? 'Try-On'
+        : explicitTitle;
+  }
+
   final selectedArchetype = _selectedArchetypeTitle(direction);
   if (selectedArchetype.isNotEmpty) return selectedArchetype;
 
@@ -2568,11 +2599,7 @@ String resolveOutfitBoardTitle(Map<String, dynamic> direction) {
   );
   if (strategyDirection.isNotEmpty) return strategyDirection;
 
-  final title = _text(
-    direction['title'] ?? direction['board_title'] ?? direction['boardTitle'],
-    fallback: 'Styled for You',
-  );
-  return title.toLowerCase().startsWith('build outfit') ? 'Try-On' : title;
+  return 'Styled for You';
 }
 
 String _text(dynamic value, {String fallback = ''}) {
