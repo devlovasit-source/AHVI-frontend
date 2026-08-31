@@ -44,7 +44,7 @@ void main() {
       resolveOutfitBoardTitle(
         _direction(title: 'Backend Board', archetype: 'Refined Weekend'),
       ),
-      'Backend Board',
+      'Refined Weekend',
     );
     expect(
       resolveOutfitBoardTitle(_direction(archetype: 'Refined Weekend')),

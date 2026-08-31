@@ -2568,15 +2568,6 @@ String resolveOutfitBoardTitle(Map<String, dynamic> direction) {
   );
   if (story.headline?.trim().isNotEmpty == true) return story.headline!.trim();
 
-  final explicitTitle = _text(
-    direction['title'] ?? direction['board_title'] ?? direction['boardTitle'],
-  );
-  if (explicitTitle.isNotEmpty) {
-    return explicitTitle.toLowerCase().startsWith('build outfit')
-        ? 'Try-On'
-        : explicitTitle;
-  }
-
   final selectedArchetype = _selectedArchetypeTitle(direction);
   if (selectedArchetype.isNotEmpty) return selectedArchetype;
 
@@ -2598,6 +2589,15 @@ String resolveOutfitBoardTitle(Map<String, dynamic> direction) {
         strategy['direction'],
   );
   if (strategyDirection.isNotEmpty) return strategyDirection;
+
+  final explicitTitle = _text(
+    direction['title'] ?? direction['board_title'] ?? direction['boardTitle'],
+  );
+  if (explicitTitle.isNotEmpty) {
+    return explicitTitle.toLowerCase().startsWith('build outfit')
+        ? 'Try-On'
+        : explicitTitle;
+  }
 
   return 'Styled for You';
 }
