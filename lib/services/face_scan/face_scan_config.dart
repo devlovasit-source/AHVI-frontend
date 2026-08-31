@@ -88,8 +88,8 @@ class FaceScanConfig {
         'Avoid touching your face throughout the day',
       ],
       'severe': [
-        'Consult a dermatologist for professional treatment options',
-        'Consider prescription acne medications like retinoids',
+        'If breakouts are persistent, consider a dermatologist visit to discuss treatment options',
+        'Ask a dermatologist whether a stronger acne routine is appropriate for you',
         'Avoid heavy makeup that may clog pores',
       ],
     },
@@ -105,9 +105,9 @@ class FaceScanConfig {
         'Apply sunscreen religiously to prevent new spots',
       ],
       'severe': [
-        'Consider professional treatments like laser therapy',
-        'Consult a dermatologist about prescription brightening creams',
-        'Chemical peels may help accelerate improvement',
+        'If uneven tone is persistent, a dermatologist can help discuss treatment options',
+        'Ask a skincare professional whether a targeted brightening routine makes sense',
+        'Keep using broad-spectrum SPF to help prevent new spots from forming',
       ],
     },
     'darkCircles': [

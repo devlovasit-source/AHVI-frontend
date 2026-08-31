@@ -2649,34 +2649,9 @@ String? _transparentUrlFor(
       String? itemName,
       String? role,
     }) {
-  final resolved = resolveWardrobeImage(
+  return resolveWardrobeImage(
     item,
     surface: 'style_board_live',
     itemId: itemId ?? '',
   ).url;
-  if (resolved != null && resolved.trim().isNotEmpty) return resolved;
-  for (final key in [
-    'image_url',
-    'imageUrl',
-    'safe_image_url',
-    'safeImageUrl',
-    'resolved_image_url',
-    'resolvedImageUrl',
-    'catalog_image_url',
-    'catalogImageUrl',
-    'display_image_url',
-    'displayImageUrl',
-    'product_url',
-    'productUrl',
-    'url',
-    'link',
-    'cutout_url',
-    'masked_url',
-  ]) {
-    final val = item[key]?.toString().trim();
-    if (val != null && val.isNotEmpty && val.toLowerCase() != 'null') {
-      return val;
-    }
-  }
-  return null;
 }

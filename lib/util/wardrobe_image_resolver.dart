@@ -821,34 +821,26 @@ ResolvedWardrobeImage resolveWardrobeImage(
   final rejectedUnsafe = isBoardSurface
       ? available.length - boardPool.length
       : 0;
-  final selected = boardPool.isEmpty
-      ? (available.isNotEmpty
-      ? _Candidate(
-    available.first.field,
-    available.first.url,
-    'catalog_fallback',
-    3,
-    false,
-    false,
-  )
-      : const _Candidate('none', null, 'missing', 5, false, false))
-      : isStyleThisPresentation
-  // Style This live grid: normalized/catalog asset first (matches the
-  // backend's own normalized_url -> masked_url -> image_url ordering for
-  // supporting pieces), falling back to the board-safe cutout ranking
-  // below only when no normalized candidate survived admission.
+  if (isBoardSurface && boardPool.isEmpty) {
+    return const ResolvedWardrobeImage(
+      url: null,
+      field: 'none',
+      sourceKind: 'missing',
+      tier: 5,
+      expectedTransparent: false,
+      validated: false,
+      shouldFrame: false,
+      candidates: [],
+    );
+  }
+  final selected = isStyleThisPresentation
       ? boardPool.firstWhere(
-        (c) => c.field == 'normalized_url',
-    orElse: () => boardPool.reduce((a, b) => b.tier < a.tier ? b : a),
-  )
+          (c) => c.field == 'normalized_url',
+          orElse: () => boardPool.reduce((a, b) => b.tier < a.tier ? b : a),
+        )
       : isBoardSurface
-  // Board canvas: cutout-first over garment-only sources. `tier` is a
-  // priority RANK, lower = higher preference (validated_cutout=0,
-  // legacy_masked=1, catalog=3) — not a quality score. Minimum-rank wins;
-  // reduce is stable on ties.
-      ? boardPool.reduce((a, b) => b.tier < a.tier ? b : a)
-  // Wardrobe grid etc: keep catalog-first (first non-null in order).
-      : boardPool.first;
+          ? boardPool.reduce((a, b) => b.tier < a.tier ? b : a)
+          : boardPool.first;
   // Ordered fallback candidates — board surfaces only. Rank order (lower tier
   // first, stable within a tier), deduped by URL identity. The renderer walks
   // this list when the preferred image fails at runtime.

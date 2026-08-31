@@ -164,6 +164,20 @@ void main() {
     expect(result.shouldFrame, isTrue);
   });
 
+  test('board surfaces do not fall back to raw originals when unsafe', () {
+    final result = resolveWardrobeImage({
+      'item_id': 'item-board-unsafe',
+      'image_url': 'https://test/original-selfie.jpg',
+      'preview_url': 'https://test/original-preview.jpg',
+      'raw_url': 'https://test/original-raw.jpg',
+    }, surface: 'style_board_live');
+
+    expect(result.url, isNull);
+    expect(result.field, 'none');
+    expect(result.sourceKind, 'missing');
+    expect(result.candidates, isEmpty);
+  });
+
   test('validated board cutout remains transparent', () {
     final result = resolveWardrobeImage({
       'item_id': 'item-board-validated',

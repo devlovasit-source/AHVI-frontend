@@ -727,30 +727,32 @@ class SavedBoardCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
             child: Row(
               children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 34,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [t.accent.tertiary, t.accent.primary],
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Material(
-                        type: MaterialType.transparency,
-                        child: InkWell(
+                if (onTryOn != null) ...[
+                  Expanded(
+                    child: SizedBox(
+                      height: 34,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [t.accent.tertiary, t.accent.primary],
+                          ),
                           borderRadius: BorderRadius.circular(8),
-                          onTap: onTryOn,
-                          child: Center(
-                            child: Text(
-                              context.tr('daily_wear_try_on'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: onAccent,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                        ),
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: onTryOn,
+                            child: Center(
+                              child: Text(
+                                context.tr('daily_wear_try_on'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: onAccent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ),
@@ -758,8 +760,8 @@ class SavedBoardCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: SizedBox(
                     height: 34,

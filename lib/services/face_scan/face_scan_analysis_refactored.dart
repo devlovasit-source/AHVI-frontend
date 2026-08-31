@@ -287,14 +287,14 @@ class FaceAnalysisService {
     final rating = FaceScanConfig.getSkinQualityRating(skinQuality);
     final issues = <String>[];
 
-    if (acneDetected) issues.add('acne');
-    if (pigmentationDetected) issues.add('pigmentation');
+    if (acneDetected) issues.add('acne-like breakouts');
+    if (pigmentationDetected) issues.add('uneven tone');
     if (darkCircles) issues.add('dark circles');
 
     if (issues.isEmpty) {
-      return '$rating skin condition detected.';
+      return '$rating skin profile review.';
     }
 
-    return '$rating skin condition. Detected: ${issues.join(", ")}.';
+    return '$rating skin profile review. Possible concerns: ${issues.join(", ")}.';
   }
 }
