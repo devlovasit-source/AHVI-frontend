@@ -664,7 +664,7 @@ class _AhviStylistFabState extends State<AhviStylistFab> {
                 children: [
                   Text(
                     AppLocalizations.t(context, 'ask_ahvi'),
-                    style: GoogleFonts.anton(
+                    style: TextStyle(
                       fontSize: 13,
                       color: Colors.white,
                       letterSpacing: 0.4,

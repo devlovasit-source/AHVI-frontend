@@ -535,7 +535,7 @@ class _Screen1State extends State<Screen1> with TickerProviderStateMixin {
                       fontWeight: FontWeight.w600,
                       color: accent,
                       letterSpacing: 0.1 * 11,
-                      fontFamily: 'DM Sans',
+                      fontFamily: 'Anton',
                     ),
                   ),
                 ],

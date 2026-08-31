@@ -305,6 +305,7 @@ class _Header extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF6B91FF),
                     letterSpacing: 1.32,
+                    fontFamily: 'Anton',
                   ),
                 ),
               ],

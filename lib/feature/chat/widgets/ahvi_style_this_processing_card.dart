@@ -50,7 +50,8 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 'AHVI',
-                style: GoogleFonts.inter(
+                style: TextStyle(
+                  fontFamily: 'Anton',
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.2,

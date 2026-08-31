@@ -3329,7 +3329,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                 const SizedBox(width: 7),
                 Text(
                   AppLocalizations.t(context, 'ask_ahvi'),
-                  style: GoogleFonts.anton(
+                  style: TextStyle(
                     fontSize: 11,
                     letterSpacing: 0.4,
                     color: Colors.white,

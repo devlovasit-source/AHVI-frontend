@@ -5023,6 +5023,7 @@ class _Screen4State extends State<Screen4>
                           child: Text(
                             'AHVI',
                             style: TextStyle(
+                              fontFamily: 'Anton',
                               color: _textHeading,
                               fontSize: 22,
                               fontWeight: FontWeight.w600,
@@ -5301,6 +5302,7 @@ class _Screen4State extends State<Screen4>
             Text(
               'AHVI',
               style: TextStyle(
+                fontFamily: 'Anton',
                 color: _textHeading,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
