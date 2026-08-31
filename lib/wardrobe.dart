@@ -3,6 +3,7 @@
 // ============================================================
 
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
@@ -75,6 +76,8 @@ Color _skincareChip(AppThemeTokens t) =>
 
 Uint8List _decodeBase64ToBytes(String value) => base64Decode(value);
 const Color kTransparent = Colors.transparent;
+const int wardrobeMaxItems = 6;
+const String wardrobeMaxItemsMessage = 'You can upload a maximum of 6 items.';
 
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ PUBLIC HELPER ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 void showAddToWardrobeModal(
@@ -2406,6 +2409,57 @@ class _ItemEditCtrls {
 }
 
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ ADD ITEM MODAL ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Camera embedded inside ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+class _AddOccasionDialog extends StatefulWidget {
+  final int maxLength;
+
+  const _AddOccasionDialog({required this.maxLength});
+
+  @override
+  State<_AddOccasionDialog> createState() => _AddOccasionDialogState();
+}
+
+class _AddOccasionDialogState extends State<_AddOccasionDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add a tag'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        maxLength: widget.maxLength,
+        maxLines: 1,
+        decoration: const InputDecoration(hintText: 'e.g. Beach, Gym'),
+        onSubmitted: (value) => Navigator.of(context).pop(value),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+}
+
 class _AddItemModal extends StatefulWidget {
   final void Function(Map<String, dynamic> item) onSave;
   const _AddItemModal({required this.onSave});
@@ -2442,6 +2496,8 @@ class _AddItemModalState extends State<_AddItemModal>
   // Sanitized, user-safe failure message for the error/retry screen. Never a
   // raw exception/HTTP/JSON/Appwrite string.
   String? _saveError;
+  OverlayEntry? _maxItemsOverlay;
+  Timer? _maxItemsOverlayTimer;
 
   // Truthful outcome of the last save call, captured from the backend's own
   // saved_count/rows — the success screen must never infer this from the
@@ -2457,6 +2513,80 @@ class _AddItemModalState extends State<_AddItemModal>
   // detected-item id. Built lazily so edits made before a save failure are
   // preserved verbatim across Retry.
   final Map<String, _ItemEditCtrls> _itemCtrls = {};
+
+  void _showMaxItemsWarning() {
+    if (!mounted) return;
+    _maxItemsOverlayTimer?.cancel();
+    _maxItemsOverlay?.remove();
+    _maxItemsOverlay = OverlayEntry(
+      builder: (overlayContext) => Positioned(
+        top: 0,
+        left: 16,
+        right: 16,
+        child: SafeArea(
+          child: IgnorePointer(
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 13,
+                ),
+                decoration: BoxDecoration(
+                  color: overlayContext.themeTokens.panel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: overlayContext.themeTokens.cardBorder),
+                  boxShadow: [
+                    BoxShadow(
+                      color: overlayContext.themeTokens.textPrimary.withValues(
+                        alpha: 0.12,
+                      ),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 18,
+                      color: overlayContext.themeTokens.accent.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        wardrobeMaxItemsMessage,
+                        style: TextStyle(
+                          color: overlayContext.themeTokens.textPrimary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context, rootOverlay: true).insert(_maxItemsOverlay!);
+    _maxItemsOverlayTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _maxItemsOverlay?.remove();
+      _maxItemsOverlay = null;
+      _maxItemsOverlayTimer = null;
+    });
+  }
+
+  void _removeMaxItemsWarning() {
+    _maxItemsOverlayTimer?.cancel();
+    _maxItemsOverlayTimer = null;
+    _maxItemsOverlay?.remove();
+    _maxItemsOverlay = null;
+  }
 
   // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Edit form ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
   static const _cats = [
@@ -2609,7 +2739,7 @@ class _AddItemModalState extends State<_AddItemModal>
         maxWidth: 1600,
         maxHeight: 1600,
         imageQuality: 82,
-        limit: 6,
+        limit: wardrobeMaxItems,
       );
       if (files.isEmpty) return;
       if (!mounted) return;
@@ -2629,10 +2759,8 @@ class _AddItemModalState extends State<_AddItemModal>
       });
 
       // Warn if user had more than 6 selected (some platforms ignore limit)
-      final capped = files.take(6).toList();
-      if (files.length > 6) {
-        _toast('Only the first 6 images were selected');
-      }
+      final capped = files.take(wardrobeMaxItems).toList();
+      if (files.length > wardrobeMaxItems) _showMaxItemsWarning();
 
       final bytesList = await Future.wait(capped.map((f) => f.readAsBytes()));
       if (!mounted) return;
@@ -3001,8 +3129,8 @@ class _AddItemModalState extends State<_AddItemModal>
       _toast(AppLocalizations.t(context, 'wardrobe_no_items_to_add'));
       return;
     }
-    if (selected.length > 6) {
-      _toast('Maximum 6 items per outfit');
+    if (selected.length > wardrobeMaxItems) {
+      _showMaxItemsWarning();
       return;
     }
     // Privacy safety net: inline edits keep item.name/subCategory live via
@@ -3244,6 +3372,7 @@ class _AddItemModalState extends State<_AddItemModal>
 
   @override
   void dispose() {
+    _removeMaxItemsWarning();
     _slideCtrl.dispose();
     _camCtrl?.dispose();
     _reviewPageCtrl.dispose();
@@ -4313,7 +4442,8 @@ class _AddItemModalState extends State<_AddItemModal>
   }
 
   void _toggleSelectAll(bool select) {
-    final tooMany = select && _detected.where((i) => i.isSaveable).length > 6;
+    final tooMany =
+        select && _detected.where((i) => i.isSaveable).length > wardrobeMaxItems;
     setState(() {
       var count = 0;
       for (final i in _detected) {
@@ -4321,11 +4451,56 @@ class _AddItemModalState extends State<_AddItemModal>
           i.selected = false;
           continue;
         }
-        i.selected = select && count < 6;
+        i.selected = select && count < wardrobeMaxItems;
         if (i.selected) count++;
       }
     });
-    if (tooMany) _toast('Maximum 6 items selected');
+    if (tooMany) _showMaxItemsWarning();
+  }
+
+  static const _maxCustomOccasions = 6;
+  static const _maxOccasionTagLength = 24;
+
+  List<String> _displayOccasions(_DetectedItem item) {
+    final labels = <String>[..._occs];
+    final seen = _occs.map(canonicalOccasionKey).toSet();
+    for (final raw in item.occasions) {
+      final key = canonicalOccasionKey(raw);
+      if (key.isEmpty || !seen.add(key)) continue;
+      final label = humanizeOccasion(raw);
+      if (label.isNotEmpty) labels.add(label);
+    }
+    return labels;
+  }
+
+  int _customOccasionCount(_DetectedItem item) {
+    final seen = <String>{};
+    return item.occasions.where((raw) {
+      final key = canonicalOccasionKey(raw);
+      return key.isNotEmpty && !isPresetOccasion(raw) && seen.add(key);
+    }).length;
+  }
+
+  Future<void> _showAddOccasionDialog(_DetectedItem item) async {
+    if (_customOccasionCount(item) >= _maxCustomOccasions) {
+      _toast('You can add up to $_maxCustomOccasions custom tags per item.');
+      return;
+    }
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => const _AddOccasionDialog(
+        maxLength: _maxOccasionTagLength,
+      ),
+    );
+    final tag = result?.trim() ?? '';
+    if (tag.isEmpty || !mounted) return;
+    if (item.occasions.any((raw) => occasionMatches(raw, tag))) return;
+    if (isPresetOccasion(tag)) {
+      setState(() => item.occasions = toggleOccasion(item.occasions, tag));
+      return;
+    }
+    if (_customOccasionCount(item) >= _maxCustomOccasions) return;
+    setState(() => item.occasions = [...item.occasions, tag]);
   }
 
   Widget _buildItemCard(_DetectedItem item, {required bool large}) {
@@ -4395,14 +4570,15 @@ class _AddItemModalState extends State<_AddItemModal>
                       ? 'Included in this upload'
                       : 'Excluded from this upload',
                   child: GestureDetector(
+                    key: ValueKey('wardrobe-select-${item.id}'),
                     onTap: _isSavingWardrobe
                         ? null
                         : () {
                             final selCount = _detected
                                 .where((d) => d.selected && d.isSaveable)
                                 .length;
-                            if (!item.selected && selCount >= 6) {
-                              _toast('Maximum 6 items per outfit');
+                            if (!item.selected && selCount >= wardrobeMaxItems) {
+                              _showMaxItemsWarning();
                               return;
                             }
                             setState(() => item.selected = !item.selected);
@@ -4542,7 +4718,8 @@ class _AddItemModalState extends State<_AddItemModal>
             child: Wrap(
               spacing: 7,
               runSpacing: 7,
-              children: _occs.map((occ) {
+              children: [
+                ..._displayOccasions(item).map((occ) {
                 final active = item.occasions.any(
                   (o) => occasionMatches(o, occ),
                 );
@@ -4560,13 +4737,7 @@ class _AddItemModalState extends State<_AddItemModal>
                   onTap: disabled
                       ? null
                       : () => setState(() {
-                          if (active) {
-                            item.occasions = item.occasions
-                                .where((o) => !occasionMatches(o, occ))
-                                .toList();
-                          } else {
-                            item.occasions = [...item.occasions, occ];
-                          }
+                          item.occasions = toggleOccasion(item.occasions, occ);
                         }),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
@@ -4604,7 +4775,27 @@ class _AddItemModalState extends State<_AddItemModal>
                     ),
                   ),
                 );
-              }).toList(),
+                }),
+                GestureDetector(
+                  key: const ValueKey('wardrobe-add-occasion'),
+                  onTap: () => _showAddOccasionDialog(item),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: t.backgroundSecondary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: t.cardBorder, width: 1.5),
+                    ),
+                    child: Icon(
+                      Icons.add_rounded,
+                      size: 18,
+                      color: t.accent.primary,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 12),

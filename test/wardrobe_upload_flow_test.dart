@@ -111,6 +111,7 @@ Map<String, dynamic> _detectedItemJson({
   String subCategory = 'Shirt',
   List<String> occasions = const ['upload_occasion_everyday'],
   String validationStatus = 'ok',
+  bool selectedByDefault = true,
 }) => {
   'item_id': id,
   'name': name,
@@ -120,7 +121,7 @@ Map<String, dynamic> _detectedItemJson({
   'pattern': 'plain',
   'occasions': occasions,
   'validation_status': validationStatus,
-  'selected_by_default': true,
+  'selected_by_default': selectedByDefault,
   'confidence': 0.92,
 };
 
@@ -133,11 +134,15 @@ Future<void> _openReview(
   required _FakeBackendService backend,
   required List<Map<String, dynamic>> items,
   double? textScale,
+  List<XFile>? pickedFiles,
+  Map<String, dynamic> Function(List<Uint8List> images)? onAnalyze,
 }) async {
-  backend.onAnalyze = (_) => {'items': items};
-  ImagePickerPlatform.instance = _FakeImagePickerPlatform([
-    XFile.fromData(_onePxPng, mimeType: 'image/png', name: 'pick.png'),
-  ]);
+  backend.onAnalyze = onAnalyze ?? (_) => {'items': items};
+  ImagePickerPlatform.instance = _FakeImagePickerPlatform(
+    pickedFiles ?? [
+      XFile.fromData(_onePxPng, mimeType: 'image/png', name: 'pick.png'),
+    ],
+  );
 
   // Provider wraps the whole MaterialApp (not just `home`): the upload
   // dialog opens with `useRootNavigator: true`, so its route is a sibling
@@ -181,6 +186,26 @@ Future<void> _openReview(
     'review',
     'wardrobe-error',
   ]);
+}
+
+Future<void> _scrollToAndTapAddOccasion(WidgetTester tester) async {
+  final button = find.byKey(const ValueKey('wardrobe-add-occasion'));
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
+}
+
+Finder _customOccasionField() => find.byWidgetPredicate(
+  (widget) => widget is TextField &&
+      widget.decoration?.hintText == 'e.g. Beach, Gym',
+);
+
+Future<void> _addCustomOccasion(WidgetTester tester, String tag) async {
+  await _scrollToAndTapAddOccasion(tester);
+  await tester.pumpAndSettle();
+  await tester.enterText(_customOccasionField(), tag);
+  await tester.tap(find.text('Add'));
+  await tester.pumpAndSettle();
 }
 
 /// Repeatedly pumps small, bounded frames (never `pumpAndSettle`, which
@@ -507,4 +532,86 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('19: custom occasion can be added and saved', (tester) async {
+    final backend = _FakeBackendService();
+    await _openReview(tester, backend: backend, items: [_detectedItemJson()]);
+
+    await _addCustomOccasion(tester, 'Gym');
+    expect(find.text('Gym'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+    await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+    expect(backend.saveCalls.single.single['occasions'], contains('Gym'));
+  });
+
+  testWidgets('20: custom occasion input is limited to 24 characters', (
+    tester,
+  ) async {
+    final backend = _FakeBackendService();
+    await _openReview(tester, backend: backend, items: [_detectedItemJson()]);
+
+    await _scrollToAndTapAddOccasion(tester);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      _customOccasionField(),
+      'A Tag Name That Is Far Too Long To Fit',
+    );
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+
+    final labels = tester
+        .widgetList<Text>(
+          find.byWidgetPredicate(
+            (widget) => widget is Text && (widget.data ?? '').startsWith('A Tag'),
+          ),
+        )
+        .map((widget) => widget.data!)
+        .toList();
+    expect(labels, isNotEmpty);
+    expect(labels.first.length, lessThanOrEqualTo(24));
+    expect(
+      'A Tag Name That Is Far Too Long To Fit'.startsWith(labels.first),
+      isTrue,
+    );
+  });
+
+  testWidgets('21: six custom occasions is the maximum', (tester) async {
+    final backend = _FakeBackendService();
+    await _openReview(tester, backend: backend, items: [_detectedItemJson()]);
+
+    for (var i = 1; i <= 6; i++) {
+      await _addCustomOccasion(tester, 'Tag$i');
+    }
+    expect(find.text('Tag6'), findsOneWidget);
+
+    await _scrollToAndTapAddOccasion(tester);
+    await tester.pump();
+    expect(_customOccasionField(), findsNothing);
+    expect(find.text('Tag7'), findsNothing);
+  });
+
+  testWidgets('22: custom duplicates and preset aliases do not duplicate', (
+    tester,
+  ) async {
+    final backend = _FakeBackendService();
+    await _openReview(
+      tester,
+      backend: backend,
+      items: [
+        _detectedItemJson(occasions: const ['office', 'travel']),
+      ],
+    );
+
+    await _addCustomOccasion(tester, 'Gym');
+    await _addCustomOccasion(tester, 'gym');
+    await _addCustomOccasion(tester, 'Work');
+
+    expect(find.text('Gym'), findsOneWidget);
+    expect(find.text('Work'), findsOneWidget);
+    expect(find.text('Travel'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+    await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+    expect(backend.saveCalls.single.single['occasions'], ['office', 'travel', 'Gym']);
+  });
 }
