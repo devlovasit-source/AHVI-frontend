@@ -11,7 +11,9 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:myapp/app_localizations.dart';
+import 'package:myapp/feature/chat/widgets/blocks/visual_directions/shareable_outfit_board.dart';
 import 'package:myapp/services/appwrite_service.dart';
+import 'package:myapp/style_board/board_models.dart';
 import 'package:myapp/style_board/saved_board_images.dart';
 import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:myapp/style_board/saved_board_thumb.dart';
@@ -357,6 +359,11 @@ class SavedBoardCard extends StatelessWidget {
                             shareBoundaryKey,
                             title: title,
                             caption: '$title\n\n$description',
+                            occasion: category,
+                            whyText: whyItWorks.isNotEmpty
+                                ? whyItWorks
+                                : description,
+                            items: items,
                           ),
                           icon: const Icon(Icons.ios_share_rounded, size: 18),
                           label: const Text('Share'),
@@ -425,10 +432,26 @@ class SavedBoardCard extends StatelessWidget {
       GlobalKey boundaryKey, {
         required String title,
         required String caption,
+        required String occasion,
+        required String whyText,
+        required List<Map<String, dynamic>> items,
       }) async {
     debugPrint('AHVI_SAVED_BOARD_SHARE_TAP');
     try {
-      final bytes = await _captureBoundaryPng(boundaryKey);
+      // Prefer the same branded ShareableOutfitBoard template used by the
+      // live Style This / AHVI Edit cards (title + occasion + "why it
+      // works"), built off-screen so the plain thumbnail is never what gets
+      // shared. Only fall back to the plain thumbnail RepaintBoundary if the
+      // branded composition can't mount (e.g. no items with images).
+      final bytes =
+          await _captureShareComposition(
+            context,
+            title: title,
+            occasion: occasion,
+            whyText: whyText,
+            items: items,
+          ) ??
+              await _captureBoundaryPng(boundaryKey);
       if (bytes == null || bytes.isEmpty) {
         throw Exception('capture_returned_no_bytes');
       }
@@ -467,6 +490,72 @@ class SavedBoardCard extends StatelessWidget {
           );
         }
       }
+    }
+  }
+
+  /// Builds the same branded ShareableOutfitBoard used by the live Style
+  /// This / AHVI Edit cards (see OutfitActionBar._captureShareComposition in
+  /// ahvi_outfit_board_card.dart) off-screen and captures it, so Share from a
+  /// saved look produces the identical title + occasion + "why it works"
+  /// template rather than a bare outfit thumbnail. Returns null when it
+  /// cannot mount (no overlay, or no items with a resolvable image), letting
+  /// the caller fall back to the plain thumbnail RepaintBoundary capture.
+  Future<Uint8List?> _captureShareComposition(
+      BuildContext context, {
+        required String title,
+        required String occasion,
+        required String whyText,
+        required List<Map<String, dynamic>> items,
+      }) async {
+    if (!context.mounted) return null;
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return null;
+    final boardItems = items
+        .map((item) => StyleBoardItem.fromJson(item))
+        .where((item) => item.displayImageUrl.isNotEmpty)
+        .toList(growable: false);
+    if (boardItems.isEmpty) return null;
+    final key = GlobalKey();
+    final entry = OverlayEntry(
+      builder: (_) => Positioned(
+        left: -10000,
+        top: -10000,
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Material(
+            color: Colors.transparent,
+            child: ShareableOutfitBoard(
+              boundaryKey: key,
+              title: title,
+              occasion: occasion,
+              items: boardItems,
+              whyText: whyText,
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(entry);
+    try {
+      // Let it lay out + paint. Garment images are already in Flutter's
+      // image cache from the visible thumbnail, so they resolve within a
+      // few frames.
+      for (var i = 0; i < 5; i++) {
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await WidgetsBinding.instance.endOfFrame;
+      final ro = key.currentContext?.findRenderObject();
+      if (ro is! RenderRepaintBoundary) return null;
+      final image = await ro.toImage(pixelRatio: 3.0);
+      try {
+        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+        return data?.buffer.asUint8List();
+      } finally {
+        image.dispose();
+      }
+    } finally {
+      entry.remove();
     }
   }
 
