@@ -23,6 +23,10 @@ const savedBoardBuckets = <String>{
 const _savedBoardV1Schema = 'ahvi_saved_board_v1';
 const _savedBoardV2Schema = 'ahvi_saved_board_v2';
 
+// Private-in-practice handoff from a live board adapter. The value is removed
+// by _compactItem and never enters the persisted JSON contract.
+const savedBoardAuthoritativeImageKey = '_saved_board_authoritative_image';
+
 class SavedBoardPersistenceException implements Exception {
   final String reason;
   final String userMessage;
@@ -480,11 +484,18 @@ Map<String, dynamic> _compactItem(Map<String, dynamic> raw) {
   // here would apply wardrobe-grid rules (no board-safety guard, no
   // cutout-first ranking) and could freeze a different image than what the
   // user actually saw and chose to save.
-  final resolved = resolveWardrobeImage(
-    raw,
-    surface: 'style_board_saved',
-    emitDiagnostic: false,
-  );
+  final handedOff = raw[savedBoardAuthoritativeImageKey];
+  final resolved =
+      handedOff is ResolvedWardrobeImage &&
+          _isConsistentAuthoritativeImage(raw, handedOff)
+      ? handedOff
+      : resolveWardrobeImage(
+          // Raw callers still resolve under the saved-board policy. A live
+          // board adapter uses the typed handoff above to avoid a second vote.
+          raw,
+          surface: 'style_board_saved',
+          emitDiagnostic: false,
+        );
   if (!isValidSavedBoardHttpUrl(resolved.url)) {
     throw const SavedBoardPersistenceException(
       'invalid_item_image',
@@ -519,7 +530,9 @@ Map<String, dynamic> _compactItem(Map<String, dynamic> raw) {
       'cutout_status',
       'image_status',
     ])
-      if (_text(raw[key]).isNotEmpty) key: _text(raw[key]),
+      if (_text(raw[key]).isNotEmpty &&
+          (key == 'original_image_url' || key == resolved.field))
+        key: _text(raw[key]),
   };
   final position = raw['position'] is Map
       ? Map<String, dynamic>.from(raw['position'] as Map)
@@ -538,6 +551,84 @@ Map<String, dynamic> _compactItem(Map<String, dynamic> raw) {
     if (z != null) item['z'] = z;
   }
   return item;
+}
+
+bool _isConsistentAuthoritativeImage(
+  Map<String, dynamic> raw,
+  ResolvedWardrobeImage resolved,
+) {
+  final url = _text(resolved.url);
+  final field = _text(resolved.field);
+  final sourceKind = _text(resolved.sourceKind);
+  if (!isValidSavedBoardHttpUrl(url) || field.isEmpty || sourceKind.isEmpty) {
+    return false;
+  }
+
+  final fieldUrl = switch (field) {
+    'image_url' => raw['image_url'] ?? raw['imageUrl'],
+    'normalized_url' => raw['normalized_url'] ?? raw['normalizedUrl'],
+    'masked_url' => raw['masked_url'] ?? raw['maskedUrl'],
+    'masked_image_url' => raw['masked_image_url'] ?? raw['maskedImageUrl'],
+    'cutout_url' => raw['cutout_url'] ?? raw['cutoutUrl'],
+    'board_image_url' => raw['board_image_url'] ?? raw['boardImageUrl'],
+    'rmbg_url' => raw['rmbg_url'] ?? raw['rmbgUrl'],
+    'transparent_image_url' =>
+      raw['transparent_image_url'] ?? raw['transparentImageUrl'],
+    'processed_url' => raw['processed_url'] ?? raw['processedUrl'],
+    'asset_cutout_url' => raw['asset_cutout_url'] ?? raw['assetCutoutUrl'],
+    'asset_masked_url' => raw['asset_masked_url'] ?? raw['assetMaskedUrl'],
+    'processed_asset_url' =>
+      raw['processed_asset_url'] ?? raw['processedAssetUrl'],
+    'normalized_image_url' =>
+      raw['normalized_image_url'] ?? raw['normalizedImageUrl'],
+    'catalog_image_url' => raw['catalog_image_url'] ?? raw['catalogImageUrl'],
+    'display_image_url' => raw['display_image_url'] ?? raw['displayImageUrl'],
+    _ => null,
+  };
+  if (!_sameUrlIdentity(_text(fieldUrl), url)) return false;
+
+  const transparentSourceKinds = {
+    'validated_cutout',
+    'legacy_masked_cutout',
+    'style_asset_cutout',
+    'masked',
+    'processed_cutout',
+  };
+  const opaqueSourceKinds = {
+    'catalog_fallback',
+    'original',
+    'style_asset_original',
+    'style_asset_processed',
+  };
+  final sourceKnown =
+      transparentSourceKinds.contains(sourceKind) ||
+      opaqueSourceKinds.contains(sourceKind);
+  if (!sourceKnown) return false;
+  const catalogFields = {
+    'normalized_url',
+    'normalized_image_url',
+    'catalog_image_url',
+    'display_image_url',
+  };
+  if (catalogFields.contains(field) &&
+      transparentSourceKinds.contains(sourceKind)) {
+    return false;
+  }
+  return resolved.expectedTransparent ==
+      transparentSourceKinds.contains(sourceKind);
+}
+
+bool _sameUrlIdentity(String a, String b) {
+  if (a == b) return true;
+  final uriA = Uri.tryParse(a);
+  final uriB = Uri.tryParse(b);
+  if (uriA == null || uriB == null || !uriA.hasScheme || !uriB.hasScheme) {
+    return false;
+  }
+  return uriA.scheme.toLowerCase() == uriB.scheme.toLowerCase() &&
+      uriA.host.toLowerCase() == uriB.host.toLowerCase() &&
+      uriA.port == uriB.port &&
+      uriA.path == uriB.path;
 }
 
 String _inferLayoutMode(List<Map<String, dynamic>> items) {

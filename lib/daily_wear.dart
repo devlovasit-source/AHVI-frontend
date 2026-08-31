@@ -40,6 +40,44 @@ const dailyWearSaveOccasionOptions = <(String, String, IconData)>[
   ('everything_else', 'Everything Else', Icons.auto_awesome_rounded),
 ];
 
+List<Map<String, dynamic>> buildDailyWearSaveItems(StyleBoardData board) {
+  return board.items
+      .map((item) {
+        final saved = Map<String, dynamic>.from(item.raw)
+          ..['id'] = item.id
+          ..['item_id'] = item.id
+          ..['role'] = item.role.name
+          ..['name'] = item.name
+          ..['source'] = item.source;
+        final originalImage = (saved['image_url'] ?? saved['imageUrl'])
+            ?.toString()
+            .trim();
+        final resolved = item.resolveImage(surface: 'style_board');
+        if (originalImage != null &&
+            originalImage.isNotEmpty &&
+            resolved.field != 'image_url') {
+          saved['original_image_url'] = originalImage;
+        }
+        if (resolved.field != 'image_url') {
+          saved.remove('image_url');
+          saved.remove('imageUrl');
+        }
+        if (item.maskedUrl.isNotEmpty) saved['masked_url'] = item.maskedUrl;
+        if (item.normalizedUrl.isNotEmpty) {
+          saved['normalized_url'] = item.normalizedUrl;
+        }
+        if (item.boardImageUrl.isNotEmpty) {
+          saved['board_image_url'] = item.boardImageUrl;
+        }
+        if (resolved.field == 'image_url' && resolved.url != null) {
+          saved['image_url'] = resolved.url;
+        }
+        saved[savedBoardAuthoritativeImageKey] = resolved;
+        return saved;
+      })
+      .toList(growable: false);
+}
+
 class DailyWearScreen extends StatefulWidget {
   const DailyWearScreen({super.key});
 
@@ -1495,38 +1533,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   }
 
   List<Map<String, dynamic>> _savedDailyWearItems(StyleBoardData board) {
-    return board.items.map((item) {
-      final saved = Map<String, dynamic>.from(item.raw)
-        ..['id'] = item.id
-        ..['item_id'] = item.id
-        ..['role'] = item.role.name
-        ..['name'] = item.name
-        ..['source'] = item.source;
-      final originalImage = (saved['image_url'] ?? saved['imageUrl'])
-          ?.toString()
-          .trim();
-      final resolved = item.resolveImage(surface: 'style_board');
-      if (originalImage != null &&
-          originalImage.isNotEmpty &&
-          resolved.field != 'image_url') {
-        saved['original_image_url'] = originalImage;
-      }
-      if (resolved.field != 'image_url') {
-        saved.remove('image_url');
-        saved.remove('imageUrl');
-      }
-      if (item.maskedUrl.isNotEmpty) saved['masked_url'] = item.maskedUrl;
-      if (item.normalizedUrl.isNotEmpty) {
-        saved['normalized_url'] = item.normalizedUrl;
-      }
-      if (item.boardImageUrl.isNotEmpty) {
-        saved['board_image_url'] = item.boardImageUrl;
-      }
-      if (resolved.field == 'image_url' && resolved.url != null) {
-        saved['image_url'] = resolved.url;
-      }
-      return saved;
-    }).toList(growable: false);
+    return buildDailyWearSaveItems(board);
   }
 
   Future<void> _persistCurrentLook() async {
