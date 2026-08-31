@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:myapp/models/calendar_event_record.dart';
 import 'package:myapp/services/backend_service.dart';
+import 'package:myapp/services/custom_board_name_store.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/calendar.dart';
 import 'package:myapp/theme/theme_tokens.dart';
@@ -299,6 +300,8 @@ class _BoardsScreenState extends State<BoardsScreen>
   false; // <-- FIX: Tracks if entry animations fired
   bool _tabSwitching = false;
   final List<String> _customBoardNames = [];
+  final CustomBoardNameStore _customBoardNameStore = CustomBoardNameStore();
+  Future<void> _customBoardWrite = Future<void>.value();
   final TextEditingController _createBoardController = TextEditingController();
   final FocusNode _createBoardFocusNode = FocusNode();
 
@@ -349,6 +352,7 @@ class _BoardsScreenState extends State<BoardsScreen>
         if (mounted) _sectionCtrl.forward();
       });
     });
+    _loadCustomBoardNames();
   }
 
   @override
@@ -470,6 +474,7 @@ class _BoardsScreenState extends State<BoardsScreen>
     setState(() {
       _customBoardNames.add(trimmed);
     });
+    _persistCustomBoardNames();
     _createBoardFocusNode.unfocus();
     _createBoardController.clear();
     Navigator.of(context, rootNavigator: true).maybePop();
@@ -478,6 +483,32 @@ class _BoardsScreenState extends State<BoardsScreen>
   void _deleteCustomBoard(String boardName) {
     setState(() {
       _customBoardNames.remove(boardName);
+    });
+    _persistCustomBoardNames();
+  }
+
+  Future<void> _loadCustomBoardNames() async {
+    final loaded = await _customBoardNameStore.load();
+    if (!mounted) return;
+    setState(() {
+      final merged = normalizeCustomBoardNames([
+        ...loaded,
+        ..._customBoardNames,
+      ]);
+      _customBoardNames
+        ..clear()
+        ..addAll(merged);
+    });
+  }
+
+  void _persistCustomBoardNames() {
+    final snapshot = List<String>.from(_customBoardNames);
+    _customBoardWrite = _customBoardWrite.then((_) async {
+      try {
+        await _customBoardNameStore.save(snapshot);
+      } catch (_) {
+        // A local preference failure must not block board navigation.
+      }
     });
   }
 
