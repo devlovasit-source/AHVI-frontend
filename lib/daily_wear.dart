@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/feature/chat/widgets/ahvi_processing_bubble.dart';
 import 'package:flutter/semantics.dart';
@@ -26,6 +29,7 @@ import 'package:myapp/widgets/basic_markdown_text.dart';
 import 'package:myapp/widgets/clear_chat_dialog.dart';
 import 'package:myapp/widgets/try_on_coming_soon.dart';
 import 'package:myapp/widgets/ahvi_unified_outfit_grid.dart';
+import 'package:myapp/feature/chat/widgets/blocks/visual_directions/shareable_outfit_board.dart';
 
 enum _TryOnStage { preview, loading, camera, captured }
 
@@ -580,14 +584,14 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         items: board.items
             .map(
               (item) => AhviUnifiedOutfitGridItem.fromStyleBoardItem(
-                item,
-                // 'style_board' prefix is required for
-                // wardrobe_image_resolver's board-safe, cutout-first
-                // candidate ordering to apply to the canonical Daily Wear
-                // board.
-                surface: 'style_board_daily_wear_unified_grid',
-              ),
-            )
+            item,
+            // 'style_board' prefix is required for
+            // wardrobe_image_resolver's board-safe, cutout-first
+            // candidate ordering to apply to the canonical Daily Wear
+            // board.
+            surface: 'style_board_daily_wear_unified_grid',
+          ),
+        )
             .toList(growable: false),
       );
 
@@ -1184,12 +1188,66 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   GlobalKey _boardCanvasKeyFor(String outfitId) =>
       _boardCanvasKeys.putIfAbsent(outfitId, () => GlobalKey());
 
-  /// Captures the on-screen Daily Wear board (via RepaintBoundary) and
-  /// shares it as an image with descriptive text. Never changes the board
-  /// renderer or item parser -- purely captures whatever is already
-  /// rendered. Falls back to a text-only share if image capture fails for
-  /// any reason (missing boundary, network image not yet painted, etc.), and
-  /// never throws back into the caller.
+  /// Builds the same dedicated ShareableOutfitBoard used by Style Board
+  /// sharing, using this Daily Wear card's already-generated StyleBoardData.
+  /// This keeps the shared image consistent: same items, title, occasion and
+  /// "Why this works" copy.
+  Future<Uint8List?> _captureDailyShareComposition(
+      Map<String, dynamic> outfit,
+      ) async {
+    if (!mounted) return null;
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return null;
+
+    final board = _styleBoardFromOutfit(outfit);
+    if (board == null || board.items.isEmpty) return null;
+
+    final key = GlobalKey();
+    final entry = OverlayEntry(
+      builder: (_) => Positioned(
+        left: -10000,
+        top: -10000,
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Material(
+            color: Colors.transparent,
+            child: ShareableOutfitBoard(
+              boundaryKey: key,
+              title: board.title,
+              occasion: board.occasion ?? '',
+              items: board.items,
+              whyText: board.whyItWorks,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlay.insert(entry);
+    try {
+      for (var i = 0; i < 5; i++) {
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await WidgetsBinding.instance.endOfFrame;
+
+      final renderObject = key.currentContext?.findRenderObject();
+      if (renderObject is! RenderRepaintBoundary) return null;
+
+      final image = await renderObject.toImage(pixelRatio: 3.0);
+      try {
+        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+        return data?.buffer.asUint8List();
+      } finally {
+        image.dispose();
+      }
+    } finally {
+      entry.remove();
+    }
+  }
+
+  /// Shares Daily Wear using the exact same shareable board layout as Style
+  /// Board. Falls back to the existing rendered boundary, then to text-only.
   Future<void> _shareOutfit(Map<String, dynamic> outfit) async {
     final outfitId = (outfit['id'] ?? '').toString();
     final title = (outfit['name'] ?? outfit['nameKey'] ?? 'Daily Look')
@@ -1198,13 +1256,21 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     final shareText = title.isEmpty
         ? 'My AHVI daily look'
         : '$title — styled by AHVI';
-    final key = _boardCanvasKeys[outfitId];
+
     try {
-      final bytes = key == null ? null : await BoardExporter.capturePng(key);
+      final composed = await _captureDailyShareComposition(outfit);
+      Uint8List? bytes = composed;
+
+      if (bytes == null || bytes.isEmpty) {
+        final key = _boardCanvasKeys[outfitId];
+        bytes = key == null ? null : await BoardExporter.capturePng(key);
+      }
+
       if (bytes != null && bytes.isNotEmpty) {
         final file = await BoardExporter.writeToTempFile(
           bytes,
-          filename: 'ahvi_daily_board_${outfitId.isEmpty ? DateTime.now().millisecondsSinceEpoch : outfitId}.png',
+          filename:
+          'ahvi_daily_board_${outfitId.isEmpty ? DateTime.now().millisecondsSinceEpoch : outfitId}.png',
         );
         if (file != null) {
           await SharePlus.instance.share(
@@ -1220,8 +1286,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     } catch (e) {
       debugPrint('AHVI_DAILY_WEAR_SHARE_IMAGE_FAILED: $e');
     }
-    // Text fallback -- image capture unavailable/failed, but sharing must
-    // still work and must never crash the screen.
+
     try {
       await SharePlus.instance.share(
         ShareParams(
@@ -1544,8 +1609,8 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         .map((item) => item.displayImageUrl.trim())
         .firstWhere(
           (url) => url.isNotEmpty,
-          orElse: () => '',
-        );
+      orElse: () => '',
+    );
     if (imageUrl.isEmpty) {
       _showToast(AppLocalizations.t(context, 'daily_wear_save_failed'));
       return;
@@ -1656,9 +1721,9 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   /// must gate any "saved" UI state on this return value, never flip it
   /// optimistically before the Appwrite write is confirmed.
   Future<bool> _saveOutfitToBoards(
-    Map<String, dynamic> outfit, {
-    String occasionBucket = 'everything_else',
-  }) async {
+      Map<String, dynamic> outfit, {
+        String occasionBucket = 'everything_else',
+      }) async {
     final board = _styleBoardFromOutfit(outfit);
     final title = (outfit['name'] ?? outfit['nameKey'] ?? 'Daily Look')
         .toString()
@@ -1669,8 +1734,8 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         .map((item) => item.displayImageUrl.trim())
         .firstWhere(
           (url) => url.isNotEmpty,
-          orElse: () => '',
-        );
+      orElse: () => '',
+    );
     if (imageUrl.isEmpty) return false;
 
     try {
@@ -1778,7 +1843,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         isUser: false,
         createdAt: DateTime.now(),
         excludeFromSemanticHistory:
-            !shouldAppendModuleChatResponseToSemanticHistory(response),
+        !shouldAppendModuleChatResponseToSemanticHistory(response),
       );
       setState(() {
         _isTyping = false;
@@ -3177,7 +3242,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                       }),
                       const SizedBox(width: 5),
                       _smallShare(
-                        AppLocalizations.t(context, card['nameKey'] as String),
+                        fullOutfit.isNotEmpty ? fullOutfit : card,
                       ),
                     ],
                   ),
@@ -3225,12 +3290,9 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     ),
   );
 
-  Widget _smallShare(String text) => _PressScaleButton(
+  Widget _smallShare(Map<String, dynamic> outfit) => _PressScaleButton(
     scaleDown: 0.92,
-    onTap: () {
-      Clipboard.setData(ClipboardData(text: text));
-      _showToast(AppLocalizations.t(context, 'daily_wear_toast_link_copied'));
-    },
+    onTap: () => _shareOutfit(outfit),
     child: Container(
       width: 30,
       height: 30,
@@ -4185,21 +4247,21 @@ class _ChatBubble extends StatelessWidget {
                   ),
                   child: isUser
                       ? Text(
-                          message.text,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            height: 1.6,
-                            color: t.textPrimary,
-                          ),
-                        )
+                    message.text,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      height: 1.6,
+                      color: t.textPrimary,
+                    ),
+                  )
                       : BasicMarkdownText(
-                          message.text,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            height: 1.6,
-                            color: t.textPrimary,
-                          ),
-                        ),
+                    message.text,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      height: 1.6,
+                      color: t.textPrimary,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Row(

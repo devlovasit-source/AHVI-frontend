@@ -18,6 +18,7 @@ class ShareableOutfitBoard extends StatelessWidget {
   final String title;
   final String occasion;
   final List<StyleBoardItem> items;
+  final String? whyText;
   final double width;
 
   const ShareableOutfitBoard({
@@ -26,6 +27,7 @@ class ShareableOutfitBoard extends StatelessWidget {
     required this.title,
     required this.occasion,
     required this.items,
+    this.whyText,
     this.width = 360,
   });
 
@@ -75,15 +77,19 @@ class ShareableOutfitBoard extends StatelessWidget {
                     items: items
                         .map(
                           (item) => AhviUnifiedOutfitGridItem.fromStyleBoardItem(
-                            item,
-                            surface: 'shareable_unified_grid',
-                          ),
-                        )
+                        item,
+                        surface: 'shareable_unified_grid',
+                      ),
+                    )
                         .toList(growable: false),
                   ),
                 ),
               ),
             ),
+            if (whyText?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 8),
+              _whyThisWorks(whyText!.trim()),
+            ],
             const SizedBox(height: 6),
             RichText(
               text: TextSpan(
@@ -116,6 +122,42 @@ class ShareableOutfitBoard extends StatelessWidget {
       ),
     );
   }
+
+  Widget _whyThisWorks(String text) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+    decoration: BoxDecoration(
+      color: _accent.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Why this works',
+          style: TextStyle(
+            color: _ink,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.2,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          text,
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: _ink,
+            fontSize: 10.5,
+            height: 1.25,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _brandingRow() => Row(
     mainAxisSize: MainAxisSize.min,

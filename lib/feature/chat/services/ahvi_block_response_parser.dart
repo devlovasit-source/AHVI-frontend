@@ -15,15 +15,15 @@ AhviParsedResponse parseAhviResponse(Map<String, dynamic> response) {
   final data = _dataMap(response);
   final isStyleThisResponse =
       (response['route'] ?? response['mode'] ?? '').toString().trim() ==
-      'style_this';
+          'style_this';
   final hasStyleThisAnchor =
       !isStyleThisResponse || _anchorItemMap(response, data).isNotEmpty;
   final text =
-      (response['message_text'] ??
-              response['response'] ??
-              (rawMessage is Map ? rawMessage['content'] : rawMessage) ??
-              '')
-          .toString();
+  (response['message_text'] ??
+      response['response'] ??
+      (rawMessage is Map ? rawMessage['content'] : rawMessage) ??
+      '')
+      .toString();
   final blocks = <AhviResponseBlock>[];
 
   // Style V2: open-ended structured advice (body proportion / color / occasion).
@@ -55,12 +55,12 @@ AhviParsedResponse parseAhviResponse(Map<String, dynamic> response) {
     defaultValue: true,
   );
   var visualDirections = responsePolicy.canRenderBoards(response) &&
-          !isPackingResponse
+      !isPackingResponse
       ? _extractVisualDirections(response, data)
       : <Map<String, dynamic>>[];
   final hasStyleThisDirections =
       isStyleThisResponse &&
-      _extractStyleThisDirections(response, data).isNotEmpty;
+          _extractStyleThisDirections(response, data).isNotEmpty;
   // Style This ships its boards under top-level `style_directions` (not
   // `visual_directions`). Adapt them into the canonical visualDirections shape
   // so parseAhviResponse → AhviBlockRenderer → VisualDirectionCarousel →
@@ -82,27 +82,27 @@ AhviParsedResponse parseAhviResponse(Map<String, dynamic> response) {
       visualDirections = styleDirections
           .map(
             (dir) =>
-                _styleDirectionToCanonical(dir, anchor, index++, sourcePolicy),
-          )
+            _styleDirectionToCanonical(dir, anchor, index++, sourcePolicy),
+      )
           .map((board) => responsePolicy.decorateBoard(board, response))
           .where((board) {
-            final expectedAnchor = _itemId(anchor);
-            final boardAnchor = (board['anchor_item_id'] ?? '')
-                .toString()
-                .trim();
-            final boardItems = _mapList(board['board_items']);
-            final matches = boardItems
-                .where((item) => _itemId(item) == expectedAnchor)
-                .length;
-            return expectedAnchor.isNotEmpty &&
-                boardAnchor == expectedAnchor &&
-                matches == 1;
-          })
+        final expectedAnchor = _itemId(anchor);
+        final boardAnchor = (board['anchor_item_id'] ?? '')
+            .toString()
+            .trim();
+        final boardItems = _mapList(board['board_items']);
+        final matches = boardItems
+            .where((item) => _itemId(item) == expectedAnchor)
+            .length;
+        return expectedAnchor.isNotEmpty &&
+            boardAnchor == expectedAnchor &&
+            matches == 1;
+      })
           .toList();
       debugPrint(
         'AHVI_STYLE_DIRECTION_ADAPTER source_field=style_directions '
-        'direction_count=${styleDirections.length} '
-        'mapped_block_count=${visualDirections.length}',
+            'direction_count=${styleDirections.length} '
+            'mapped_block_count=${visualDirections.length}',
       );
     }
   }
@@ -132,33 +132,33 @@ AhviParsedResponse parseAhviResponse(Map<String, dynamic> response) {
       visualDirections = visualDirections
           .map(
             (direction) => <String, dynamic>{
-              ...direction,
-              'anchor_item_id':
-                  direction['anchor_item_id'] ??
-                  direction['anchorItemId'] ??
-                  direction['selected_item_id'] ??
-                  direction['selectedItemId'] ??
-                  anchorId,
-              'selected_item_id':
-                  direction['selected_item_id'] ??
-                  direction['selectedItemId'] ??
-                  direction['anchor_item_id'] ??
-                  direction['anchorItemId'] ??
-                  anchorId,
-            },
-          )
+          ...direction,
+          'anchor_item_id':
+          direction['anchor_item_id'] ??
+              direction['anchorItemId'] ??
+              direction['selected_item_id'] ??
+              direction['selectedItemId'] ??
+              anchorId,
+          'selected_item_id':
+          direction['selected_item_id'] ??
+              direction['selectedItemId'] ??
+              direction['anchor_item_id'] ??
+              direction['anchorItemId'] ??
+              anchorId,
+        },
+      )
           .toList(growable: false);
     }
   }
   final hasVisualDirections = visualDirections.isNotEmpty;
   final hasVisualBoard =
       responsePolicy.canRenderBoards(response) &&
-      !isPackingResponse &&
-      (AhviVisualBoard.isVisualBoard(response) ||
-          response['visual_board'] != null ||
-          response['visualBoard'] != null ||
-          data['visual_board'] != null ||
-          data['visualBoard'] != null);
+          !isPackingResponse &&
+          (AhviVisualBoard.isVisualBoard(response) ||
+              response['visual_board'] != null ||
+              response['visualBoard'] != null ||
+              data['visual_board'] != null ||
+              data['visualBoard'] != null);
 
   // Visual inspiration board.
   final visualInspiration = _extractVisualInspiration(response, data);
@@ -225,7 +225,7 @@ AhviParsedResponse parseAhviResponse(Map<String, dynamic> response) {
 
   final suppressStructuredCards =
       responsePolicy.hasCanonicalRoute &&
-      !responsePolicy.canRenderBoards(response);
+          !responsePolicy.canRenderBoards(response);
   final sharedModuleCard = hasVisualDirections || suppressStructuredCards
       ? null
       : AhviModuleCard.fromResponse(response);
@@ -240,10 +240,10 @@ AhviParsedResponse parseAhviResponse(Map<String, dynamic> response) {
     final moduleCards = suppressStructuredCards
         ? const <Map<String, dynamic>>[]
         : _extractModuleCards(
-            response,
-            data,
-            suppressVisualDirectionCards: hasVisualDirections,
-          );
+      response,
+      data,
+      suppressVisualDirectionCards: hasVisualDirections,
+    );
     if (moduleCards.isNotEmpty) {
       blocks.add(
         AhviResponseBlock(
@@ -325,9 +325,9 @@ List<Map<String, dynamic>> _mapList(dynamic value) {
 
 /// Find a typed block (matching `type == wanted`) inside response["blocks"].
 Map<String, dynamic> _blockByType(
-  Map<String, dynamic> response,
-  String wanted,
-) {
+    Map<String, dynamic> response,
+    String wanted,
+    ) {
   final raw = response['blocks'];
   if (raw is List) {
     for (final b in raw) {
@@ -340,9 +340,9 @@ Map<String, dynamic> _blockByType(
 }
 
 Map<String, dynamic> _extractVisualInspiration(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data,
-) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data,
+    ) {
   final direct =
       response['visual_inspiration_board'] ?? data['visual_inspiration_board'];
   if (direct is Map && direct.isNotEmpty) {
@@ -352,12 +352,12 @@ Map<String, dynamic> _extractVisualInspiration(
 }
 
 Map<String, dynamic> _extractMissingPiece(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data,
-) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data,
+    ) {
   final direct =
       response['missing_piece_intelligence'] ??
-      data['missing_piece_intelligence'];
+          data['missing_piece_intelligence'];
   if (direct is Map && direct.isNotEmpty) {
     final m = Map<String, dynamic>.from(direct);
     if (_mapList(m['missing_items']).isNotEmpty) return m;
@@ -370,9 +370,9 @@ Map<String, dynamic> _extractMissingPiece(
 }
 
 List<Map<String, dynamic>> _extractVisualDirections(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data,
-) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data,
+    ) {
   return _mapList(
     response['visual_directions'] ??
         response['visualDirections'] ??
@@ -383,9 +383,9 @@ List<Map<String, dynamic>> _extractVisualDirections(
 
 /// Style This ships its boards under `style_directions`.
 List<Map<String, dynamic>> _extractStyleThisDirections(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data,
-) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data,
+    ) {
   return _mapList(
     response['style_directions'] ??
         response['styleDirections'] ??
@@ -396,38 +396,38 @@ List<Map<String, dynamic>> _extractStyleThisDirections(
 
 /// Top-level anchor garment as a board-item-shaped map (id + image + role).
 Map<String, dynamic> _anchorItemMap(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data,
-) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data,
+    ) {
   final anchor =
       response['anchor_item'] ??
-      response['anchorItem'] ??
-      data['anchor_item'] ??
-      data['anchorItem'];
+          response['anchorItem'] ??
+          data['anchor_item'] ??
+          data['anchorItem'];
   final m = anchor is Map
       ? Map<String, dynamic>.from(anchor)
       : <String, dynamic>{};
   final anchorMapId =
-      (m['item_id'] ?? m['id'] ?? m[r'$id'] ?? '').toString().trim();
+  (m['item_id'] ?? m['id'] ?? m[r'$id'] ?? '').toString().trim();
   final selectedId =
-      (response['selected_item_id'] ??
-              response['selectedItemId'] ??
-              data['selected_item_id'] ??
-              data['selectedItemId'] ??
-              '')
-          .toString()
-          .trim();
+  (response['selected_item_id'] ??
+      response['selectedItemId'] ??
+      data['selected_item_id'] ??
+      data['selectedItemId'] ??
+      '')
+      .toString()
+      .trim();
   final declaredAnchorId =
-      (response['anchor_item_id'] ?? data['anchor_item_id'] ?? '')
-          .toString()
-          .trim();
+  (response['anchor_item_id'] ?? data['anchor_item_id'] ?? '')
+      .toString()
+      .trim();
   final identityMismatch =
       (selectedId.isNotEmpty &&
           ((anchorMapId.isNotEmpty && selectedId != anchorMapId) ||
               (declaredAnchorId.isNotEmpty && selectedId != declaredAnchorId))) ||
-      (declaredAnchorId.isNotEmpty &&
-          anchorMapId.isNotEmpty &&
-          declaredAnchorId != anchorMapId);
+          (declaredAnchorId.isNotEmpty &&
+              anchorMapId.isNotEmpty &&
+              declaredAnchorId != anchorMapId);
   if (identityMismatch) {
     return const {};
   }
@@ -437,20 +437,20 @@ Map<String, dynamic> _anchorItemMap(
   if (id.isEmpty) return const {};
   final safeImage =
       m['safe_image_url'] ??
-      m['safeImageUrl'] ??
-      m['board_image_url'] ??
-      m['boardImageUrl'] ??
-      m['cutout_url'] ??
-      m['cutoutUrl'] ??
-      m['catalog_image_url'] ??
-      m['catalogImageUrl'] ??
-      m['normalized_url'] ??
-      m['normalizedUrl'] ??
-      m['masked_url'] ??
-      m['maskedUrl'] ??
-      m['resolved_image_url'] ??
-      m['image_url'] ??
-      m['imageUrl'];
+          m['safeImageUrl'] ??
+          m['board_image_url'] ??
+          m['boardImageUrl'] ??
+          m['cutout_url'] ??
+          m['cutoutUrl'] ??
+          m['catalog_image_url'] ??
+          m['catalogImageUrl'] ??
+          m['normalized_url'] ??
+          m['normalizedUrl'] ??
+          m['masked_url'] ??
+          m['maskedUrl'] ??
+          m['resolved_image_url'] ??
+          m['image_url'] ??
+          m['imageUrl'];
   return {
     ...m,
     'item_id': id,
@@ -484,11 +484,11 @@ String? _validSourcePolicy(dynamic value) {
 /// source; map items→board_items; guarantee the anchor is present so it can be
 /// the locked piece.
 Map<String, dynamic> _styleDirectionToCanonical(
-  Map<String, dynamic> direction,
-  Map<String, dynamic> anchorItem,
-  int index,
-  String? responsePolicy,
-) {
+    Map<String, dynamic> direction,
+    Map<String, dynamic> anchorItem,
+    int index,
+    String? responsePolicy,
+    ) {
   final anchorId = _itemId(anchorItem);
   final items = _mapList(
     direction['items'] ?? direction['board_items'] ?? direction['boardItems'],
@@ -496,8 +496,8 @@ Map<String, dynamic> _styleDirectionToCanonical(
 
   final anchorCatalog =
       anchorItem['normalized_url'] ??
-      anchorItem['normalizedUrl'] ??
-      anchorItem['resolved_image_url'];
+          anchorItem['normalizedUrl'] ??
+          anchorItem['resolved_image_url'];
 
   final anchorIndex = anchorId.isEmpty
       ? -1
@@ -532,20 +532,20 @@ Map<String, dynamic> _styleDirectionToCanonical(
   // remove the garment that originated the Style This request.
   final boardItems = anchorId.isNotEmpty && anchorItem.isNotEmpty
       ? (anchorIndex >= 0
-            ? <Map<String, dynamic>>[canonicalAnchor, ...supportingItems]
-            : items)
+      ? <Map<String, dynamic>>[canonicalAnchor, ...supportingItems]
+      : items)
       : items;
 
   final existingBoardId = (direction['board_id'] ?? '').toString().trim();
   final boardId =
-      (existingBoardId.isNotEmpty &&
-          !existingBoardId.toLowerCase().startsWith('outfit_card_'))
+  (existingBoardId.isNotEmpty &&
+      !existingBoardId.toLowerCase().startsWith('outfit_card_'))
       ? existingBoardId
       : (anchorId.isNotEmpty
-            ? 'style_this_${anchorId}_$index'
-            : 'style_this_$index');
+      ? 'style_this_${anchorId}_$index'
+      : 'style_this_$index');
   final revision =
-      (direction['revision'] is num && (direction['revision'] as num) >= 1)
+  (direction['revision'] is num && (direction['revision'] as num) >= 1)
       ? direction['revision']
       : 1;
 
@@ -553,8 +553,8 @@ Map<String, dynamic> _styleDirectionToCanonical(
   // Never overwrite an explicit style_asset / mixed policy with wardrobe.
   final sourcePolicy =
       _validSourcePolicy(direction['source_policy']) ??
-      responsePolicy ??
-      'wardrobe';
+          responsePolicy ??
+          'wardrobe';
 
   final out = <String, dynamic>{
     ...direction,
@@ -579,9 +579,9 @@ Map<String, dynamic> _styleDirectionToCanonical(
 /// this on the style-reasoning response (additive); falls back to {} when
 /// the payload is older.
 Map<String, dynamic> _extractEditorialCover(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data,
-) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data,
+    ) {
   for (final value in [
     response['editorial_cover'],
     response['editorialCover'],
@@ -604,63 +604,69 @@ Map<String, dynamic> _styleBoardToDirection(Map<String, dynamic> board) {
   );
   final boardItems = items
       .map((it) {
-        final out = <String, dynamic>{
-          ...it,
-          'name': it['name'] ?? it['title'] ?? it['label'],
-          'role': it['role'] ?? it['slot'] ?? it['category'],
-        };
+    final out = <String, dynamic>{
+      ...it,
+      'name': it['name'] ?? it['title'] ?? it['label'],
+      'role': it['role'] ?? it['slot'] ?? it['category'],
+    };
 
-        void canonical(String field, Object? snake, Object? camel) {
-          final value = snake ?? camel;
-          if (value?.toString().trim().isNotEmpty == true) out[field] = value;
-        }
+    void canonical(String field, Object? snake, Object? camel) {
+      final value = snake ?? camel;
+      if (value?.toString().trim().isNotEmpty == true) out[field] = value;
+    }
 
-        canonical(
-          'asset_cutout_url',
-          it['asset_cutout_url'],
-          it['assetCutoutUrl'],
-        );
-        canonical('cutout_url', it['cutout_url'], it['cutoutUrl']);
-        canonical(
-          'asset_masked_url',
-          it['asset_masked_url'],
-          it['assetMaskedUrl'],
-        );
-        canonical('masked_url', it['masked_url'], it['maskedUrl']);
-        canonical(
-          'transparent_url',
-          it['transparent_url'],
-          it['transparentUrl'],
-        );
-        canonical('processed_url', it['processed_url'], it['processedUrl']);
-        canonical('normalized_url', it['normalized_url'], it['normalizedUrl']);
-        canonical(
-          'board_image_url',
-          it['board_image_url'],
-          it['boardImageUrl'],
-        );
-        canonical('image_url', it['image_url'], it['imageUrl']);
-        return out;
-      })
+    canonical(
+      'asset_cutout_url',
+      it['asset_cutout_url'],
+      it['assetCutoutUrl'],
+    );
+    canonical('cutout_url', it['cutout_url'], it['cutoutUrl']);
+    canonical(
+      'asset_masked_url',
+      it['asset_masked_url'],
+      it['assetMaskedUrl'],
+    );
+    canonical('masked_url', it['masked_url'], it['maskedUrl']);
+    canonical(
+      'transparent_url',
+      it['transparent_url'],
+      it['transparentUrl'],
+    );
+    canonical('processed_url', it['processed_url'], it['processedUrl']);
+    canonical('normalized_url', it['normalized_url'], it['normalizedUrl']);
+    canonical(
+      'board_image_url',
+      it['board_image_url'],
+      it['boardImageUrl'],
+    );
+    canonical('image_url', it['image_url'], it['imageUrl']);
+    canonical('image_url', it['safe_image_url'], it['safeImageUrl']);
+    canonical('image_url', it['resolved_image_url'], it['resolvedImageUrl']);
+    canonical('image_url', it['catalog_image_url'], it['catalogImageUrl']);
+    canonical('image_url', it['display_image_url'], it['displayImageUrl']);
+    canonical('image_url', it['product_url'], it['productUrl']);
+    canonical('image_url', it['url'], it['link']);
+    return out;
+  })
       .where(
         (it) => const [
-          'asset_cutout_url',
-          'cutout_url',
-          'asset_masked_url',
-          'masked_url',
-          'transparent_url',
-          'processed_url',
-          'normalized_url',
-          'board_image_url',
-          'image_url',
-        ].any((field) => it[field]?.toString().trim().isNotEmpty == true),
-      )
+      'asset_cutout_url',
+      'cutout_url',
+      'asset_masked_url',
+      'masked_url',
+      'transparent_url',
+      'processed_url',
+      'normalized_url',
+      'board_image_url',
+      'image_url',
+    ].any((field) => it[field]?.toString().trim().isNotEmpty == true),
+  )
       .toList();
   final compositeImage =
       board['board_image_url'] ??
-      board['boardImageUrl'] ??
-      board['image_url'] ??
-      board['imageUrl'];
+          board['boardImageUrl'] ??
+          board['image_url'] ??
+          board['imageUrl'];
   if (boardItems.isEmpty &&
       compositeImage?.toString().trim().isNotEmpty == true) {
     boardItems.add({
@@ -678,7 +684,7 @@ Map<String, dynamic> _styleBoardToDirection(Map<String, dynamic> board) {
     'direction_name': board['title'] ?? board['name'],
     'title': board['title'] ?? board['name'],
     'why_it_works':
-        board['explanation'] ?? board['why_it_works'] ?? board['style_reason'],
+    board['explanation'] ?? board['why_it_works'] ?? board['style_reason'],
     'occasion': board['occasion'],
     'board_items': boardItems,
     'hero_piece': boardItems.isNotEmpty ? boardItems.first['name'] : null,
@@ -686,10 +692,10 @@ Map<String, dynamic> _styleBoardToDirection(Map<String, dynamic> board) {
 }
 
 List<Map<String, dynamic>> _extractModuleCards(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data, {
-  bool suppressVisualDirectionCards = false,
-}) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data, {
+      bool suppressVisualDirectionCards = false,
+    }) {
   final out = <Map<String, dynamic>>[];
   void add(dynamic value) {
     if (value is Map) out.add(Map<String, dynamic>.from(value));
@@ -709,15 +715,15 @@ List<Map<String, dynamic>> _extractModuleCards(
     out.add({
       'type': 'visual_packing_checklist',
       'title':
-          response['title'] ?? data['title'] ?? 'Carry-on Packing Checklist',
+      response['title'] ?? data['title'] ?? 'Carry-on Packing Checklist',
       'subtitle':
-          data['duration_label'] ??
+      data['duration_label'] ??
           response['subtitle'] ??
           data['subtitle'] ??
           '',
       'visual_sections': visualSections,
       'actions':
-          response['quick_actions'] ??
+      response['quick_actions'] ??
           response['chips'] ??
           data['quick_actions'],
     });
@@ -736,21 +742,21 @@ List<Map<String, dynamic>> _extractModuleCards(
   if (!suppressVisualDirectionCards) return out;
   return out
       .where((card) {
-        final type = (card['type'] ?? '').toString().toLowerCase().trim();
-        return type != 'visual_direction' && type != 'style_reasoning';
-      })
+    final type = (card['type'] ?? '').toString().toLowerCase().trim();
+    return type != 'visual_direction' && type != 'style_reasoning';
+  })
       .toList(growable: false);
 }
 
 Map<String, dynamic> _extractWardrobeGap(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data,
-) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data,
+    ) {
   final gap =
       response['wardrobe_gap'] ??
-      response['wardrobeGap'] ??
-      data['wardrobe_gap'] ??
-      data['wardrobeGap'];
+          response['wardrobeGap'] ??
+          data['wardrobe_gap'] ??
+          data['wardrobeGap'];
   if (gap is Map) return Map<String, dynamic>.from(gap);
   final missing = _mapList(response['missing_items'] ?? data['missing_items']);
   if (missing.isEmpty) return const {};
@@ -761,25 +767,25 @@ Map<String, dynamic> _extractWardrobeGap(
 }
 
 Map<String, dynamic> _extractImage(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data,
-) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data,
+    ) {
   final url =
       response['image_url'] ??
-      response['imageUrl'] ??
-      response['url'] ??
-      data['image_url'] ??
-      data['imageUrl'] ??
-      data['url'];
+          response['imageUrl'] ??
+          response['url'] ??
+          data['image_url'] ??
+          data['imageUrl'] ??
+          data['url'];
   final text = url?.toString().trim() ?? '';
   if (text.isEmpty || text == 'null') return const {};
   return {'image_url': text};
 }
 
 AhviResponseBlock? _extractPlanBlock(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data,
-) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data,
+    ) {
   final plan = response['plan'] ?? data['plan'];
   if (plan is Map) {
     return AhviResponseBlock(
@@ -791,9 +797,9 @@ AhviResponseBlock? _extractPlanBlock(
   }
   final checklist =
       response['travel_checklist'] ??
-      response['checklist'] ??
-      data['travel_checklist'] ??
-      data['checklist'];
+          response['checklist'] ??
+          data['travel_checklist'] ??
+          data['checklist'];
   final checklistCards = _mapList(checklist);
   if (checklistCards.isNotEmpty) {
     return AhviResponseBlock(
@@ -815,9 +821,9 @@ AhviResponseBlock? _extractPlanBlock(
 }
 
 bool _looksLikeChecklist(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data,
-) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data,
+    ) {
   final type = (response['type'] ?? data['type'] ?? '')
       .toString()
       .toLowerCase();
@@ -831,27 +837,27 @@ bool _looksLikeChecklist(
 }
 
 bool _looksLikeModuleResponse(
-  Map<String, dynamic> response,
-  Map<String, dynamic> data,
-) {
+    Map<String, dynamic> response,
+    Map<String, dynamic> data,
+    ) {
   final type = (response['type'] ?? data['type'] ?? '')
       .toString()
       .toLowerCase();
   final responseType =
-      (response['response_type'] ?? data['response_type'] ?? '')
-          .toString()
-          .toLowerCase();
+  (response['response_type'] ?? data['response_type'] ?? '')
+      .toString()
+      .toLowerCase();
   final intent = (response['intent'] ?? data['intent'] ?? '')
       .toString()
       .toLowerCase();
   final module =
-      (response['module'] ??
-              response['domain'] ??
-              data['module'] ??
-              data['domain'] ??
-              '')
-          .toString()
-          .toLowerCase();
+  (response['module'] ??
+      response['domain'] ??
+      data['module'] ??
+      data['domain'] ??
+      '')
+      .toString()
+      .toLowerCase();
   return responseType == 'module_card' ||
       type.contains('checklist') ||
       type == 'module_response' ||

@@ -9,6 +9,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
+// ✅ NEW: Import the refactored analysis service and config
+import 'package:myapp/services/face_scan/face_scan_analysis_refactored.dart';
+import 'package:myapp/services/face_scan/face_scan_config.dart';
 
 void main() {
   runApp(MaterialApp(
@@ -285,10 +288,15 @@ class _Screen3State extends State<Screen3> {
   bool _isAnalyzingFace = false;
   File? _selectedFaceImage;
 
+  // ✅ NEW: Add analysis service instance
+  late FaceAnalysisService _analysisService;
+
   @override
   void initState() {
     super.initState();
     _initializeFaceDetector();
+    // ✅ NEW: Initialize the analysis service
+    _analysisService = FaceAnalysisService();
   }
 
   void _initializeFaceDetector() {
@@ -339,23 +347,30 @@ class _Screen3State extends State<Screen3> {
 
       // Extract facial features
       final faceShape = _analyzeFaceShape(face);
-      final skinToneData = _extractSkinTone(decodedImage, face);
+
+      // ✅ CHANGED: Use service methods instead of local methods
+      final skinToneData = _analysisService.extractSkinTone(decodedImage, face);
       final skinTone = skinToneData['label'] as String;
       final skinToneColor = skinToneData['color'] as Color;
-      final skinQuality = _calculateSkinQuality(decodedImage, face);
-      final acneData = _detectAcne(decodedImage, face);
-      final pigmentationData = _detectPigmentation(decodedImage, face);
+
+      final skinQuality = _analysisService.calculateSkinQuality(decodedImage, face);
+      final acneData = _analysisService.detectAcne(decodedImage, face);
+      final pigmentationData = _analysisService.detectPigmentation(decodedImage, face);
+
       final eyeShapeData = _analyzeEyeShape(face);
       final lipColorData = _analyzeLipColor(decodedImage, face);
-      final darkerCircles = _detectDarkCircles(decodedImage, face);
+      final darkerCircles = _analysisService.detectDarkCircles(decodedImage, face);
 
-      final recommendations = _generateRecommendations(
-        skinTone,
-        acneData['detected'] as bool,
-        pigmentationData['detected'] as bool,
-        eyeShapeData,
-        darkerCircles,
-        faceShape,
+      // ✅ CHANGED: Use severity-aware recommendation generation
+      final recommendations = _analysisService.generateRecommendations(
+        skinTone: skinTone,
+        hasAcne: acneData['detected'] as bool,
+        acneSeverity: acneData['severity'] as int, // ← Now includes severity
+        hasPigmentation: pigmentationData['detected'] as bool,
+        pigmentationIntensity: pigmentationData['intensity'] as double, // ← Now includes intensity
+        eyeShape: eyeShapeData,
+        darkCircles: darkerCircles,
+        faceShape: faceShape,
       );
 
       final analysisData = FaceAnalysisData(
@@ -388,148 +403,6 @@ class _Screen3State extends State<Screen3> {
       debugPrint('Face analysis error: $e');
       _showValidationError('Failed to analyze face. Try again.');
       setState(() => _isAnalyzingFace = false);
-    }
-  }
-
-  // ── Skin Tone Extraction (label + actual sampled color) ────────
-  // Samples the forehead and both cheeks (rather than a single pixel)
-  // and averages them for a more representative reading, then returns
-  // both a human-readable label and the actual Color for a UI swatch.
-  Map<String, dynamic> _extractSkinTone(img.Image image, Face face) {
-    const fallback = {'label': 'Medium', 'color': Color(0xFFC68863)};
-    try {
-      final bbox = face.boundingBox;
-
-      final samplePoints = <List<double>>[
-        [bbox.center.dx, bbox.top + bbox.height * 0.28], // forehead
-        [bbox.left + bbox.width * 0.28, bbox.top + bbox.height * 0.58], // left cheek
-        [bbox.right - bbox.width * 0.28, bbox.top + bbox.height * 0.58], // right cheek
-      ];
-
-      int rSum = 0, gSum = 0, bSum = 0, samples = 0;
-
-      for (final point in samplePoints) {
-        final x = (point[0] * image.width).toInt();
-        final y = (point[1] * image.height).toInt();
-        if (x < 0 || x >= image.width || y < 0 || y >= image.height) continue;
-
-        final pixel = image.getPixelSafe(x, y);
-        rSum += pixel.r.toInt();
-        gSum += pixel.g.toInt();
-        bSum += pixel.b.toInt();
-        samples++;
-      }
-
-      if (samples == 0) return fallback;
-
-      final avgR = (rSum / samples).round().clamp(0, 255);
-      final avgG = (gSum / samples).round().clamp(0, 255);
-      final avgB = (bSum / samples).round().clamp(0, 255);
-      final skinColor = Color.fromARGB(255, avgR, avgG, avgB);
-      final brightness = (avgR + avgG + avgB) / 3;
-
-      // Determine skin tone label based on brightness
-      String label;
-      if (brightness > 200) {
-        label = 'Very Fair';
-      } else if (brightness > 170) {
-        label = 'Fair';
-      } else if (brightness > 140) {
-        label = 'Light Medium';
-      } else if (brightness > 110) {
-        label = 'Medium';
-      } else if (brightness > 80) {
-        label = 'Medium Deep';
-      } else if (brightness > 60) {
-        label = 'Deep';
-      } else {
-        label = 'Very Deep';
-      }
-
-      return {'label': label, 'color': skinColor};
-    } catch (e) {
-      return fallback;
-    }
-  }
-
-  // ── Acne Detection ─────────────────────────────────────────────
-  Map<String, dynamic> _detectAcne(img.Image image, Face face) {
-    try {
-      final bbox = face.boundingBox;
-      final width = (bbox.width * image.width).toInt();
-      final height = (bbox.height * image.height).toInt();
-      final startX = (bbox.left * image.width).toInt().clamp(0, image.width - 1);
-      final startY = (bbox.top * image.height).toInt().clamp(0, image.height - 1);
-
-      int irregularPixels = 0;
-      int totalPixels = 0;
-
-      final regionWidth = (width * 0.8).toInt();
-      final regionHeight = (height * 0.7).toInt();
-
-      for (int x = startX; x < startX + regionWidth && x < image.width; x++) {
-        for (int y = startY; y < startY + regionHeight && y < image.height; y++) {
-          totalPixels++;
-          final pixel = image.getPixelSafe(x, y);
-          final r = pixel.r.toInt();
-          final g = pixel.g.toInt();
-          final b = pixel.b.toInt();
-
-          // Detect red spots (potential acne)
-          if (r > g + 30 && r > b + 30) {
-            irregularPixels++;
-          }
-        }
-      }
-
-      final acnePercentage = totalPixels > 0 ? (irregularPixels / totalPixels * 100).toInt() : 0;
-      final detected = acnePercentage > 5;
-      final severity = acnePercentage.clamp(0, 100);
-
-      return {
-        'detected': detected,
-        'severity': severity,
-      };
-    } catch (e) {
-      return {'detected': false, 'severity': 0};
-    }
-  }
-
-  // ── Pigmentation Detection ─────────────────────────────────────
-  Map<String, dynamic> _detectPigmentation(img.Image image, Face face) {
-    try {
-      final bbox = face.boundingBox;
-      final width = (bbox.width * image.width).toInt();
-      final height = (bbox.height * image.height).toInt();
-      final startX = (bbox.left * image.width).toInt().clamp(0, image.width - 1);
-      final startY = (bbox.top * image.height).toInt().clamp(0, image.height - 1);
-
-      double totalColorVariance = 0;
-      int sampleCount = 0;
-
-      for (int x = startX; x < startX + width && x < image.width; x += 5) {
-        for (int y = startY; y < startY + height && y < image.height; y += 5) {
-          sampleCount++;
-          final pixel = image.getPixelSafe(x, y);
-          final r = pixel.r.toDouble();
-          final g = pixel.g.toDouble();
-          final b = pixel.b.toDouble();
-
-          final variance = ((r - g).abs() + (g - b).abs() + (r - b).abs()) / 3;
-          totalColorVariance += variance;
-        }
-      }
-
-      final avgVariance = sampleCount > 0 ? totalColorVariance / sampleCount : 0;
-      final intensity = (avgVariance / 100).clamp(0.0, 1.0);
-      final detected = intensity > 0.3;
-
-      return {
-        'detected': detected,
-        'intensity': intensity,
-      };
-    } catch (e) {
-      return {'detected': false, 'intensity': 0.0};
     }
   }
 
@@ -658,12 +531,41 @@ class _Screen3State extends State<Screen3> {
   }
 
   // ── Eye Size Calculation ──────────────────────────────────────
+  // Uses ML Kit's actual left/right eye contour points (not a fixed
+  // ratio) so the result genuinely varies per photo.
   double _calculateEyeSize(Face face) {
     try {
-      if (face.landmarks.isEmpty) return 0.5;
+      final leftEye = face.contours[FaceContourType.leftEye]?.points;
+      final rightEye = face.contours[FaceContourType.rightEye]?.points;
+      final faceWidth = face.boundingBox.width;
 
-      final eyeWidth = face.boundingBox.width * 0.15;
-      return (eyeWidth / (face.boundingBox.width * 0.3)).clamp(0.0, 1.0);
+      if (leftEye == null ||
+          rightEye == null ||
+          leftEye.isEmpty ||
+          rightEye.isEmpty ||
+          faceWidth <= 0) {
+        return 0.5;
+      }
+
+      double contourWidth(List<dynamic> points) {
+        double minX = points.first.x.toDouble();
+        double maxX = points.first.x.toDouble();
+        for (final p in points) {
+          final x = p.x.toDouble();
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+        }
+        return maxX - minX;
+      }
+
+      final avgEyeWidth =
+          (contourWidth(leftEye) + contourWidth(rightEye)) / 2;
+
+      // An average eye spans roughly 20% of face width; normalize
+      // around that so typical eyes land near 0.5, wider/narrower
+      // eyes shift proportionally.
+      final ratio = avgEyeWidth / faceWidth;
+      return (ratio / 0.20).clamp(0.0, 1.0);
     } catch (e) {
       return 0.5;
     }
@@ -700,107 +602,37 @@ class _Screen3State extends State<Screen3> {
   }
 
   // ── Lip Fullness Calculation ──────────────────────────────────
+  // Uses ML Kit's actual upper/lower lip contour points (not a fixed
+  // ratio) so the result genuinely varies per photo.
   double _calculateLipFullness(Face face) {
     try {
-      final lipsHeight = face.boundingBox.height * 0.08;
-      return (lipsHeight / (face.boundingBox.height * 0.15)).clamp(0.0, 1.0);
+      final upperTop = face.contours[FaceContourType.upperLipTop]?.points;
+      final lowerBottom =
+          face.contours[FaceContourType.lowerLipBottom]?.points;
+      final faceHeight = face.boundingBox.height;
+
+      if (upperTop == null ||
+          lowerBottom == null ||
+          upperTop.isEmpty ||
+          lowerBottom.isEmpty ||
+          faceHeight <= 0) {
+        return 0.5;
+      }
+
+      double avgY(List<dynamic> points) =>
+          points.map((p) => p.y.toDouble()).reduce((a, b) => a + b) /
+              points.length;
+
+      // Total visible lip span: top of upper lip to bottom of lower lip.
+      final lipHeight = (avgY(lowerBottom) - avgY(upperTop)).abs();
+
+      // Lips typically span roughly 12% of face height; normalize
+      // around that so average lips land near 0.5.
+      final ratio = lipHeight / faceHeight;
+      return (ratio / 0.12).clamp(0.0, 1.0);
     } catch (e) {
       return 0.5;
     }
-  }
-
-  // ── Dark Circles Detection ────────────────────────────────────
-  bool _detectDarkCircles(img.Image image, Face face) {
-    try {
-      final bbox = face.boundingBox;
-      // Sample area under eyes
-      final underEyeY = (bbox.top + bbox.height * 0.5).toInt();
-      final sampleX = (bbox.center.dx * image.width).toInt();
-
-      if (sampleX < 0 || sampleX >= image.width || underEyeY < 0 || underEyeY >= image.height) {
-        return false;
-      }
-
-      final pixel = image.getPixelSafe(sampleX, underEyeY);
-      final brightness = (pixel.r.toInt() + pixel.g.toInt() + pixel.b.toInt()) / 3;
-
-      return brightness < 100;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // ── Skin Quality Calculation ──────────────────────────────────
-  double _calculateSkinQuality(img.Image image, Face face) {
-    try {
-      // Based on acne and pigmentation
-      final acneData = _detectAcne(image, face);
-      final pigmentationData = _detectPigmentation(image, face);
-
-      double quality = 100.0;
-      quality -= (acneData['severity'] as int) * 0.5;
-      quality -= ((pigmentationData['intensity'] as double) * 100) * 0.3;
-
-      return quality.clamp(0.0, 100.0);
-    } catch (e) {
-      return 75.0;
-    }
-  }
-
-  // ── Generate Recommendations ──────────────────────────────────
-  List<String> _generateRecommendations(
-      String skinTone,
-      bool hasAcne,
-      bool hasPigmentation,
-      String eyeShape,
-      bool darkCircles,
-      String faceShape,
-      ) {
-    final recommendations = <String>[];
-
-    if (hasAcne) {
-      recommendations.add('Try acne-fighting products with salicylic acid');
-    }
-
-    if (hasPigmentation) {
-      recommendations.add('Consider vitamin C serums for brightening');
-    }
-
-    if (darkCircles) {
-      recommendations.add('Use eye creams with caffeine to reduce puffiness');
-    }
-
-    if (eyeShape == 'Hooded') {
-      recommendations.add('Highlight inner corner for wider eye appearance');
-    }
-
-    switch (faceShape) {
-      case 'Round':
-        recommendations.add('Contour cheeks softly to add definition');
-        break;
-      case 'Square':
-        recommendations.add('Soften angles with rounded blush placement');
-        break;
-      case 'Heart':
-        recommendations.add('Balance a wider forehead with soft, side-swept styling');
-        break;
-      case 'Oblong':
-        recommendations.add('Add visual width with horizontal blush placement');
-        break;
-      case 'Diamond':
-        recommendations.add('Highlight cheekbones — your strongest feature');
-        break;
-      default:
-        recommendations.add('Your balanced face shape suits most styles');
-    }
-
-    recommendations.add('Stay hydrated for healthy, glowing skin');
-
-    if (recommendations.isEmpty) {
-      recommendations.add('Your skin looks great! Maintain current routine');
-    }
-
-    return recommendations;
   }
 
   void _showValidationError(String message) {
@@ -911,6 +743,9 @@ class _Screen3State extends State<Screen3> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final horizontalPadding = size.width < 360 ? 16.0 : (size.width < 400 ? 18.0 : 20.0);
+    final bottomPadding = size.height < 700 ? 8.0 : 0.0;
     return Scaffold(
       backgroundColor: context.colors.bg2,
       body: Stack(
@@ -923,7 +758,7 @@ class _Screen3State extends State<Screen3> {
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

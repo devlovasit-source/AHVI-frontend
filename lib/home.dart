@@ -175,8 +175,8 @@ const _homeNavItems = <({IconData icon, String label})>[
 /// logo is guaranteed to share the same left edge as everything below it on
 /// every screen size.
 ({double horizontalPad, double maxContentWidth}) _responsiveGutter(
-  double screenW,
-) {
+    double screenW,
+    ) {
   if (screenW < 340) {
     // Very small phones (iPhone SE) - 280-340dp
     return (horizontalPad: 8.0, maxContentWidth: screenW - 16.0);
@@ -194,8 +194,8 @@ const _homeNavItems = <({IconData icon, String label})>[
     // centered at a fixed max width, so the gutter grows to fill the rest.
     const maxContentWidth = 620.0;
     return (
-      horizontalPad: (screenW - maxContentWidth) / 2,
-      maxContentWidth: maxContentWidth,
+    horizontalPad: (screenW - maxContentWidth) / 2,
+    maxContentWidth: maxContentWidth,
     );
   }
 }
@@ -531,8 +531,8 @@ class _Screen4State extends State<Screen4>
   late List<AnimationController> _navRiseCtrls;
 
   final ValueNotifier<_ClockState> _clockState = ValueNotifier<_ClockState>((
-    greeting: 'greeting_morning',
-    date: '',
+  greeting: 'greeting_morning',
+  date: '',
   ));
   Timer? _clockTimer;
 
@@ -602,9 +602,9 @@ class _Screen4State extends State<Screen4>
     const lon = 78.486;
     final uri = Uri.parse(
       'https://api.open-meteo.com/v1/forecast'
-      '?latitude=$lat&longitude=$lon'
-      '&current=temperature_2m,weather_code'
-      '&timezone=auto',
+          '?latitude=$lat&longitude=$lon'
+          '&current=temperature_2m,weather_code'
+          '&timezone=auto',
     );
 
     HttpClient? client;
@@ -623,8 +623,8 @@ class _Screen4State extends State<Screen4>
           // so older/newer response shapes both work.
           final code =
               (current['weather_code'] as num?)?.toInt() ??
-              (current['weathercode'] as num?)?.toInt() ??
-              0;
+                  (current['weathercode'] as num?)?.toInt() ??
+                  0;
           final condition = _wmoCodeToCondition(code);
           final desc = _wmoCodeToDescription(code);
           if (mounted) {
@@ -835,7 +835,7 @@ class _Screen4State extends State<Screen4>
         if (tagCounts.isNotEmpty) {
           favoriteStyle =
               (tagCounts.entries.toList()
-                    ..sort((a, b) => b.value.compareTo(a.value)))
+                ..sort((a, b) => b.value.compareTo(a.value)))
                   .first
                   .key;
         }
@@ -989,15 +989,15 @@ class _Screen4State extends State<Screen4>
       // Streak
       final streak =
           (workout['streak'] as num?)?.toInt() ??
-          (data['streak'] as num?)?.toInt() ??
-          _fitnessSignal.workoutStreakDays;
+              (data['streak'] as num?)?.toInt() ??
+              _fitnessSignal.workoutStreakDays;
 
       // Workout label
       final workoutName =
           workout['name']?.toString() ??
-          workout['type']?.toString() ??
-          data['workout_type']?.toString() ??
-          '';
+              workout['type']?.toString() ??
+              data['workout_type']?.toString() ??
+              '';
       final nextWorkout = workoutName.isNotEmpty
           ? _extractWorkoutLabel(workoutName.toLowerCase())
           : _fitnessSignal.nextWorkoutLabel;
@@ -1005,12 +1005,12 @@ class _Screen4State extends State<Screen4>
       // Calorie goal
       final consumed =
           (nutrition['calories_consumed'] as num?)?.toInt() ??
-          (data['calories_consumed'] as num?)?.toInt() ??
-          0;
+              (data['calories_consumed'] as num?)?.toInt() ??
+              0;
       final goal =
           (nutrition['calories_goal'] as num?)?.toInt() ??
-          (data['calories_goal'] as num?)?.toInt() ??
-          0;
+              (data['calories_goal'] as num?)?.toInt() ??
+              0;
       final calorieGoalMet = goal > 0
           ? consumed >= goal
           : _fitnessSignal.calorieGoalMet;
@@ -1018,8 +1018,8 @@ class _Screen4State extends State<Screen4>
       // Water glasses
       final water =
           (nutrition['water_glasses'] as num?)?.toInt() ??
-          (data['water_glasses'] as num?)?.toInt() ??
-          _fitnessSignal.waterGlassesToday;
+              (data['water_glasses'] as num?)?.toInt() ??
+              _fitnessSignal.waterGlassesToday;
 
       // Step goal
       final stepsDone = (data['steps'] as num?)?.toInt() ?? 0;
@@ -1166,7 +1166,7 @@ class _Screen4State extends State<Screen4>
     required String boardId,
     required String title,
     required List<
-      ({String name, String emoji, Color color, List<String> items})
+        ({String name, String emoji, Color color, List<String> items})
     >
     sections,
     required List<List<String>> itemsState,
@@ -1223,20 +1223,20 @@ class _Screen4State extends State<Screen4>
   List<({String label, String desc})> _getRoutineItems() {
     return [
       (
-        label: AppLocalizations.t(context, 'routine_wear'),
-        desc: AppLocalizations.t(context, 'routine_wear_desc'),
+      label: AppLocalizations.t(context, 'routine_wear'),
+      desc: AppLocalizations.t(context, 'routine_wear_desc'),
       ),
       (
-        label: AppLocalizations.t(context, 'routine_move'),
-        desc: AppLocalizations.t(context, 'routine_move_desc'),
+      label: AppLocalizations.t(context, 'routine_move'),
+      desc: AppLocalizations.t(context, 'routine_move_desc'),
       ),
       (
-        label: AppLocalizations.t(context, 'routine_eat'),
-        desc: AppLocalizations.t(context, 'routine_eat_desc'),
+      label: AppLocalizations.t(context, 'routine_eat'),
+      desc: AppLocalizations.t(context, 'routine_eat_desc'),
       ),
       (
-        label: AppLocalizations.t(context, 'routine_care'),
-        desc: AppLocalizations.t(context, 'routine_care_desc'),
+      label: AppLocalizations.t(context, 'routine_care'),
+      desc: AppLocalizations.t(context, 'routine_care_desc'),
       ),
     ];
   }
@@ -1244,8 +1244,8 @@ class _Screen4State extends State<Screen4>
   /// Get CTA button labels
   ({String gymOutfit, String planWorkout}) _getCtaLabels() {
     return (
-      gymOutfit: AppLocalizations.t(context, 'cta_gym_outfit'),
-      planWorkout: AppLocalizations.t(context, 'cta_plan_workout'),
+    gymOutfit: AppLocalizations.t(context, 'cta_gym_outfit'),
+    planWorkout: AppLocalizations.t(context, 'cta_plan_workout'),
     );
   }
 
@@ -1296,7 +1296,7 @@ class _Screen4State extends State<Screen4>
 
     _heartPopCtrls = List.generate(
       4,
-      (_) => AnimationController(
+          (_) => AnimationController(
         vsync: this,
         duration: const Duration(milliseconds: 380),
       ),
@@ -1314,7 +1314,7 @@ class _Screen4State extends State<Screen4>
 
     _navRiseCtrls = List.generate(
       5,
-      (i) => AnimationController(
+          (i) => AnimationController(
         vsync: this,
         duration: const Duration(milliseconds: 280),
         value: i == 0 ? 1.0 : 0.0,
@@ -1345,7 +1345,7 @@ class _Screen4State extends State<Screen4>
         _updateClock();
         _clockTimer = Timer.periodic(
           const Duration(seconds: 15),
-          (_) => _updateClock(),
+              (_) => _updateClock(),
         );
       }
     });
@@ -1509,9 +1509,9 @@ class _Screen4State extends State<Screen4>
       greetingKey = 'greeting_night';
     }
     _clockState.value = (
-      greeting: greetingKey,
-      date:
-          '${dayNames[now.weekday % 7]}, ${now.day} ${monthNames[now.month - 1]}',
+    greeting: greetingKey,
+    date:
+    '${dayNames[now.weekday % 7]}, ${now.day} ${monthNames[now.month - 1]}',
     );
     // Invalidate suggestion cache — hour/weekday may have changed
     _invalidateSuggestionCache();
@@ -1765,46 +1765,46 @@ class _Screen4State extends State<Screen4>
     HapticFeedback.lightImpact();
     Navigator.of(context)
         .push(
-          PageRouteBuilder<void>(
-            transitionDuration: const Duration(milliseconds: 350),
-            reverseTransitionDuration: const Duration(milliseconds: 350),
-            pageBuilder: (context, animation, secondary) => page,
-            transitionsBuilder: (context, animation, secondary, child) {
-              final curved = CurvedAnimation(
-                parent: animation,
-                curve: const Cubic(0.22, 1.0, 0.36, 1.0),
-              );
-              return FadeTransition(
-                opacity: curved,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0.04, 0),
-                    end: Offset.zero,
-                  ).animate(curved),
-                  child: child,
-                ),
-              );
-            },
-          ),
-        )
-        .then((_) {
-          // Back వచ్చినప్పుడు Home tab active గా reset చేయి
-          if (!mounted) return;
-          final prevIdx = _activeNavIdx;
-          if (prevIdx != 0) {
-            _navRiseCtrls[prevIdx].animateTo(
-              0.0,
-              curve: const Cubic(0.4, 0.0, 0.2, 1.0),
-            );
-          }
-          _navRiseCtrls[0].animateTo(
-            1.0,
-            curve: const Cubic(0.34, 1.56, 0.64, 1.0),
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 350),
+        reverseTransitionDuration: const Duration(milliseconds: 350),
+        pageBuilder: (context, animation, secondary) => page,
+        transitionsBuilder: (context, animation, secondary, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: const Cubic(0.22, 1.0, 0.36, 1.0),
           );
-          setState(() => _activeNavIdx = 0);
-          // 🔧 FIX: Shell కి కూడా Home index తెలియజేయి — nav bar తిరిగి కనపడుతుంది
-          if (widget.onShellNavTap != null) widget.onShellNavTap!(0);
-        });
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.04, 0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      ),
+    )
+        .then((_) {
+      // Back వచ్చినప్పుడు Home tab active గా reset చేయి
+      if (!mounted) return;
+      final prevIdx = _activeNavIdx;
+      if (prevIdx != 0) {
+        _navRiseCtrls[prevIdx].animateTo(
+          0.0,
+          curve: const Cubic(0.4, 0.0, 0.2, 1.0),
+        );
+      }
+      _navRiseCtrls[0].animateTo(
+        1.0,
+        curve: const Cubic(0.34, 1.56, 0.64, 1.0),
+      );
+      setState(() => _activeNavIdx = 0);
+      // 🔧 FIX: Shell కి కూడా Home index తెలియజేయి — nav bar తిరిగి కనపడుతుంది
+      if (widget.onShellNavTap != null) widget.onShellNavTap!(0);
+    });
   }
 
   void _openModuleChat(String moduleKey) {
@@ -1821,12 +1821,12 @@ class _Screen4State extends State<Screen4>
       case 'organize':
         module = 'organize';
         initialPrompt =
-            null; // Organise module — wardrobe/outfit organisation chat
+        null; // Organise module — wardrobe/outfit organisation chat
         break;
       case 'plan':
         module = 'prepare';
         initialPrompt =
-            null; // Plan/Prepare module — event & trip planning chat
+        null; // Plan/Prepare module — event & trip planning chat
         break;
       default:
         module = moduleKey;
@@ -1878,13 +1878,13 @@ class _Screen4State extends State<Screen4>
   void _closeSeeAll() {
     _seeAllCtrl
         .animateTo(
-          0.0,
-          duration: const Duration(milliseconds: 300),
-          curve: const Cubic(0.4, 0.0, 1.0, 1.0),
-        )
+      0.0,
+      duration: const Duration(milliseconds: 300),
+      curve: const Cubic(0.4, 0.0, 1.0, 1.0),
+    )
         .then((_) {
-          if (mounted) setState(() => _seeAllOpen = false);
-        });
+      if (mounted) setState(() => _seeAllOpen = false);
+    });
   }
 
   void _toggleLike(int cardIdx) {
@@ -2005,7 +2005,7 @@ class _Screen4State extends State<Screen4>
 
         if (aiText.length > 1500) {
           aiText =
-              '${aiText.substring(0, 1500)}... \n\n[Text truncated to prevent UI crash]';
+          '${aiText.substring(0, 1500)}... \n\n[Text truncated to prevent UI crash]';
         }
 
         if (apiResult.containsKey('chips') &&
@@ -2252,17 +2252,17 @@ class _Screen4State extends State<Screen4>
                       ? (safeBottom + 72.0) // Reduced for tiny phones
                       : screenW < 380
                       ? (safeBottom +
-                            navBarTotalH +
-                            promptBarH +
-                            promptExtraLift +
-                            breathingGap -
-                            3.0)
+                      navBarTotalH +
+                      promptBarH +
+                      promptExtraLift +
+                      breathingGap -
+                      3.0)
                       : (safeBottom +
-                            navBarTotalH +
-                            promptBarH +
-                            promptExtraLift +
-                            breathingGap -
-                            1.0);
+                      navBarTotalH +
+                      promptBarH +
+                      promptExtraLift +
+                      breathingGap -
+                      1.0);
 
                   return SizedBox(
                     height: constraints.maxHeight,
@@ -2315,17 +2315,19 @@ class _Screen4State extends State<Screen4>
                                   // (stepper 26 + cards 90 + internal gaps ≈ 118px).
                                   // Hero gets whatever's left, with its own floor of 160px
                                   // so it never collapses to unreadable on short phones.
-                                  // On taller screens (>400px flexible) the natural 62/38
-                                  // split applies unchanged — minimum floors only kick in
-                                  // on compact devices where the math would shrink cards.
-                                  const routineMinH = 118.0;
+                                  // On taller screens the natural 56/44 split keeps the hero prominent
+                                  // while giving the Routine carousel enough height for
+                                  // its icon, text and CTA. Minimum floors still protect
+                                  // compact devices from unreadably short cards.
+                                  // Keep the Routine carousel comfortably readable on phones.
+                                  const routineMinH = 145.0;
                                   const heroMinH = 160.0;
                                   final flexibleH =
                                       availableH - prepH - (cardSpacing * 2);
                                   final naturalHeroH = math.max(
                                     0.0,
                                     (flexibleH - recoveredSpaceForRoutine) *
-                                        0.62,
+                                        0.56,
                                   );
                                   final naturalRoutineH = math.max(
                                     0.0,
@@ -2337,16 +2339,16 @@ class _Screen4State extends State<Screen4>
                                   // pin routine at its min and give hero the rest (floored).
                                   final heroH = naturalRoutineH < routineMinH
                                       ? math.max(
-                                          heroMinH,
-                                          flexibleH -
-                                              routineMinH -
-                                              recoveredSpaceForRoutine,
-                                        )
+                                    heroMinH,
+                                    flexibleH -
+                                        routineMinH -
+                                        recoveredSpaceForRoutine,
+                                  )
                                       : naturalHeroH;
 
                                   return Column(
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    CrossAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.max,
                                     children: [
                                       // ── HERO / STYLE CARD ──────────────────────────────
@@ -2415,9 +2417,9 @@ class _Screen4State extends State<Screen4>
                 final chipsBottom = keyboardH > 0
                     ? keyboardH + 60
                     : (MediaQuery.of(context).size.height * 0.23).clamp(
-                        160.0,
-                        210.0,
-                      );
+                  160.0,
+                  210.0,
+                );
                 return Positioned(
                   left: 0,
                   right: 0,
@@ -2705,7 +2707,7 @@ class _Screen4State extends State<Screen4>
                       border: Border.all(
                         color: _bgPrimary,
                         width:
-                            1.5, // 🔧 FIXED: thinner border for smaller badge
+                        1.5, // 🔧 FIXED: thinner border for smaller badge
                       ),
                     ),
                     child: Center(
@@ -2741,11 +2743,11 @@ class _Screen4State extends State<Screen4>
     // already fetched, else a generic default) so it's never someone else's
     // initial.
     final String _fallbackName =
-        profileState.name.isNotEmpty && profileState.name != 'New User'
+    profileState.name.isNotEmpty && profileState.name != 'New User'
         ? profileState.name
         : (_userName.isNotEmpty
-              ? _userName
-              : AppLocalizations.t(context, 'default_user_name'));
+        ? _userName
+        : AppLocalizations.t(context, 'default_user_name'));
     final String _avatarInitial = _fallbackName[0].toUpperCase();
 
     return GestureDetector(
@@ -2753,33 +2755,33 @@ class _Screen4State extends State<Screen4>
         HapticFeedback.lightImpact();
         Navigator.of(context)
             .push(
-              PageRouteBuilder<void>(
-                transitionDuration: const Duration(milliseconds: 350),
-                reverseTransitionDuration: const Duration(milliseconds: 350),
-                pageBuilder: (context, animation, secondary) =>
-                    const profile.ProfileScreen(),
-                transitionsBuilder: (context, animation, secondary, child) {
-                  final curved = CurvedAnimation(
-                    parent: animation,
-                    curve: const Cubic(0.22, 1.0, 0.36, 1.0),
-                  );
-                  return FadeTransition(
-                    opacity: curved,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0.04, 0),
-                        end: Offset.zero,
-                      ).animate(curved),
-                      child: child,
-                    ),
-                  );
-                },
-              ),
-            )
+          PageRouteBuilder<void>(
+            transitionDuration: const Duration(milliseconds: 350),
+            reverseTransitionDuration: const Duration(milliseconds: 350),
+            pageBuilder: (context, animation, secondary) =>
+            const profile.ProfileScreen(),
+            transitionsBuilder: (context, animation, secondary, child) {
+              final curved = CurvedAnimation(
+                parent: animation,
+                curve: const Cubic(0.22, 1.0, 0.36, 1.0),
+              );
+              return FadeTransition(
+                opacity: curved,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.04, 0),
+                    end: Offset.zero,
+                  ).animate(curved),
+                  child: child,
+                ),
+              );
+            },
+          ),
+        )
             .then((_) {
-              // userName refresh కోసం మాత్రమే
-              if (mounted) _fetchUserProfile();
-            });
+          // userName refresh కోసం మాత్రమే
+          if (mounted) _fetchUserProfile();
+        });
       },
       // ✅ FIX: Align gives its child loose constraints (rather than the tight
       // ones a parent Row/Header might otherwise impose), so this avatar is
@@ -2811,38 +2813,38 @@ class _Screen4State extends State<Screen4>
             child: ClipOval(
               child: avatarPath != null && avatarPath.isNotEmpty
                   ? Image.file(
-                      File(avatarPath),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: _accent,
-                        child: const Icon(
-                          Icons.person_rounded,
-                          size: 20, // 🔧 FIXED: proportional to 40px avatar
-                          color: Colors.white,
-                        ),
-                      ),
-                    )
+                File(avatarPath),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: _accent,
+                  child: const Icon(
+                    Icons.person_rounded,
+                    size: 20, // 🔧 FIXED: proportional to 40px avatar
+                    color: Colors.white,
+                  ),
+                ),
+              )
                   : Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [_accent, _accentSecondary],
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          _avatarInitial,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize:
-                                16, // 🔧 FIXED: proportional to 40px avatar
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                      ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [_accent, _accentSecondary],
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    _avatarInitial,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize:
+                      16, // 🔧 FIXED: proportional to 40px avatar
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
                     ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -3088,29 +3090,29 @@ class _Screen4State extends State<Screen4>
     // 🆕 Chips localized
     final chips = [
       (
-        '✦',
-        AppLocalizations.t(context, 'chip_outfit_idea'),
-        AppLocalizations.t(context, 'chip_prompt_outfit'),
+      '✦',
+      AppLocalizations.t(context, 'chip_outfit_idea'),
+      AppLocalizations.t(context, 'chip_prompt_outfit'),
       ),
       (
-        '◎',
-        AppLocalizations.t(context, 'chip_daily_plan'),
-        AppLocalizations.t(context, 'chip_prompt_daily_plan'),
+      '◎',
+      AppLocalizations.t(context, 'chip_daily_plan'),
+      AppLocalizations.t(context, 'chip_prompt_daily_plan'),
       ),
       (
-        '⊹',
-        AppLocalizations.t(context, 'chip_workout'),
-        AppLocalizations.t(context, 'chip_prompt_workout'),
+      '⊹',
+      AppLocalizations.t(context, 'chip_workout'),
+      AppLocalizations.t(context, 'chip_prompt_workout'),
       ),
       (
-        '◈',
-        AppLocalizations.t(context, 'chip_meal_plan'),
-        AppLocalizations.t(context, 'chip_prompt_meal_plan'),
+      '◈',
+      AppLocalizations.t(context, 'chip_meal_plan'),
+      AppLocalizations.t(context, 'chip_prompt_meal_plan'),
       ),
       (
-        '◷',
-        AppLocalizations.t(context, 'chip_schedule'),
-        AppLocalizations.t(context, 'chip_prompt_schedule'),
+      '◷',
+      AppLocalizations.t(context, 'chip_schedule'),
+      AppLocalizations.t(context, 'chip_prompt_schedule'),
       ),
     ];
     return SizedBox(
@@ -3194,8 +3196,8 @@ class _Screen4State extends State<Screen4>
   /// driven by upcoming occasions, weather, and time of day.
   /// 🆕 Now uses localization for hero titles
   ({String headline, String emoji}) _heroHeadlineContent(
-    _RecommendationContext ctx,
-  ) {
+      _RecommendationContext ctx,
+      ) {
     // 🆕 Get localized hero title for morning greeting
     final localizedHeroTitle = AppLocalizations.t(context, 'home_hero_title');
     final w = ctx.weather;
@@ -3204,39 +3206,39 @@ class _Screen4State extends State<Screen4>
     if (ctx.hasSoonOccasion) {
       final e = ctx.nextOccasion!;
       return (
-        headline:
-            '${e.title} In ${e.hoursUntil}h — ${AppLocalizations.t(context, 'hero_occasion_suffix')}',
-        emoji: '🎉',
+      headline:
+      '${e.title} In ${e.hoursUntil}h — ${AppLocalizations.t(context, 'hero_occasion_suffix')}',
+      emoji: '🎉',
       );
     }
     if (ctx.hasSoonMeeting) {
       final e = ctx.nextMeeting!;
       return (
-        headline:
-            '${e.title} In ${e.hoursUntil}h — ${AppLocalizations.t(context, 'hero_meeting_suffix')}',
-        emoji: '💼',
+      headline:
+      '${e.title} In ${e.hoursUntil}h — ${AppLocalizations.t(context, 'hero_meeting_suffix')}',
+      emoji: '💼',
       );
     }
 
     // 🌦️ Weather-driven
     if (w.isRainy) {
       return (
-        headline: AppLocalizations.t(context, 'hero_rainy'),
-        emoji: '🌧️',
+      headline: AppLocalizations.t(context, 'hero_rainy'),
+      emoji: '🌧️',
       );
     }
     if (w.isCold && w.tempLabel.isNotEmpty) {
       return (
-        headline:
-            '${w.tempLabel} ${AppLocalizations.t(context, 'hero_cold_suffix')}',
-        emoji: '❄️',
+      headline:
+      '${w.tempLabel} ${AppLocalizations.t(context, 'hero_cold_suffix')}',
+      emoji: '❄️',
       );
     }
     if (w.isHot && w.tempLabel.isNotEmpty) {
       return (
-        headline:
-            '${w.tempLabel} ${AppLocalizations.t(context, 'hero_hot_suffix')}',
-        emoji: '☀️',
+      headline:
+      '${w.tempLabel} ${AppLocalizations.t(context, 'hero_hot_suffix')}',
+      emoji: '☀️',
       );
     }
 
@@ -3247,14 +3249,14 @@ class _Screen4State extends State<Screen4>
     }
     if (ctx.isAfternoon) {
       return (
-        headline: AppLocalizations.t(context, 'hero_afternoon'),
-        emoji: '🔥',
+      headline: AppLocalizations.t(context, 'hero_afternoon'),
+      emoji: '🔥',
       );
     }
     if (ctx.isEvening) {
       return (
-        headline: AppLocalizations.t(context, 'hero_evening'),
-        emoji: '🌆',
+      headline: AppLocalizations.t(context, 'hero_evening'),
+      emoji: '🌆',
       );
     }
     return (headline: AppLocalizations.t(context, 'hero_night'), emoji: '🌙');
@@ -3472,8 +3474,8 @@ class _Screen4State extends State<Screen4>
                                       // 🆕 FIX: Only show temperature, don't append translation key
                                       // Weather description is shown in the desc field below
                                       label:
-                                          w.tempCelsius != null &&
-                                              w.tempCelsius! > 0
+                                      w.tempCelsius != null &&
+                                          w.tempCelsius! > 0
                                           ? '${w.tempCelsius!.toStringAsFixed(0)}°'
                                           : '28°',
                                       desc: AppLocalizations.t(
@@ -3488,7 +3490,7 @@ class _Screen4State extends State<Screen4>
                                       icon: Icons.favorite_border_rounded,
                                       color: const Color(0xFFD4A0C8),
                                       label:
-                                          'You tend to love ${_wardrobeSignal.favoriteStyle}',
+                                      'You tend to love ${_wardrobeSignal.favoriteStyle}',
                                       desc: AppLocalizations.t(
                                         context,
                                         'hero_card_bullet_style',
@@ -3693,72 +3695,72 @@ class _Screen4State extends State<Screen4>
     // 🆕 DYNAMIC DATA FROM PROVIDERS & SERVICES
     // Each routine syncs with real app data
     final routines =
-        <
-          ({
-            IconData icon,
-            Color color,
-            String label,
-            String desc,
-            String status,
-            bool done,
-            Widget page,
-          })
-        >[
-          (
-            // 🔧 FIX: Icons.checkroom_outlined was rendering as the same running-
-            // figure glyph as the "Move" card below (icon font/tree-shaking
-            // mismatch). Icons.dry_cleaning_outlined is the same hanger icon
-            // already used (and confirmed working) for the Wardrobe nav tab.
-            icon: Icons.dry_cleaning_outlined,
-            color: const Color(0xFF6B8FD4),
-            label: AppLocalizations.t(context, 'routine_wear'),
-            // 🔄 DYNAMIC: From DailyWearScreen/Wardrobe
-            desc: _getDailyWearDescription(),
-            status: _getDailyWearStatus(),
-            done: _isDailyWearDone(),
-            page: DailyWearScreen(),
-          ),
-          (
-            icon: Icons.directions_run_rounded,
-            color: const Color(0xFF5BBF8A),
-            label: AppLocalizations.t(context, 'routine_move'),
-            // 🔄 DYNAMIC: From WorkoutStudioScreen/Fitness
-            desc: _getWorkoutDescription(),
-            status: _getWorkoutStatus(),
-            done: _isWorkoutDone(),
-            page: WorkoutStudioScreen(fromHome: true),
-          ),
-          (
-            icon: Icons.restaurant_outlined,
-            color: const Color(0xFFE8895A),
-            label: AppLocalizations.t(context, 'routine_eat'),
-            // 🔄 DYNAMIC: From MainScreen/Diet
-            desc: _getMealDescription(),
-            status: _getMealStatus(),
-            done: _isMealDone(),
-            page: MainScreen(fromHome: true),
-          ),
-          (
-            icon: Icons.spa_outlined,
-            color: const Color(0xFFB07FD4),
-            label: AppLocalizations.t(context, 'routine_care'),
-            // 🔄 DYNAMIC: From SkincareScreen
-            desc: _getSkincareDescription(),
-            status: _getSkincareStatus(),
-            done: _isSkincareDone(),
-            page: SkincareScreen(),
-          ),
-          (
-            icon: Icons.medication_outlined,
-            color: const Color(0xFFE88A8A),
-            label: AppLocalizations.t(context, 'routine_medicine'),
-            // 🔄 DYNAMIC: From MediTrackScreen
-            desc: _getMedicineDescription(),
-            status: _getMedicineStatus(),
-            done: _isMedicineDone(),
-            page: MediTrackScreen(fromHome: true),
-          ),
-        ];
+    <
+        ({
+        IconData icon,
+        Color color,
+        String label,
+        String desc,
+        String status,
+        bool done,
+        Widget page,
+        })
+    >[
+      (
+      // 🔧 FIX: Icons.checkroom_outlined was rendering as the same running-
+      // figure glyph as the "Move" card below (icon font/tree-shaking
+      // mismatch). Icons.dry_cleaning_outlined is the same hanger icon
+      // already used (and confirmed working) for the Wardrobe nav tab.
+      icon: Icons.dry_cleaning_outlined,
+      color: const Color(0xFF6B8FD4),
+      label: AppLocalizations.t(context, 'routine_wear'),
+      // 🔄 DYNAMIC: From DailyWearScreen/Wardrobe
+      desc: _getDailyWearDescription(),
+      status: _getDailyWearStatus(),
+      done: _isDailyWearDone(),
+      page: DailyWearScreen(),
+      ),
+      (
+      icon: Icons.directions_run_rounded,
+      color: const Color(0xFF5BBF8A),
+      label: AppLocalizations.t(context, 'routine_move'),
+      // 🔄 DYNAMIC: From WorkoutStudioScreen/Fitness
+      desc: _getWorkoutDescription(),
+      status: _getWorkoutStatus(),
+      done: _isWorkoutDone(),
+      page: WorkoutStudioScreen(fromHome: true),
+      ),
+      (
+      icon: Icons.restaurant_outlined,
+      color: const Color(0xFFE8895A),
+      label: AppLocalizations.t(context, 'routine_eat'),
+      // 🔄 DYNAMIC: From MainScreen/Diet
+      desc: _getMealDescription(),
+      status: _getMealStatus(),
+      done: _isMealDone(),
+      page: MainScreen(fromHome: true),
+      ),
+      (
+      icon: Icons.spa_outlined,
+      color: const Color(0xFFB07FD4),
+      label: AppLocalizations.t(context, 'routine_care'),
+      // 🔄 DYNAMIC: From SkincareScreen
+      desc: _getSkincareDescription(),
+      status: _getSkincareStatus(),
+      done: _isSkincareDone(),
+      page: SkincareScreen(),
+      ),
+      (
+      icon: Icons.medication_outlined,
+      color: const Color(0xFFE88A8A),
+      label: AppLocalizations.t(context, 'routine_medicine'),
+      // 🔄 DYNAMIC: From MediTrackScreen
+      desc: _getMedicineDescription(),
+      status: _getMedicineStatus(),
+      done: _isMedicineDone(),
+      page: MediTrackScreen(fromHome: true),
+      ),
+    ];
 
     final palette = HomeRoutinePalette(
       accent: _accent,
@@ -3771,7 +3773,7 @@ class _Screen4State extends State<Screen4>
 
     final cards = <HomeRoutineCardData>[
       for (int i = 0; i < routines.length; i++)
-        () {
+            () {
           final r = routines[i];
           final overdue =
               r.page is MediTrackScreen && r.status.toLowerCase().contains('overdue');
@@ -3893,73 +3895,73 @@ class _Screen4State extends State<Screen4>
                       // button below stays fully visible, never overflows.
                       Flexible(
                         child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              AppLocalizations.t(context, 'prep_card_title'),
-                              style: TextStyle(
-                                color: _textHeading,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.3,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                AppLocalizations.t(context, 'prep_card_title'),
+                                style: TextStyle(
+                                  color: _textHeading,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.3,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            AppLocalizations.t(context, 'prep_card_subtitle'),
-                            style: TextStyle(
-                              color: _textMuted,
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w400,
+                            const SizedBox(height: 1),
+                            Text(
+                              AppLocalizations.t(context, 'prep_card_subtitle'),
+                              style: TextStyle(
+                                color: _textMuted,
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 3),
-                          // Flexible + LayoutBuilder — on a short card this
-                          // hides cleanly once there's no room for even one
-                          // full line, instead of painting a clipped sliver.
-                          Flexible(
-                            child: LayoutBuilder(
-                              builder: (context, descConstraints) {
-                                const oneLineHeight = 9.0 * 1.15;
-                                if (descConstraints.maxHeight <
-                                    oneLineHeight) {
-                                  return const SizedBox.shrink();
-                                }
-                                return Text(
-                                  AppLocalizations.t(context, 'prep_card_desc'),
-                                  style: TextStyle(
-                                    // 🆕 Blended a bit toward _textHeading (from plain
-                                    // _textMuted) + bumped size/weight so the subtitle
-                                    // is clearly legible instead of fading into the
-                                    // background, while staying visually secondary
-                                    // to the "Prep & Plan" title above it.
-                                    color: Color.lerp(
-                                      _textMuted,
-                                      _textHeading,
-                                      0.35,
+                            const SizedBox(height: 3),
+                            // Flexible + LayoutBuilder — on a short card this
+                            // hides cleanly once there's no room for even one
+                            // full line, instead of painting a clipped sliver.
+                            Flexible(
+                              child: LayoutBuilder(
+                                builder: (context, descConstraints) {
+                                  const oneLineHeight = 9.0 * 1.15;
+                                  if (descConstraints.maxHeight <
+                                      oneLineHeight) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Text(
+                                    AppLocalizations.t(context, 'prep_card_desc'),
+                                    style: TextStyle(
+                                      // 🆕 Blended a bit toward _textHeading (from plain
+                                      // _textMuted) + bumped size/weight so the subtitle
+                                      // is clearly legible instead of fading into the
+                                      // background, while staying visually secondary
+                                      // to the "Prep & Plan" title above it.
+                                      color: Color.lerp(
+                                        _textMuted,
+                                        _textHeading,
+                                        0.35,
+                                      ),
+                                      fontSize:
+                                      9.0, // 🔧 Reduced from 9.5 to fit better
+                                      fontWeight: FontWeight.w500,
+                                      height:
+                                      1.15, // 🔧 Reduced line height from 1.2
                                     ),
-                                    fontSize:
-                                        9.0, // 🔧 Reduced from 9.5 to fit better
-                                    fontWeight: FontWeight.w500,
-                                    height:
-                                        1.15, // 🔧 Reduced line height from 1.2
-                                  ),
-                                  // 🔧 FIX: Back to maxLines: 2 to prevent overflow
-                                  // This shows key info without bottom overflow
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  softWrap: true,
-                                );
-                              },
+                                    // 🔧 FIX: Back to maxLines: 2 to prevent overflow
+                                    // This shows key info without bottom overflow
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: true,
+                                  );
+                                },
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
                         ),
                       ),
                       Semantics(
@@ -4183,11 +4185,11 @@ class _Screen4State extends State<Screen4>
       return _CardContent(
         title: AppLocalizations.t(context, 'style_occasion_title'),
         subtitle:
-            '${e.title} in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'style_occasion_subtitle')}',
+        '${e.title} in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'style_occasion_subtitle')}',
         cta: AppLocalizations.t(context, 'style_occasion_cta'),
         icon: Icons.celebration_outlined,
         prompt:
-            'I have "${e.title}" in ${e.hoursUntil} hours. Create the perfect occasion outfit.',
+        'I have "${e.title}" in ${e.hoursUntil} hours. Create the perfect occasion outfit.',
       );
     }
     if (ctx.hasSoonMeeting) {
@@ -4195,11 +4197,11 @@ class _Screen4State extends State<Screen4>
       return _CardContent(
         title: AppLocalizations.t(context, 'style_meeting_title'),
         subtitle:
-            '"${e.title}" in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'style_meeting_subtitle')}',
+        '"${e.title}" in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'style_meeting_subtitle')}',
         cta: AppLocalizations.t(context, 'style_meeting_cta'),
         icon: Icons.work_outline_rounded,
         prompt:
-            'I have a meeting "${e.title}" in ${e.hoursUntil} hours. Suggest a sharp professional outfit.',
+        'I have a meeting "${e.title}" in ${e.hoursUntil} hours. Suggest a sharp professional outfit.',
       );
     }
 
@@ -4217,7 +4219,7 @@ class _Screen4State extends State<Screen4>
       return _CardContent(
         title: AppLocalizations.t(context, 'style_cold_title'),
         subtitle:
-            '${w.tempLabel} ${AppLocalizations.t(context, 'style_cold_subtitle')}',
+        '${w.tempLabel} ${AppLocalizations.t(context, 'style_cold_subtitle')}',
         cta: AppLocalizations.t(context, 'style_cold_cta'),
         icon: Icons.ac_unit_outlined,
         prompt: 'It\'s ${w.tempLabel} today. Suggest a warm layered outfit.',
@@ -4227,7 +4229,7 @@ class _Screen4State extends State<Screen4>
       return _CardContent(
         title: AppLocalizations.t(context, 'style_hot_title'),
         subtitle:
-            '${w.tempLabel} ${AppLocalizations.t(context, 'style_hot_subtitle')}',
+        '${w.tempLabel} ${AppLocalizations.t(context, 'style_hot_subtitle')}',
         cta: AppLocalizations.t(context, 'style_hot_cta'),
         icon: Icons.wb_sunny_outlined,
         prompt: 'It\'s ${w.tempLabel} today. Suggest a cool breathable outfit.',
@@ -4238,23 +4240,23 @@ class _Screen4State extends State<Screen4>
     if (fit.nextWorkoutLabel.isNotEmpty && ctx.isMorning) {
       return _CardContent(
         title:
-            '${fit.nextWorkoutLabel} ${AppLocalizations.t(context, 'style_gym_title_suffix')}',
+        '${fit.nextWorkoutLabel} ${AppLocalizations.t(context, 'style_gym_title_suffix')}',
         subtitle: AppLocalizations.t(context, 'style_gym_subtitle'),
         cta: AppLocalizations.t(context, 'style_gym_cta'),
         icon: Icons.fitness_center_outlined,
         prompt:
-            'Today is my ${fit.nextWorkoutLabel} day. Suggest a stylish gym outfit.',
+        'Today is my ${fit.nextWorkoutLabel} day. Suggest a stylish gym outfit.',
       );
     }
     if (fit.hasActiveStreak && ctx.isMorning) {
       return _CardContent(
         title:
-            '${fit.workoutStreakDays}-${AppLocalizations.t(context, 'style_streak_title_suffix')}',
+        '${fit.workoutStreakDays}-${AppLocalizations.t(context, 'style_streak_title_suffix')}',
         subtitle: AppLocalizations.t(context, 'style_streak_subtitle'),
         cta: AppLocalizations.t(context, 'style_streak_cta'),
         icon: Icons.local_fire_department_outlined,
         prompt:
-            'I\'m on a ${fit.workoutStreakDays}-day fitness streak. Suggest a motivating outfit for today.',
+        'I\'m on a ${fit.workoutStreakDays}-day fitness streak. Suggest a motivating outfit for today.',
       );
     }
 
@@ -4263,22 +4265,22 @@ class _Screen4State extends State<Screen4>
       return _CardContent(
         title: AppLocalizations.t(context, 'style_wardrobe_title'),
         subtitle:
-            '${ward.unwornItems} ${AppLocalizations.t(context, 'style_wardrobe_subtitle')}',
+        '${ward.unwornItems} ${AppLocalizations.t(context, 'style_wardrobe_subtitle')}',
         cta: AppLocalizations.t(context, 'style_wardrobe_cta'),
         icon: Icons.dry_cleaning_outlined,
         prompt:
-            'I have ${ward.unwornItems} clothing items I\'ve never worn. Build fresh outfits using them.',
+        'I have ${ward.unwornItems} clothing items I\'ve never worn. Build fresh outfits using them.',
       );
     }
     if (ward.favoriteStyle.isNotEmpty) {
       return _CardContent(
         title:
-            '${ward.favoriteStyle.capitalize()} ${AppLocalizations.t(context, 'style_fav_title_suffix')}',
+        '${ward.favoriteStyle.capitalize()} ${AppLocalizations.t(context, 'style_fav_title_suffix')}',
         subtitle: AppLocalizations.t(context, 'style_fav_subtitle'),
         cta: AppLocalizations.t(context, 'style_fav_cta'),
         icon: Icons.favorite_outline_rounded,
         prompt:
-            'Show me new ${ward.favoriteStyle} fashion picks that match my style preferences.',
+        'Show me new ${ward.favoriteStyle} fashion picks that match my style preferences.',
       );
     }
 
@@ -4338,7 +4340,7 @@ class _Screen4State extends State<Screen4>
       cta: AppLocalizations.t(context, 'style_default_cta'),
       icon: Icons.auto_awesome_rounded,
       prompt:
-          'Surprise me with a complete outfit based on my style preferences.',
+      'Surprise me with a complete outfit based on my style preferences.',
     );
   }
 
@@ -4355,20 +4357,20 @@ class _Screen4State extends State<Screen4>
       return _CardContent(
         title: AppLocalizations.t(context, 'prep_event_title'),
         subtitle:
-            '"${e.title}" in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'prep_event_subtitle')}',
+        '"${e.title}" in ${e.hoursUntil}h — ${AppLocalizations.t(context, 'prep_event_subtitle')}',
         cta: AppLocalizations.t(context, 'prep_event_cta'),
         icon: Icons.checklist_rounded,
         prompt:
-            'Create a complete prep checklist for my upcoming event: "${e.title}".',
+        'Create a complete prep checklist for my upcoming event: "${e.title}".',
       );
     }
 
     // 📅 Travel today
     if (ctx.upcomingEvents.any(
-      (e) => e.type == _EventType.travel && e.isToday,
+          (e) => e.type == _EventType.travel && e.isToday,
     )) {
       final e = ctx.upcomingEvents.firstWhere(
-        (e) => e.type == _EventType.travel && e.isToday,
+            (e) => e.type == _EventType.travel && e.isToday,
       );
       return _CardContent(
         title: AppLocalizations.t(context, 'prep_travel_title'),
@@ -4376,7 +4378,7 @@ class _Screen4State extends State<Screen4>
         cta: AppLocalizations.t(context, 'prep_travel_cta'),
         icon: Icons.flight_outlined,
         prompt:
-            'Create a travel packing checklist and outfit plan for my trip today: "${e.title}".',
+        'Create a travel packing checklist and outfit plan for my trip today: "${e.title}".',
       );
     }
 
@@ -4388,7 +4390,7 @@ class _Screen4State extends State<Screen4>
         cta: AppLocalizations.t(context, 'prep_sunday_cta'),
         icon: Icons.event_available_outlined,
         prompt:
-            'Help me do a complete Sunday prep: weekly meal plan, outfit planning, and goal setting.',
+        'Help me do a complete Sunday prep: weekly meal plan, outfit planning, and goal setting.',
       );
     }
 
@@ -4411,7 +4413,7 @@ class _Screen4State extends State<Screen4>
         cta: AppLocalizations.t(context, 'prep_meal_cta'),
         icon: Icons.restaurant_outlined,
         prompt:
-            'I haven\'t met my calorie goal today. Suggest healthy meals I can prepare now.',
+        'I haven\'t met my calorie goal today. Suggest healthy meals I can prepare now.',
       );
     }
 
@@ -4425,7 +4427,7 @@ class _Screen4State extends State<Screen4>
         cta: AppLocalizations.t(context, 'prep_workout_cta'),
         icon: Icons.fitness_center_outlined,
         prompt:
-            'Plan my ${fit.nextWorkoutLabel} workout: exercises, sets, nutrition, and gear.',
+        'Plan my ${fit.nextWorkoutLabel} workout: exercises, sets, nutrition, and gear.',
       );
     }
 
@@ -4522,24 +4524,24 @@ class _Screen4State extends State<Screen4>
     // 🆕 Picks localized
     final picks = [
       (
-        AppLocalizations.t(context, 'pick_minimal_chic'),
-        AppLocalizations.t(context, 'pick_minimal_chic_tag'),
-        'https://images.unsplash.com/photo-1594938298603-c8148c4b9c2b?w=220&h=260&fit=crop&crop=top&auto=format',
+      AppLocalizations.t(context, 'pick_minimal_chic'),
+      AppLocalizations.t(context, 'pick_minimal_chic_tag'),
+      'https://images.unsplash.com/photo-1594938298603-c8148c4b9c2b?w=220&h=260&fit=crop&crop=top&auto=format',
       ),
       (
-        AppLocalizations.t(context, 'pick_street_edit'),
-        AppLocalizations.t(context, 'pick_street_edit_tag'),
-        'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=220&h=260&fit=crop&crop=top&auto=format',
+      AppLocalizations.t(context, 'pick_street_edit'),
+      AppLocalizations.t(context, 'pick_street_edit_tag'),
+      'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=220&h=260&fit=crop&crop=top&auto=format',
       ),
       (
-        AppLocalizations.t(context, 'pick_office_look'),
-        AppLocalizations.t(context, 'pick_office_look_tag'),
-        'https://images.unsplash.com/photo-1591369822096-ffd140ec948f?w=220&h=260&fit=crop&crop=top&auto=format',
+      AppLocalizations.t(context, 'pick_office_look'),
+      AppLocalizations.t(context, 'pick_office_look_tag'),
+      'https://images.unsplash.com/photo-1591369822096-ffd140ec948f?w=220&h=260&fit=crop&crop=top&auto=format',
       ),
       (
-        AppLocalizations.t(context, 'pick_evening'),
-        AppLocalizations.t(context, 'pick_evening_tag'),
-        'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=220&h=260&fit=crop&crop=top&auto=format',
+      AppLocalizations.t(context, 'pick_evening'),
+      AppLocalizations.t(context, 'pick_evening_tag'),
+      'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=220&h=260&fit=crop&crop=top&auto=format',
       ),
     ];
     final screenW = MediaQuery.of(context).size.width;
@@ -4616,8 +4618,8 @@ class _Screen4State extends State<Screen4>
                       fit: BoxFit.cover,
                       alignment: Alignment.topCenter,
                       cacheWidth:
-                          (112 * MediaQuery.of(context).devicePixelRatio)
-                              .round(),
+                      (112 * MediaQuery.of(context).devicePixelRatio)
+                          .round(),
                       filterQuality: FilterQuality.low,
                       errorBuilder: (_ctx, _err, _st) => Container(
                         color: _accent.withOpacity(0.1),
@@ -4731,7 +4733,7 @@ class _Screen4State extends State<Screen4>
       onVisualSearch: null,
       onFindSimilar: null,
       onAddToWardrobe:
-          null, // uses showAddToWardrobeModal default in lens sheet
+      null, // uses showAddToWardrobeModal default in lens sheet
     );
   }
 
@@ -4743,24 +4745,24 @@ class _Screen4State extends State<Screen4>
 
     final menuItems = [
       (
-        Icons.camera_alt_outlined,
-        AppLocalizations.t(context, 'plus_menu_camera'),
-        AppLocalizations.t(context, 'plus_menu_camera_sub'),
+      Icons.camera_alt_outlined,
+      AppLocalizations.t(context, 'plus_menu_camera'),
+      AppLocalizations.t(context, 'plus_menu_camera_sub'),
       ),
       (
-        Icons.photo_library_outlined,
-        AppLocalizations.t(context, 'plus_menu_gallery'),
-        AppLocalizations.t(context, 'plus_menu_gallery_sub'),
+      Icons.photo_library_outlined,
+      AppLocalizations.t(context, 'plus_menu_gallery'),
+      AppLocalizations.t(context, 'plus_menu_gallery_sub'),
       ),
       (
-        Icons.insert_drive_file_outlined,
-        AppLocalizations.t(context, 'plus_menu_files'),
-        AppLocalizations.t(context, 'plus_menu_files_sub'),
+      Icons.insert_drive_file_outlined,
+      AppLocalizations.t(context, 'plus_menu_files'),
+      AppLocalizations.t(context, 'plus_menu_files_sub'),
       ),
       (
-        Icons.browse_gallery_outlined,
-        AppLocalizations.t(context, 'plus_menu_browse'),
-        AppLocalizations.t(context, 'plus_menu_browse_sub'),
+      Icons.browse_gallery_outlined,
+      AppLocalizations.t(context, 'plus_menu_browse'),
+      AppLocalizations.t(context, 'plus_menu_browse_sub'),
       ),
     ];
 
@@ -4851,7 +4853,7 @@ class _Screen4State extends State<Screen4>
     final screenW = MediaQuery.of(context).size.width;
     final isTablet = screenW >= 600;
     const double pillH =
-        64.0; // ✏️ Increased from 50.0 — taller nav bar, icons less cramped
+    64.0; // ✏️ Increased from 50.0 — taller nav bar, icons less cramped
     const double maxBulge = 14.0; // ✏️ Increased from 8.0
     const double totalH = pillH + maxBulge + 0.0; // totalH = 78px (was 58px)
     const double iconContainerSize = 32.0; // ✏️ Reduced from 36.0
@@ -4920,24 +4922,24 @@ class _Screen4State extends State<Screen4>
                                     height: iconContainerSize,
                                     decoration: active
                                         ? BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            gradient: _accentGradient2,
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: _accent.withOpacity(
-                                                  0.45,
-                                                ),
-                                                blurRadius: 16,
-                                                offset: const Offset(0, 4),
-                                              ),
-                                              BoxShadow(
-                                                color: _accent.withOpacity(
-                                                  0.25,
-                                                ),
-                                                blurRadius: 28,
-                                              ),
-                                            ],
-                                          )
+                                      shape: BoxShape.circle,
+                                      gradient: _accentGradient2,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: _accent.withOpacity(
+                                            0.45,
+                                          ),
+                                          blurRadius: 16,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                        BoxShadow(
+                                          color: _accent.withOpacity(
+                                            0.25,
+                                          ),
+                                          blurRadius: 28,
+                                        ),
+                                      ],
+                                    )
                                         : null,
                                     child: Icon(
                                       items[i].icon,
@@ -5082,7 +5084,7 @@ class _Screen4State extends State<Screen4>
             ),
             const SizedBox(height: 8),
             ..._overlaySuggestions.map(
-              (q) => _AnimatedPressable(
+                  (q) => _AnimatedPressable(
                 scalePressed: 0.97,
                 // 🆕 q ఇప్పుడు key — translate చేసి API కి పంపుతున్నాం
                 onTap: () => _handleQuery(
@@ -5343,39 +5345,39 @@ class _Screen4State extends State<Screen4>
                   children: _responseTags
                       .map(
                         (tag) => _AnimatedPressable(
-                          scalePressed: 0.96,
-                          liftY: -1.5,
-                          // 🆕 tag key translate చేసి submit చేస్తున్నాం
-                          onTap: () =>
-                              _submitQuery(AppLocalizations.t(context, tag)),
-                          child: Container(
-                            constraints: BoxConstraints(
-                              maxWidth: MediaQuery.of(context).size.width - 60,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 13,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _accent.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(100),
-                              border: Border.all(
-                                color: _accent.withOpacity(0.20),
-                              ),
-                            ),
-                            child: Text(
-                              AppLocalizations.t(context, tag), // 🆕 translated
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: _accent,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+                      scalePressed: 0.96,
+                      liftY: -1.5,
+                      // 🆕 tag key translate చేసి submit చేస్తున్నాం
+                      onTap: () =>
+                          _submitQuery(AppLocalizations.t(context, tag)),
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width - 60,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 13,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _accent.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(100),
+                          border: Border.all(
+                            color: _accent.withOpacity(0.20),
                           ),
                         ),
-                      )
+                        child: Text(
+                          AppLocalizations.t(context, tag), // 🆕 translated
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: _accent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
                       .toList(),
                 ),
               ),
@@ -5425,14 +5427,14 @@ class _Screen4State extends State<Screen4>
                         fit: BoxFit.cover,
                         width: double.infinity,
                         cacheWidth:
-                            (outfitCardW *
-                                    MediaQuery.of(context).devicePixelRatio)
-                                .round(),
+                        (outfitCardW *
+                            MediaQuery.of(context).devicePixelRatio)
+                            .round(),
                         cacheHeight:
-                            (outfitStripH *
-                                    0.62 *
-                                    MediaQuery.of(context).devicePixelRatio)
-                                .round(),
+                        (outfitStripH *
+                            0.62 *
+                            MediaQuery.of(context).devicePixelRatio)
+                            .round(),
                         filterQuality: FilterQuality.low,
                         errorBuilder: (_ctx, _err, _st) =>
                             Container(color: _accent.withOpacity(0.1)),
@@ -5458,29 +5460,29 @@ class _Screen4State extends State<Screen4>
                             children: o.tags
                                 .map(
                                   (t) => Container(
-                                    constraints: const BoxConstraints(
-                                      maxWidth: 70,
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 5,
-                                      vertical: 1,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _accent.withOpacity(0.10),
-                                      borderRadius: BorderRadius.circular(100),
-                                    ),
-                                    child: Text(
-                                      t,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: _textMuted,
-                                        fontSize: 8.5,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
+                                constraints: const BoxConstraints(
+                                  maxWidth: 70,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _accent.withOpacity(0.10),
+                                  borderRadius: BorderRadius.circular(100),
+                                ),
+                                child: Text(
+                                  t,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: _textMuted,
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w500,
                                   ),
-                                )
+                                ),
+                              ),
+                            )
                                 .toList(),
                           ),
                         ],
@@ -5589,7 +5591,7 @@ class _Screen4State extends State<Screen4>
             final rows = ((itemCount / crossAxisCount).ceil()).clamp(1, 6);
             final cellWidth =
                 (constraints.maxWidth - ((crossAxisCount - 1) * cellSpacing)) /
-                crossAxisCount;
+                    crossAxisCount;
             final cellHeight = cellWidth / aspectRatio;
             final gridHeight = (rows * cellHeight) + ((rows - 1) * cellSpacing);
 
@@ -5648,26 +5650,26 @@ class _Screen4State extends State<Screen4>
                             .take(2)
                             .map(
                               (it) => Container(
-                                margin: const EdgeInsets.only(bottom: 2),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
-                                  vertical: 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _accent.withOpacity(0.07),
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                                child: Text(
-                                  it,
-                                  style: TextStyle(
-                                    fontSize: itemTextSize,
-                                    color: _textSub,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
+                            margin: const EdgeInsets.only(bottom: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 2,
+                              vertical: 1,
                             ),
+                            decoration: BoxDecoration(
+                              color: _accent.withOpacity(0.07),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: Text(
+                              it,
+                              style: TextStyle(
+                                fontSize: itemTextSize,
+                                color: _textSub,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -5700,7 +5702,7 @@ class _Screen4State extends State<Screen4>
                   ),
                   const SizedBox(height: 6),
                   ...s.items.map(
-                    (it) => Padding(
+                        (it) => Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Text(
                         it,
@@ -5731,40 +5733,40 @@ class _Screen4State extends State<Screen4>
   Widget _buildPrepareExactChecklistCard(String title) {
     final sections = [
       (
-        name: AppLocalizations.t(context, 'checklist_section_documents'),
-        emoji: '📄',
-        color: _accentTertiary,
-        items: [
-          AppLocalizations.t(context, 'checklist_item_passport'),
-          AppLocalizations.t(context, 'checklist_item_boarding_pass'),
-          AppLocalizations.t(context, 'checklist_item_travel_insurance'),
-          AppLocalizations.t(context, 'checklist_item_hotel_confirmation'),
-          AppLocalizations.t(context, 'checklist_item_visa'),
-        ],
+      name: AppLocalizations.t(context, 'checklist_section_documents'),
+      emoji: '📄',
+      color: _accentTertiary,
+      items: [
+        AppLocalizations.t(context, 'checklist_item_passport'),
+        AppLocalizations.t(context, 'checklist_item_boarding_pass'),
+        AppLocalizations.t(context, 'checklist_item_travel_insurance'),
+        AppLocalizations.t(context, 'checklist_item_hotel_confirmation'),
+        AppLocalizations.t(context, 'checklist_item_visa'),
+      ],
       ),
       (
-        name: AppLocalizations.t(context, 'checklist_section_tech'),
-        emoji: '🔌',
-        color: _accentSecondary,
-        items: [
-          AppLocalizations.t(context, 'checklist_item_phone_charger'),
-          AppLocalizations.t(context, 'checklist_item_power_bank'),
-          AppLocalizations.t(context, 'checklist_item_headphones'),
-          AppLocalizations.t(context, 'checklist_item_laptop'),
-          AppLocalizations.t(context, 'checklist_item_adapter'),
-        ],
+      name: AppLocalizations.t(context, 'checklist_section_tech'),
+      emoji: '🔌',
+      color: _accentSecondary,
+      items: [
+        AppLocalizations.t(context, 'checklist_item_phone_charger'),
+        AppLocalizations.t(context, 'checklist_item_power_bank'),
+        AppLocalizations.t(context, 'checklist_item_headphones'),
+        AppLocalizations.t(context, 'checklist_item_laptop'),
+        AppLocalizations.t(context, 'checklist_item_adapter'),
+      ],
       ),
       (
-        name: AppLocalizations.t(context, 'checklist_section_comfort'),
-        emoji: '😴',
-        color: _accent,
-        items: [
-          AppLocalizations.t(context, 'checklist_item_neck_pillow'),
-          AppLocalizations.t(context, 'checklist_item_eye_mask'),
-          AppLocalizations.t(context, 'checklist_item_earplugs'),
-          AppLocalizations.t(context, 'checklist_item_jacket'),
-          AppLocalizations.t(context, 'checklist_item_compression_socks'),
-        ],
+      name: AppLocalizations.t(context, 'checklist_section_comfort'),
+      emoji: '😴',
+      color: _accent,
+      items: [
+        AppLocalizations.t(context, 'checklist_item_neck_pillow'),
+        AppLocalizations.t(context, 'checklist_item_eye_mask'),
+        AppLocalizations.t(context, 'checklist_item_earplugs'),
+        AppLocalizations.t(context, 'checklist_item_jacket'),
+        AppLocalizations.t(context, 'checklist_item_compression_socks'),
+      ],
       ),
     ];
     const sectionImages = [
@@ -5790,23 +5792,23 @@ class _Screen4State extends State<Screen4>
 
     final itemsState = _prepareExactItemsByTitle.putIfAbsent(
       title,
-      () => sections.map((s) => List<String>.from(s.items)).toList(),
+          () => sections.map((s) => List<String>.from(s.items)).toList(),
     );
     final addCtrls = _prepareExactAddControllersByTitle.putIfAbsent(
       title,
-      () => List.generate(sections.length, (_) => TextEditingController()),
+          () => List.generate(sections.length, (_) => TextEditingController()),
     );
     final checksState = _prepareExactChecksByTitle.putIfAbsent(
       title,
-      () => itemsState
+          () => itemsState
           .map(
             (items) => List<bool>.filled(items.length, false, growable: true),
-          )
+      )
           .toList(),
     );
     final outfitSaved = _prepareExactOutfitSavedByTitle.putIfAbsent(
       title,
-      () => List<bool>.filled(3, false, growable: true),
+          () => List<bool>.filled(3, false, growable: true),
     );
     final isListSaved = _prepareExactSavedByTitle[title] ?? false;
 
@@ -5829,11 +5831,11 @@ class _Screen4State extends State<Screen4>
       builder: (context, checklistSetState) {
         final totalItems = itemsState.fold<int>(
           0,
-          (sum, items) => sum + items.length,
+              (sum, items) => sum + items.length,
         );
         final totalChecked = checksState.fold<int>(
           0,
-          (sum, items) => sum + items.where((v) => v).length,
+              (sum, items) => sum + items.where((v) => v).length,
         );
         final progress = totalItems == 0 ? 0.0 : totalChecked / totalItems;
 
@@ -5966,7 +5968,7 @@ class _Screen4State extends State<Screen4>
                                 return Padding(
                                   padding: EdgeInsets.only(
                                     right:
-                                        imgIdx == sectionImages[sIdx].length - 1
+                                    imgIdx == sectionImages[sIdx].length - 1
                                         ? 0
                                         : 8,
                                   ),
@@ -6002,7 +6004,7 @@ class _Screen4State extends State<Screen4>
                             final done = checksState[sIdx][i];
                             return GestureDetector(
                               onTap: () => checklistSetState(
-                                () => checksState[sIdx][i] = !done,
+                                    () => checksState[sIdx][i] = !done,
                               ),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
@@ -6011,11 +6013,11 @@ class _Screen4State extends State<Screen4>
                                 decoration: BoxDecoration(
                                   border: i < itemsState[sIdx].length - 1
                                       ? Border(
-                                          bottom: BorderSide(
-                                            color: _border.withOpacity(0.85),
-                                            width: 1,
-                                          ),
-                                        )
+                                    bottom: BorderSide(
+                                      color: _border.withOpacity(0.85),
+                                      width: 1,
+                                    ),
+                                  )
                                       : null,
                                 ),
                                 child: Row(
@@ -6037,10 +6039,10 @@ class _Screen4State extends State<Screen4>
                                       alignment: Alignment.center,
                                       child: done
                                           ? const Icon(
-                                              Icons.check,
-                                              size: 11,
-                                              color: Colors.white,
-                                            )
+                                        Icons.check,
+                                        size: 11,
+                                        color: Colors.white,
+                                      )
                                           : null,
                                     ),
                                     const SizedBox(width: 10),
@@ -6249,8 +6251,8 @@ class _Screen4State extends State<Screen4>
                                     );
                                     if (!mounted) return;
                                     checklistSetState(
-                                      () => _prepareExactSavedByTitle[title] =
-                                          true,
+                                          () => _prepareExactSavedByTitle[title] =
+                                      true,
                                     );
                                   },
                                   child: Container(
@@ -6288,7 +6290,7 @@ class _Screen4State extends State<Screen4>
                                             decoration: BoxDecoration(
                                               color: _accentSecondary,
                                               borderRadius:
-                                                  BorderRadius.circular(99),
+                                              BorderRadius.circular(99),
                                             ),
                                             child: Text(
                                               AppLocalizations.t(
@@ -6320,10 +6322,10 @@ class _Screen4State extends State<Screen4>
                         gradient: isListSaved
                             ? LinearGradient(colors: [_accent, _accentTertiary])
                             : LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [_accent, _accentTertiary],
-                              ),
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [_accent, _accentTertiary],
+                        ),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
@@ -6338,9 +6340,9 @@ class _Screen4State extends State<Screen4>
                             isListSaved
                                 ? AppLocalizations.t(context, 'checklist_saved')
                                 : AppLocalizations.t(
-                                    context,
-                                    'checklist_save_to_board',
-                                  ),
+                              context,
+                              'checklist_save_to_board',
+                            ),
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
@@ -6510,34 +6512,34 @@ class _Screen4State extends State<Screen4>
     // 🆕 seeAll picks localized
     final seeAllPicks = [
       (
-        AppLocalizations.t(context, 'pick_minimal_chic'),
-        AppLocalizations.t(context, 'pick_minimal_chic_tag'),
-        'https://images.unsplash.com/photo-1594938298603-c8148c4b9c2b?w=300&h=280&fit=crop&crop=top&auto=format',
+      AppLocalizations.t(context, 'pick_minimal_chic'),
+      AppLocalizations.t(context, 'pick_minimal_chic_tag'),
+      'https://images.unsplash.com/photo-1594938298603-c8148c4b9c2b?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
       (
-        AppLocalizations.t(context, 'pick_street_edit'),
-        AppLocalizations.t(context, 'pick_street_edit_tag'),
-        'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=300&h=280&fit=crop&crop=top&auto=format',
+      AppLocalizations.t(context, 'pick_street_edit'),
+      AppLocalizations.t(context, 'pick_street_edit_tag'),
+      'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
       (
-        AppLocalizations.t(context, 'pick_office_look'),
-        AppLocalizations.t(context, 'pick_office_look_tag'),
-        'https://images.unsplash.com/photo-1591369822096-ffd140ec948f?w=300&h=280&fit=crop&crop=top&auto=format',
+      AppLocalizations.t(context, 'pick_office_look'),
+      AppLocalizations.t(context, 'pick_office_look_tag'),
+      'https://images.unsplash.com/photo-1591369822096-ffd140ec948f?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
       (
-        AppLocalizations.t(context, 'pick_evening'),
-        AppLocalizations.t(context, 'pick_evening_tag'),
-        'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=300&h=280&fit=crop&crop=top&auto=format',
+      AppLocalizations.t(context, 'pick_evening'),
+      AppLocalizations.t(context, 'pick_evening_tag'),
+      'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
       (
-        AppLocalizations.t(context, 'pick_athleisure'),
-        AppLocalizations.t(context, 'pick_athleisure_tag'),
-        'https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=300&h=280&fit=crop&crop=top&auto=format',
+      AppLocalizations.t(context, 'pick_athleisure'),
+      AppLocalizations.t(context, 'pick_athleisure_tag'),
+      'https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
       (
-        AppLocalizations.t(context, 'pick_resort_wear'),
-        AppLocalizations.t(context, 'pick_resort_wear_tag'),
-        'https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=300&h=280&fit=crop&crop=top&auto=format',
+      AppLocalizations.t(context, 'pick_resort_wear'),
+      AppLocalizations.t(context, 'pick_resort_wear_tag'),
+      'https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=300&h=280&fit=crop&crop=top&auto=format',
       ),
     ];
     return AnimatedBuilder(
@@ -6595,12 +6597,12 @@ class _Screen4State extends State<Screen4>
                   child: GridView.builder(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                     gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 0.75,
-                        ),
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 0.75,
+                    ),
                     itemCount: seeAllPicks.length,
                     itemBuilder: (context, i) {
                       return RepaintBoundary(
@@ -6610,7 +6612,7 @@ class _Screen4State extends State<Screen4>
                             _closeSeeAll();
                             Future.delayed(
                               const Duration(milliseconds: 380),
-                              () {
+                                  () {
                                 if (mounted) {
                                   _openPickSheet(
                                     seeAllPicks[i].$1,
@@ -6636,11 +6638,11 @@ class _Screen4State extends State<Screen4>
                                     fit: BoxFit.cover,
                                     width: double.infinity,
                                     cacheWidth:
-                                        (240 *
-                                                MediaQuery.of(
-                                                  context,
-                                                ).devicePixelRatio)
-                                            .round(),
+                                    (240 *
+                                        MediaQuery.of(
+                                          context,
+                                        ).devicePixelRatio)
+                                        .round(),
                                     filterQuality: FilterQuality.low,
                                     errorBuilder: (_ctx, _err, _st) =>
                                         Container(
@@ -6661,7 +6663,7 @@ class _Screen4State extends State<Screen4>
                                   ),
                                   child: Column(
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         seeAllPicks[i].$1,
@@ -6862,181 +6864,181 @@ class _Screen4State extends State<Screen4>
                             Expanded(
                               child: notifications.isEmpty
                                   ? Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Container(
-                                          width: 64,
-                                          height: 64,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: _accent.withOpacity(0.08),
-                                          ),
-                                          child: Icon(
-                                            Icons.notifications_none_rounded,
-                                            size: 30,
-                                            color: _accent.withOpacity(0.5),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 14),
-                                        Text(
-                                          AppLocalizations.t(
-                                            context,
-                                            'notifications_empty_title',
-                                          ),
-                                          style: TextStyle(
-                                            color: _textHeading,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w600,
-                                            letterSpacing: -0.2,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          AppLocalizations.t(
-                                            context,
-                                            'notifications_empty_subtitle',
-                                          ),
-                                          style: TextStyle(
-                                            color: _textMuted,
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                        ),
-                                      ],
-                                    )
+                                mainAxisAlignment:
+                                MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 64,
+                                    height: 64,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: _accent.withOpacity(0.08),
+                                    ),
+                                    child: Icon(
+                                      Icons.notifications_none_rounded,
+                                      size: 30,
+                                      color: _accent.withOpacity(0.5),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    AppLocalizations.t(
+                                      context,
+                                      'notifications_empty_title',
+                                    ),
+                                    style: TextStyle(
+                                      color: _textHeading,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    AppLocalizations.t(
+                                      context,
+                                      'notifications_empty_subtitle',
+                                    ),
+                                    style: TextStyle(
+                                      color: _textMuted,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                  ),
+                                ],
+                              )
                                   : ListView.separated(
-                                      padding: EdgeInsets.only(
-                                        top: 4,
-                                        bottom: bottomPad + 16,
+                                padding: EdgeInsets.only(
+                                  top: 4,
+                                  bottom: bottomPad + 16,
+                                ),
+                                itemCount: notifications.length,
+                                separatorBuilder: (_, __) => Divider(
+                                  height: 1,
+                                  thickness: 1,
+                                  indent: 66,
+                                  endIndent: 16,
+                                  color: _border.withOpacity(0.35),
+                                ),
+                                itemBuilder: (context, i) {
+                                  final n = notifications[i];
+                                  return _AnimatedPressable(
+                                    scalePressed: 0.98,
+                                    onTap: () => setState(
+                                          () => _notifPanelOpen = false,
+                                    ),
+                                    child: Container(
+                                      color: n.unread
+                                          ? _accent.withOpacity(0.04)
+                                          : Colors.transparent,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 12,
                                       ),
-                                      itemCount: notifications.length,
-                                      separatorBuilder: (_, __) => Divider(
-                                        height: 1,
-                                        thickness: 1,
-                                        indent: 66,
-                                        endIndent: 16,
-                                        color: _border.withOpacity(0.35),
-                                      ),
-                                      itemBuilder: (context, i) {
-                                        final n = notifications[i];
-                                        return _AnimatedPressable(
-                                          scalePressed: 0.98,
-                                          onTap: () => setState(
-                                            () => _notifPanelOpen = false,
-                                          ),
-                                          child: Container(
-                                            color: n.unread
-                                                ? _accent.withOpacity(0.04)
-                                                : Colors.transparent,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 16,
-                                              vertical: 12,
+                                      child: Row(
+                                        crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            width: 38,
+                                            height: 38,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: n.color.withOpacity(
+                                                0.14,
+                                              ),
                                             ),
-                                            child: Row(
+                                            child: Icon(
+                                              n.icon,
+                                              size: 18,
+                                              color: n.color,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
                                               crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
+                                              CrossAxisAlignment
+                                                  .start,
                                               children: [
-                                                Container(
-                                                  width: 38,
-                                                  height: 38,
-                                                  decoration: BoxDecoration(
-                                                    shape: BoxShape.circle,
-                                                    color: n.color.withOpacity(
-                                                      0.14,
-                                                    ),
-                                                  ),
-                                                  child: Icon(
-                                                    n.icon,
-                                                    size: 18,
-                                                    color: n.color,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
-                                                    children: [
-                                                      Row(
-                                                        children: [
-                                                          Expanded(
-                                                            child: Text(
-                                                              n.title,
-                                                              style: TextStyle(
-                                                                color:
-                                                                    _textHeading,
-                                                                fontSize: 13,
-                                                                fontWeight:
-                                                                    n.unread
-                                                                    ? FontWeight
-                                                                          .w700
-                                                                    : FontWeight
-                                                                          .w600,
-                                                                letterSpacing:
-                                                                    -0.1,
-                                                                height: 1.2,
-                                                              ),
-                                                              maxLines: 1,
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                            width: 6,
-                                                          ),
-                                                          Text(
-                                                            n.time,
-                                                            style: TextStyle(
-                                                              color: _textMuted,
-                                                              fontSize: 10,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w400,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                      const SizedBox(height: 3),
-                                                      Text(
-                                                        n.body,
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        n.title,
                                                         style: TextStyle(
-                                                          color: _textMuted,
-                                                          fontSize: 11.5,
+                                                          color:
+                                                          _textHeading,
+                                                          fontSize: 13,
                                                           fontWeight:
-                                                              FontWeight.w400,
-                                                          height: 1.35,
+                                                          n.unread
+                                                              ? FontWeight
+                                                              .w700
+                                                              : FontWeight
+                                                              .w600,
+                                                          letterSpacing:
+                                                          -0.1,
+                                                          height: 1.2,
                                                         ),
-                                                        maxLines: 2,
-                                                        overflow: TextOverflow
+                                                        maxLines: 1,
+                                                        overflow:
+                                                        TextOverflow
                                                             .ellipsis,
                                                       ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                if (n.unread) ...[
-                                                  const SizedBox(width: 8),
-                                                  Container(
-                                                    width: 7,
-                                                    height: 7,
-                                                    margin:
-                                                        const EdgeInsets.only(
-                                                          top: 5,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      shape: BoxShape.circle,
-                                                      color: _accent,
                                                     ),
+                                                    const SizedBox(
+                                                      width: 6,
+                                                    ),
+                                                    Text(
+                                                      n.time,
+                                                      style: TextStyle(
+                                                        color: _textMuted,
+                                                        fontSize: 10,
+                                                        fontWeight:
+                                                        FontWeight
+                                                            .w400,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 3),
+                                                Text(
+                                                  n.body,
+                                                  style: TextStyle(
+                                                    color: _textMuted,
+                                                    fontSize: 11.5,
+                                                    fontWeight:
+                                                    FontWeight.w400,
+                                                    height: 1.35,
                                                   ),
-                                                ],
+                                                  maxLines: 2,
+                                                  overflow: TextOverflow
+                                                      .ellipsis,
+                                                ),
                                               ],
                                             ),
                                           ),
-                                        );
-                                      },
+                                          if (n.unread) ...[
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              width: 7,
+                                              height: 7,
+                                              margin:
+                                              const EdgeInsets.only(
+                                                top: 5,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: _accent,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
                                     ),
+                                  );
+                                },
+                              ),
                             ),
                           ],
                         ),
@@ -7514,11 +7516,11 @@ class _NavPillPainter extends CustomPainter {
   @override
   bool shouldRepaint(_NavPillPainter old) =>
       old.activeIdx != activeIdx ||
-      old.bulgeT != bulgeT ||
-      old.fillColor != fillColor ||
-      old.shadowColor != shadowColor ||
-      old.glowColor != glowColor ||
-      old.borderColor != borderColor;
+          old.bulgeT != bulgeT ||
+          old.fillColor != fillColor ||
+          old.shadowColor != shadowColor ||
+          old.glowColor != glowColor ||
+          old.borderColor != borderColor;
 }
 
 enum _OverlayState { idle, suggestions, thinking, response }
@@ -7587,12 +7589,12 @@ class _WeekDay {
   final List<String> items;
   final bool done, isToday;
   const _WeekDay(
-    this.day,
-    this.label,
-    this.items, {
-    this.done = false,
-    this.isToday = false,
-  });
+      this.day,
+      this.label,
+      this.items, {
+        this.done = false,
+        this.isToday = false,
+      });
 }
 
 class _PlanSection {
@@ -7658,10 +7660,10 @@ class _GradientText extends StatelessWidget {
   final FontWeight fontWeight;
 
   const _GradientText(
-    this.text, {
-    required this.fontSize,
-    required this.fontWeight,
-  });
+      this.text, {
+        required this.fontSize,
+        required this.fontWeight,
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -7849,10 +7851,10 @@ class _PrepareQuickChipState extends State<_PrepareQuickChip> {
           decoration: BoxDecoration(
             gradient: _active
                 ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [widget.accent, widget.accentSecondary],
-                  )
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [widget.accent, widget.accentSecondary],
+            )
                 : null,
             color: _active
                 ? null

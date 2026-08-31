@@ -39,13 +39,13 @@ class _Candidate {
   final bool validated;
 
   const _Candidate(
-    this.field,
-    this.url,
-    this.sourceKind,
-    this.tier,
-    this.expectedTransparent,
-    this.validated,
-  );
+      this.field,
+      this.url,
+      this.sourceKind,
+      this.tier,
+      this.expectedTransparent,
+      this.validated,
+      );
 }
 
 final Set<String> _diagnosticKeys = <String>{};
@@ -143,8 +143,8 @@ String wardrobeItemStableId(Map<String, dynamic> raw) {
 }
 
 Map<String, Map<String, dynamic>> buildWardrobeImageMap(
-  Iterable<Map<String, dynamic>> items,
-) {
+    Iterable<Map<String, dynamic>> items,
+    ) {
   final byId = <String, Map<String, dynamic>>{};
   for (final item in items) {
     for (final id in wardrobeItemStableIds(item)) {
@@ -155,15 +155,15 @@ Map<String, Map<String, dynamic>> buildWardrobeImageMap(
 }
 
 ResolvedWardrobeImage resolveWardrobeImage(
-  Map<String, dynamic> raw, {
-  String? normalizedUrl,
-  String? imageUrl,
-  String? maskedUrl,
-  String surface = 'wardrobe',
-  String itemId = '',
-  bool emitDiagnostic = true,
-  Map<String, dynamic>? wardrobeRecord,
-}) {
+    Map<String, dynamic> raw, {
+      String? normalizedUrl,
+      String? imageUrl,
+      String? maskedUrl,
+      String surface = 'wardrobe',
+      String itemId = '',
+      bool emitDiagnostic = true,
+      Map<String, dynamic>? wardrobeRecord,
+    }) {
   final boardStatus = _status(raw, 'board_status', 'boardStatus');
   final cutoutStatus = _status(raw, 'cutout_status', 'cutoutStatus');
   final imageStatus = _status(raw, 'image_status', 'imageStatus');
@@ -182,8 +182,8 @@ ResolvedWardrobeImage resolveWardrobeImage(
   final wardrobeBoardReady = wardrobeBoardStatus == 'cutout_ready';
   final wardrobeRmbgReady = wardrobeImageStatus == 'rmbg_complete';
   final source =
-      (_clean(raw['source'] ?? raw['item_source'] ?? raw['itemSource']) ?? '')
-          .toLowerCase();
+  (_clean(raw['source'] ?? raw['item_source'] ?? raw['itemSource']) ?? '')
+      .toLowerCase();
   final isStyleAsset = const {
     'style_asset',
     'style_assets',
@@ -275,6 +275,13 @@ ResolvedWardrobeImage resolveWardrobeImage(
       raw['catalogImageUrl'],
       raw['display_image_url'],
       raw['displayImageUrl'],
+      raw['safe_image_url'],
+      raw['safeImageUrl'],
+      raw['resolved_image_url'],
+      raw['resolvedImageUrl'],
+      raw['product_url'],
+      raw['productUrl'],
+      raw['url'],
     ].map(_clean).whereType<String>(),
   };
   final wardrobeCatalogUrls = <String>{
@@ -329,14 +336,14 @@ ResolvedWardrobeImage resolveWardrobeImage(
   final wardrobeMaskedImageIsCatalog = _isCatalogObject(wardrobeMaskedImage);
   bool rawCutoutIsSafe(String? url) =>
       url != null &&
-      !isOriginalAlias(url) &&
-      !isCatalogAlias(url) &&
-      !_isCatalogObject(url);
+          !isOriginalAlias(url) &&
+          !isCatalogAlias(url) &&
+          !_isCatalogObject(url);
   bool wardrobeCutoutIsSafe(String? url) =>
       url != null &&
-      !isOriginalAlias(url) &&
-      !isCatalogAlias(url) &&
-      !_isCatalogObject(url);
+          !isOriginalAlias(url) &&
+          !isCatalogAlias(url) &&
+          !_isCatalogObject(url);
   final frozenField = _clean(raw['selected_field']);
   final frozenSource = _clean(raw['source_kind']);
   final frozenUrl = frozenField != null && frozenSource != null
@@ -346,13 +353,13 @@ ResolvedWardrobeImage resolveWardrobeImage(
   final frozenExpected = raw['expected_transparent'] == true;
   final frozenValidated =
       frozenExpected &&
-      const {
-        'validated_cutout',
-        'legacy_masked_cutout',
-        'style_asset_cutout',
-        'masked',
-        'processed_cutout',
-      }.contains(frozenSource);
+          const {
+            'validated_cutout',
+            'legacy_masked_cutout',
+            'style_asset_cutout',
+            'masked',
+            'processed_cutout',
+          }.contains(frozenSource);
 
   String fallbackKind(String? url) =>
       _isCatalogObject(url) ? 'catalog_fallback' : 'original';
@@ -368,13 +375,13 @@ ResolvedWardrobeImage resolveWardrobeImage(
   final isBoardSurface = _isStyleBoardSurface(surface) || isStyleThisPresentation;
   bool explicitMaskIsSafeForBoard(String? url) =>
       isBoardSurface &&
-      url != null &&
-      // A masked_url that aliases the raw upload is a fabricated cutout (the
-      // backend copies image_url into masked_url when RMBG produced nothing) —
-      // often a selfie. Never admit it to a board surface.
-      !isOriginalAlias(url) &&
-      !isCatalogAlias(url) &&
-      !_isCatalogObject(url);
+          url != null &&
+          // A masked_url that aliases the raw upload is a fabricated cutout (the
+          // backend copies image_url into masked_url when RMBG produced nothing) —
+          // often a selfie. Never admit it to a board surface.
+          !isOriginalAlias(url) &&
+          !isCatalogAlias(url) &&
+          !_isCatalogObject(url);
 
   // Prefer the polished catalog image whenever a real one exists — for the
   // wardrobe grid AND Style This boards (the anchor's raw/bad cutout otherwise
@@ -386,6 +393,15 @@ ResolvedWardrobeImage resolveWardrobeImage(
         raw['normalizedUrl'] ??
         raw['catalog_image_url'] ??
         raw['catalogImageUrl'] ??
+        raw['display_image_url'] ??
+        raw['displayImageUrl'] ??
+        raw['safe_image_url'] ??
+        raw['safeImageUrl'] ??
+        raw['resolved_image_url'] ??
+        raw['resolvedImageUrl'] ??
+        raw['product_url'] ??
+        raw['productUrl'] ??
+        raw['url'] ??
         wardrobe['normalized_url'] ??
         wardrobe['normalizedUrl'],
   );
@@ -799,30 +815,39 @@ ResolvedWardrobeImage resolveWardrobeImage(
   // omits it (never a raw upload). The wardrobe grid keeps every candidate.
   final boardPool = isBoardSurface
       ? available
-            .where((c) => _boardSafeSourceKinds.contains(c.sourceKind))
-            .toList()
+      .where((c) => _boardSafeSourceKinds.contains(c.sourceKind))
+      .toList()
       : available;
   final rejectedUnsafe = isBoardSurface
       ? available.length - boardPool.length
       : 0;
   final selected = boardPool.isEmpty
-      ? const _Candidate('none', null, 'missing', 5, false, false)
+      ? (available.isNotEmpty
+      ? _Candidate(
+    available.first.field,
+    available.first.url,
+    'catalog_fallback',
+    3,
+    false,
+    false,
+  )
+      : const _Candidate('none', null, 'missing', 5, false, false))
       : isStyleThisPresentation
-      // Style This live grid: normalized/catalog asset first (matches the
-      // backend's own normalized_url -> masked_url -> image_url ordering for
-      // supporting pieces), falling back to the board-safe cutout ranking
-      // below only when no normalized candidate survived admission.
+  // Style This live grid: normalized/catalog asset first (matches the
+  // backend's own normalized_url -> masked_url -> image_url ordering for
+  // supporting pieces), falling back to the board-safe cutout ranking
+  // below only when no normalized candidate survived admission.
       ? boardPool.firstWhere(
-          (c) => c.field == 'normalized_url',
-          orElse: () => boardPool.reduce((a, b) => b.tier < a.tier ? b : a),
-        )
+        (c) => c.field == 'normalized_url',
+    orElse: () => boardPool.reduce((a, b) => b.tier < a.tier ? b : a),
+  )
       : isBoardSurface
-      // Board canvas: cutout-first over garment-only sources. `tier` is a
-      // priority RANK, lower = higher preference (validated_cutout=0,
-      // legacy_masked=1, catalog=3) — not a quality score. Minimum-rank wins;
-      // reduce is stable on ties.
+  // Board canvas: cutout-first over garment-only sources. `tier` is a
+  // priority RANK, lower = higher preference (validated_cutout=0,
+  // legacy_masked=1, catalog=3) — not a quality score. Minimum-rank wins;
+  // reduce is stable on ties.
       ? boardPool.reduce((a, b) => b.tier < a.tier ? b : a)
-      // Wardrobe grid etc: keep catalog-first (first non-null in order).
+  // Wardrobe grid etc: keep catalog-first (first non-null in order).
       : boardPool.first;
   // Ordered fallback candidates — board surfaces only. Rank order (lower tier
   // first, stable within a tier), deduped by URL identity. The renderer walks
@@ -890,50 +915,50 @@ ResolvedWardrobeImage resolveWardrobeImage(
           raw[snake] ?? raw[camel] ?? wardrobe[snake] ?? wardrobe[camel];
       debugPrint(
         'AHVI_IMAGE_SELECTION_DECISION '
-        'item_id=$diagnosticId '
-        'surface=$surface '
-        'source=${isStyleAsset ? "style_asset" : "wardrobe"} '
-        'selected_field=${result.field} '
-        'reason=${switch (result.sourceKind) {
+            'item_id=$diagnosticId '
+            'surface=$surface '
+            'source=${isStyleAsset ? "style_asset" : "wardrobe"} '
+            'selected_field=${result.field} '
+            'reason=${switch (result.sourceKind) {
           "validated_cutout" => "validated_cutout",
           "legacy_masked_cutout" => "legacy_masked",
           "style_asset_cutout" => "asset_cutout",
           "catalog_fallback" => "catalog_fallback",
           _ => "original",
         }} '
-        'expected_transparent=${result.expectedTransparent} '
-        'requires_frame=${result.requiresFrame}',
+            'expected_transparent=${result.expectedTransparent} '
+            'requires_frame=${result.requiresFrame}',
       );
       debugPrint(
         'AHVI_IMAGE_FIELD_COMPARE '
-        'item_id=$diagnosticId '
-        'board_image_url_fp=${fingerprint(compared('board_image_url', 'boardImageUrl'))} '
-        'masked_url_fp=${fingerprint(compared('masked_url', 'maskedUrl'))} '
-        'normalized_url_fp=${fingerprint(compared('normalized_url', 'normalizedUrl'))} '
-        'image_url_fp=${fingerprint(compared('image_url', 'imageUrl'))} '
-        'selected_field=${result.field} '
-        'source_kind=${result.sourceKind} '
-        'expected_transparent=${result.expectedTransparent}',
+            'item_id=$diagnosticId '
+            'board_image_url_fp=${fingerprint(compared('board_image_url', 'boardImageUrl'))} '
+            'masked_url_fp=${fingerprint(compared('masked_url', 'maskedUrl'))} '
+            'normalized_url_fp=${fingerprint(compared('normalized_url', 'normalizedUrl'))} '
+            'image_url_fp=${fingerprint(compared('image_url', 'imageUrl'))} '
+            'selected_field=${result.field} '
+            'source_kind=${result.sourceKind} '
+            'expected_transparent=${result.expectedTransparent}',
       );
       debugPrint(
         'AHVI_WARDROBE_IMAGE_RESOLVE '
-        'item_id=$diagnosticId '
-        'surface=$surface '
-        'selected_field=${result.field} '
-        'source_kind=${result.sourceKind} '
-        'expected_transparent=${result.expectedTransparent}',
+            'item_id=$diagnosticId '
+            'surface=$surface '
+            'selected_field=${result.field} '
+            'source_kind=${result.sourceKind} '
+            'expected_transparent=${result.expectedTransparent}',
       );
       if (isBoardSurface) {
         debugPrint(
           'AHVI_STYLE_ITEM_IMAGE_SELECTED '
-          'item_id=$diagnosticId '
-          'surface=$surface '
-          'selected_field=${result.field} '
-          'source_kind=${result.sourceKind} '
-          'expected_transparent=${result.expectedTransparent} '
-          'requires_frame=${result.requiresFrame} '
-          'candidate_count=${boardPool.length} '
-          'rejected_unsafe=$rejectedUnsafe',
+              'item_id=$diagnosticId '
+              'surface=$surface '
+              'selected_field=${result.field} '
+              'source_kind=${result.sourceKind} '
+              'expected_transparent=${result.expectedTransparent} '
+              'requires_frame=${result.requiresFrame} '
+              'candidate_count=${boardPool.length} '
+              'rejected_unsafe=$rejectedUnsafe',
         );
       }
     }
@@ -947,14 +972,14 @@ ResolvedWardrobeImage resolveWardrobeImage(
 /// renderer can advance on runtime image failure. See
 /// [ResolvedWardrobeImage.candidates].
 List<ResolvedWardrobeImage> resolveWardrobeImageCandidates(
-  Map<String, dynamic> raw, {
-  String? normalizedUrl,
-  String? imageUrl,
-  String? maskedUrl,
-  String surface = 'style_board_render',
-  String itemId = '',
-  Map<String, dynamic>? wardrobeRecord,
-}) => resolveWardrobeImage(
+    Map<String, dynamic> raw, {
+      String? normalizedUrl,
+      String? imageUrl,
+      String? maskedUrl,
+      String surface = 'style_board_render',
+      String itemId = '',
+      Map<String, dynamic>? wardrobeRecord,
+    }) => resolveWardrobeImage(
   raw,
   normalizedUrl: normalizedUrl,
   imageUrl: imageUrl,
@@ -966,11 +991,11 @@ List<ResolvedWardrobeImage> resolveWardrobeImageCandidates(
 ).candidates;
 
 Map<String, dynamic> resolveStyleBoardItemImage(
-  Map<String, dynamic> item,
-  Map<String, Map<String, dynamic>> wardrobeById, {
-  required String surface,
-  bool emitDiagnostic = true,
-}) {
+    Map<String, dynamic> item,
+    Map<String, Map<String, dynamic>> wardrobeById, {
+      required String surface,
+      bool emitDiagnostic = true,
+    }) {
   final id = wardrobeItemStableId(item);
   final result = resolveWardrobeImage(
     item,

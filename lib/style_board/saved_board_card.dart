@@ -1,15 +1,20 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:appwrite/models.dart' as appwrite_models;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/style_board/saved_board_images.dart';
 import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:myapp/style_board/saved_board_thumb.dart';
-import 'package:myapp/style_board/board_exporter.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/util/wardrobe_image_resolver.dart';
 
@@ -17,12 +22,14 @@ class SavedBoardCard extends StatelessWidget {
   final dynamic source;
   final Map<String, Map<String, dynamic>> wardrobeById;
   final VoidCallback? onTap;
+  final VoidCallback? onTryOn;
 
   const SavedBoardCard({
     super.key,
     required this.source,
     required this.wardrobeById,
     this.onTap,
+    this.onTryOn,
   });
 
   Map<String, dynamic> get _data {
@@ -47,11 +54,11 @@ class SavedBoardCard extends StatelessWidget {
       return savedItems
           .map(
             (item) => resolveStyleBoardItemImage(
-              item,
-              wardrobeById,
-              surface: 'style_board_saved',
-            ),
-          )
+          item,
+          wardrobeById,
+          surface: 'style_board_saved',
+        ),
+      )
           .toList(growable: false);
     }
 
@@ -67,11 +74,11 @@ class SavedBoardCard extends StatelessWidget {
       return hydrated
           .map(
             (item) => resolveStyleBoardItemImage(
-              item,
-              wardrobeById,
-              surface: 'style_board_saved',
-            ),
-          )
+          item,
+          wardrobeById,
+          surface: 'style_board_saved',
+        ),
+      )
           .toList(growable: false);
     }
 
@@ -128,14 +135,14 @@ class SavedBoardCard extends StatelessWidget {
     return out
         .where(
           (item) =>
-              resolveWardrobeImage(
-                item,
-                surface: 'style_board_saved',
-                itemId: wardrobeItemStableId(item),
-                emitDiagnostic: false,
-              ).url !=
-              null,
-        )
+      resolveWardrobeImage(
+        item,
+        surface: 'style_board_saved',
+        itemId: wardrobeItemStableId(item),
+        emitDiagnostic: false,
+      ).url !=
+          null,
+    )
         .toList();
   }
 
@@ -169,13 +176,13 @@ class SavedBoardCard extends StatelessWidget {
     final parity = savedBoardReopenParity(data, renderedItems: items);
     debugPrint(
       'AHVI_BOARD_REOPEN_PARITY '
-      'board_id=${parity['board_id']} '
-      'item_count_match=${parity['item_count_match']} '
-      'item_order_match=${parity['item_order_match']} '
-      'source_policy_match=${parity['source_policy_match']} '
-      'image_provenance_match=${parity['image_provenance_match']} '
-      'bucket=${parity['bucket']} '
-      'is_favourite=${parity['is_favourite']}',
+          'board_id=${parity['board_id']} '
+          'item_count_match=${parity['item_count_match']} '
+          'item_order_match=${parity['item_order_match']} '
+          'source_policy_match=${parity['source_policy_match']} '
+          'image_provenance_match=${parity['image_provenance_match']} '
+          'bucket=${parity['bucket']} '
+          'is_favourite=${parity['is_favourite']}',
     );
     debugPrint('saved_board.open boardId=$boardId');
     debugPrint('saved_board.items count=${items.length}');
@@ -296,15 +303,15 @@ class SavedBoardCard extends StatelessWidget {
                   else
                     ...items.map((item) {
                       final name =
-                          (item['name'] ?? item['title'] ?? 'Wardrobe item')
-                              .toString();
+                      (item['name'] ?? item['title'] ?? 'Wardrobe item')
+                          .toString();
                       final category =
-                          (item['category'] ??
-                                  item['sub_category'] ??
-                                  item['subcategory'] ??
-                                  item['type'] ??
-                                  'Item')
-                              .toString();
+                      (item['category'] ??
+                          item['sub_category'] ??
+                          item['subcategory'] ??
+                          item['type'] ??
+                          'Item')
+                          .toString();
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Row(
@@ -345,13 +352,12 @@ class SavedBoardCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await BoardExporter.shareBoard(
-                              shareBoundaryKey,
-                              subject: title,
-                              text: '$title\n\n$description',
-                            );
-                          },
+                          onPressed: () => _shareBoard(
+                            sheetContext,
+                            shareBoundaryKey,
+                            title: title,
+                            caption: '$title\n\n$description',
+                          ),
                           icon: const Icon(Icons.ios_share_rounded, size: 18),
                           label: const Text('Share'),
                         ),
@@ -366,35 +372,35 @@ class SavedBoardCard extends StatelessWidget {
                           onPressed: boardId.isEmpty
                               ? null
                               : () async {
-                                  try {
-                                    await Provider.of<AppwriteService>(
-                                      context,
-                                      listen: false,
-                                    ).deleteSavedBoard(boardId);
-                                    if (sheetContext.mounted) {
-                                      Navigator.of(sheetContext).pop();
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Saved look deleted'),
-                                        ),
-                                      );
-                                    }
-                                  } catch (_) {
-                                    if (sheetContext.mounted) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Could not delete saved look',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                },
+                            try {
+                              await Provider.of<AppwriteService>(
+                                context,
+                                listen: false,
+                              ).deleteSavedBoard(boardId);
+                              if (sheetContext.mounted) {
+                                Navigator.of(sheetContext).pop();
+                                ScaffoldMessenger.of(
+                                  context,
+                                ).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Saved look deleted'),
+                                  ),
+                                );
+                              }
+                            } catch (_) {
+                              if (sheetContext.mounted) {
+                                ScaffoldMessenger.of(
+                                  context,
+                                ).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Could not delete saved look',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          },
                           icon: const Icon(Icons.delete_outline, size: 18),
                           label: const Text('Delete'),
                         ),
@@ -410,6 +416,77 @@ class SavedBoardCard extends StatelessWidget {
     );
   }
 
+  /// Captures the boundary at [boundaryKey] as a PNG and shares it as a real
+  /// image file via the native share sheet. If the capture fails, the render
+  /// object isn't ready yet, or native share is unavailable, falls back to a
+  /// text-only share so Share never silently does nothing.
+  Future<void> _shareBoard(
+      BuildContext context,
+      GlobalKey boundaryKey, {
+        required String title,
+        required String caption,
+      }) async {
+    debugPrint('AHVI_SAVED_BOARD_SHARE_TAP');
+    try {
+      final bytes = await _captureBoundaryPng(boundaryKey);
+      if (bytes == null || bytes.isEmpty) {
+        throw Exception('capture_returned_no_bytes');
+      }
+      debugPrint('AHVI_SAVED_BOARD_SHARE_CAPTURE_SUCCESS bytes=${bytes.length}');
+      final dir = await getTemporaryDirectory();
+      final file = File(
+        '${dir.path}/ahvi_saved_board_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+      final result = await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'image/png')],
+          text: caption,
+          subject: title,
+        ),
+      );
+      if (result.status == ShareResultStatus.unavailable) {
+        throw StateError('native_share_unavailable');
+      }
+      debugPrint('AHVI_SAVED_BOARD_SHARE_SHEET_OPENED');
+    } catch (e) {
+      debugPrint('AHVI_SAVED_BOARD_SHARE_FAILED error=$e');
+      try {
+        final result = await SharePlus.instance.share(
+          ShareParams(text: caption, subject: title),
+        );
+        if (result.status == ShareResultStatus.unavailable) {
+          throw StateError('native_share_unavailable');
+        }
+        debugPrint('AHVI_SAVED_BOARD_SHARE_TEXT_FALLBACK');
+      } catch (e2) {
+        debugPrint('AHVI_SAVED_BOARD_SHARE_FAILED error=$e2');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not open the share sheet.')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<Uint8List?> _captureBoundaryPng(GlobalKey boundaryKey) async {
+    // Give the boundary a couple of frames in case an image inside it is
+    // still resolving when Share is tapped.
+    for (var i = 0; i < 3; i++) {
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    final renderObject = boundaryKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderRepaintBoundary) return null;
+    final image = await renderObject.toImage(pixelRatio: 3.0);
+    try {
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } finally {
+      image.dispose();
+    }
+  }
+
   String _boardId() {
     if (source is appwrite_models.Document) {
       return (source as appwrite_models.Document).$id;
@@ -422,10 +499,10 @@ class SavedBoardCard extends StatelessWidget {
   }
 
   String _firstText(
-    Map<String, dynamic> data,
-    List<String> keys, {
-    String fallback = '',
-  }) {
+      Map<String, dynamic> data,
+      List<String> keys, {
+        String fallback = '',
+      }) {
     for (final key in keys) {
       final value = data[key];
       if (value is Map) {
@@ -451,115 +528,168 @@ class SavedBoardCard extends StatelessWidget {
         .toString();
     final title = (data['title'] ?? category).toString();
     final description =
-        (data['outfitDescription'] ??
-                data['description'] ??
-                'AHVI saved style board')
-            .toString();
+    (data['outfitDescription'] ??
+        data['description'] ??
+        'AHVI saved style board')
+        .toString();
     final onAccent = Theme.of(context).colorScheme.onPrimary;
 
-    return GestureDetector(
-      onTap: () {
-        onTap?.call();
-        _openDetails(context, data);
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: t.panel,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: t.cardBorder),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+    return Container(
+      decoration: BoxDecoration(
+        color: t.panel,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: t.cardBorder),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header + thumbnail: tapping anywhere here opens the saved-board
+          // preview sheet. Kept as its own GestureDetector (rather than
+          // wrapping the whole card) so it doesn't fight with the explicit
+          // Try On / View Board buttons below for tap gestures.
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                onTap?.call();
+                _openDetails(context, data);
+              },
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    category.toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: t.accent.primary,
-                      fontSize: 8,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          category.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: t.accent.primary,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          title,
+                          key: const ValueKey('saved-board-title'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    title,
-                    key: const ValueKey('saved-board-title'),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: t.textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      height: 1.2,
+                  Expanded(
+                    child: AspectRatio(
+                      key: const ValueKey('saved-board-canvas'),
+                      aspectRatio: 1,
+                      child: SavedBoardThumb(
+                        source: source,
+                        wardrobeById: wardrobeById,
+                        radius: BorderRadius.zero,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-            Expanded(
-              child: AspectRatio(
-                key: const ValueKey('saved-board-canvas'),
-                aspectRatio: 1,
-                child: SavedBoardThumb(
-                  source: source,
-                  wardrobeById: wardrobeById,
-                  radius: BorderRadius.zero,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: t.mutedText,
+                    fontSize: 11,
+                    height: 1.25,
+                  ),
                 ),
-              ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: t.mutedText,
-                      fontSize: 11,
-                      height: 1.25,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-              child: SizedBox(
-                width: double.infinity,
-                height: 34,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [t.accent.tertiary, t.accent.primary],
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Center(
-                    child: Text(
-                      context.tr('daily_wear_try_on'),
-                      style: TextStyle(
-                        color: onAccent,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 34,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [t.accent.tertiary, t.accent.primary],
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: onTryOn,
+                          child: Center(
+                            child: Text(
+                              context.tr('daily_wear_try_on'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: onAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SizedBox(
+                    height: 34,
+                    child: OutlinedButton(
+                      onPressed: () => _openDetails(context, data),
+                      style: OutlinedButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        foregroundColor: t.textPrimary,
+                        side: BorderSide(color: t.cardBorder),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        'View board',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: t.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

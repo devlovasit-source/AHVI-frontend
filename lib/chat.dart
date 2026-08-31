@@ -22,7 +22,6 @@ import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/ahvi_response_parser.dart';
 import 'package:myapp/services/ahvi_speech_service.dart';
 import 'package:myapp/services/backend_service.dart';
-import 'package:myapp/services/chat_response_renderer_registry.dart';
 import 'package:myapp/services/ahvi_response_policy.dart';
 import 'package:myapp/services/style_mutation_contract.dart';
 import 'package:myapp/style_board/saved_board_persistence.dart';
@@ -33,7 +32,6 @@ import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/models/ahvi_visual_board_model.dart';
 import 'package:myapp/widgets/ahvi_module_card.dart';
 import 'package:myapp/widgets/ahvi_visual_board.dart';
-import 'package:myapp/widgets/chat_cards/visual_packing_checklist_card.dart';
 import 'package:myapp/widgets/basic_markdown_text.dart';
 import 'package:myapp/widgets/clear_chat_dialog.dart';
 import 'package:myapp/util/safe_text.dart';
@@ -503,9 +501,9 @@ List<dynamic> _extractStyleBoardsFromResponse(Map<String, dynamic> response) {
 }
 
 List<dynamic> _visibleResponseChips(
-  List<dynamic> chips,
-  AhviResponsePolicy policy,
-) {
+    List<dynamic> chips,
+    AhviResponsePolicy policy,
+    ) {
   final visible = filterDeprecatedVisibleStyleActions(chips);
   if (policy.styleCtasAllowed) return visible;
   const blocked = {
@@ -1043,7 +1041,7 @@ class _ChatScreenState extends State<ChatScreen>
   final Map<String, bool> _checklistSavedByTitle = {};
   Map<String, dynamic> _lastPlanPackContext = const {};
   final AhviSessionGenerationGuard _responseGuard =
-      AhviSessionGenerationGuard();
+  AhviSessionGenerationGuard();
 
   // ── Voice ──────────────────────────────────────────────────────────────────
   bool _isListening = false;
@@ -1427,19 +1425,19 @@ class _ChatScreenState extends State<ChatScreen>
     final sourceStyleState = sourceIndex == null
         ? null
         : activeState != null &&
-              sourceCards.whereType<Map>().any(
-                (board) =>
-                    (board['board_id'] ?? board['boardId'] ?? '').toString() ==
-                    activeState['board_id']?.toString(),
-              )
+        sourceCards.whereType<Map>().any(
+              (board) =>
+          (board['board_id'] ?? board['boardId'] ?? '').toString() ==
+              activeState['board_id']?.toString(),
+        )
         ? activeState
         : styleMutationStateFromBoards(
-            sourceCards
-                .whereType<Map>()
-                .map((board) => Map<String, dynamic>.from(board))
-                .toList(growable: false),
-            responseState: _messages[sourceIndex].styleState,
-          );
+      sourceCards
+          .whereType<Map>()
+          .map((board) => Map<String, dynamic>.from(board))
+          .toList(growable: false),
+      responseState: _messages[sourceIndex].styleState,
+    );
     final exclude = _styleBoardSignatures(sourceCards);
     final ambiguousSource = sourceCards.whereType<Map>().length > 1;
     if (ambiguousSource && sourceStyleState == null) {
@@ -1630,10 +1628,10 @@ class _ChatScreenState extends State<ChatScreen>
       final isBoardMutation =
           isStyleModule && isStyleBoardMutationPrompt(queryText);
       final pendingClarificationPrompt =
-          isStyleModule &&
-              !isClosestAction &&
-              !isBoardActionPhrase &&
-              !isBoardMutation
+      isStyleModule &&
+          !isClosestAction &&
+          !isBoardActionPhrase &&
+          !isBoardMutation
           ? _pendingStyleClarificationPrompt()
           : '';
       final isClarificationAnswer =
@@ -1652,20 +1650,20 @@ class _ChatScreenState extends State<ChatScreen>
       resolvedStylePrompt.toLowerCase().contains('beach') ? 'beach' : null;
       final styleActionContext = isStyleModule
           ? (styleActionContextFromValue(
-                    visibleText,
-                    originalRequest: _lastStyleActionBaseIntent(),
-                    occasion: interpretedOccasion ?? '',
-                    sessionId: _currentSessionId,
-                    previousPairingTarget:
-                        (_lastStyleContext?['previous_pairing_target'] ?? '')
-                            .toString(),
-                  ) ??
-              styleActionContextFromValue(
-                queryText,
-                originalRequest: _lastStyleActionBaseIntent(),
-                occasion: interpretedOccasion ?? '',
-                sessionId: _currentSessionId,
-              ))
+        visibleText,
+        originalRequest: _lastStyleActionBaseIntent(),
+        occasion: interpretedOccasion ?? '',
+        sessionId: _currentSessionId,
+        previousPairingTarget:
+        (_lastStyleContext?['previous_pairing_target'] ?? '')
+            .toString(),
+      ) ??
+          styleActionContextFromValue(
+            queryText,
+            originalRequest: _lastStyleActionBaseIntent(),
+            occasion: interpretedOccasion ?? '',
+            sessionId: _currentSessionId,
+          ))
           : null;
       final styleContext = <String, dynamic>{
         ...?styleActionContext?.toJson(),
@@ -1704,14 +1702,14 @@ class _ChatScreenState extends State<ChatScreen>
       if (isStyleModule) {
         debugPrint(
           'AHVI_STYLE_REQUEST request_id=$requestId '
-          'module=${_styleTraceValue(_module)} '
-          'endpoint=${styleViaText ? '/api/text' : '/api/module-chat'} '
-          'conversation_id=${_styleTraceValue(_currentSessionId)} '
-          'message_count=${_chatHistory.length} '
-          'board_id=${_styleTraceValue(mutationState?['board_id'])} '
-          'board_revision=${_styleTraceValue(mutationState?['revision'])} '
-          'frontend_sha=${_styleTraceValue(Env.gitSha)} '
-          'build=${_styleTraceValue(Env.appBuildVersion)}',
+              'module=${_styleTraceValue(_module)} '
+              'endpoint=${styleViaText ? '/api/text' : '/api/module-chat'} '
+              'conversation_id=${_styleTraceValue(_currentSessionId)} '
+              'message_count=${_chatHistory.length} '
+              'board_id=${_styleTraceValue(mutationState?['board_id'])} '
+              'board_revision=${_styleTraceValue(mutationState?['revision'])} '
+              'frontend_sha=${_styleTraceValue(Env.gitSha)} '
+              'build=${_styleTraceValue(Env.appBuildVersion)}',
         );
       }
       // Only style / wardrobe / daily_wear flows go through /api/text which
@@ -1738,8 +1736,8 @@ class _ChatScreenState extends State<ChatScreen>
           action: isClosestAction
               ? 'show_closest_option'
               : (isClarificationAnswer
-                    ? 'clarification_selected'
-                    : styleActionContext?.action),
+              ? 'clarification_selected'
+              : styleActionContext?.action),
           clarification: isClarificationAnswer ? visibleText : null,
           previousPrompt: isClarificationAnswer
               ? pendingClarificationPrompt
@@ -1790,10 +1788,10 @@ class _ChatScreenState extends State<ChatScreen>
       final responsePolicy = AhviResponsePolicy.fromResponse(response);
       final textOnlyResponse =
           responsePolicy.hasCanonicalRoute &&
-          !responsePolicy.canRenderBoards(response);
+              !responsePolicy.canRenderBoards(response);
       final parsedResponse = parseAhviResponse(response);
       final visualBoard = responsePolicy.canRenderBoards(response) &&
-              AhviVisualBoard.isVisualBoard(response)
+          AhviVisualBoard.isVisualBoard(response)
           ? AhviVisualBoard.fromJson(response)
           : null;
       final sharedModuleCard = textOnlyResponse
@@ -1824,45 +1822,45 @@ class _ChatScreenState extends State<ChatScreen>
         final referent = resolvedContext['referent'];
         final fallback =
             response['fallback_reason'] ??
-            traceData['fallback_reason'] ??
-            traceMeta['fallback_reason'] ??
-            traceMeta['fallback_used'] ??
-            'none';
+                traceData['fallback_reason'] ??
+                traceMeta['fallback_reason'] ??
+                traceMeta['fallback_used'] ??
+                'none';
         debugPrint(
           'AHVI_STYLE_RESPONSE request_id=${response['request_id'] ?? requestId} '
-          'module=${_styleTraceValue(_module)} '
-          'endpoint=${styleViaText ? '/api/text' : '/api/module-chat'} '
-          'intent=${_styleTraceValue(responsePolicy.intent)} '
-          'action=${_styleTraceValue(responsePolicy.action)} '
-          'response_mode=${_styleTraceValue(responsePolicy.route)} '
-          'requires_clarification=${response['requires_clarification'] ?? traceMeta['requires_clarification'] ?? false} '
-          'has_board=${responseBoards.isNotEmpty || visualBoard != null} '
-          'board_id=${_styleTraceValue(responseStyleState['board_id'])} '
-          'board_revision=${_styleTraceValue(responseStyleState['revision'])} '
-          'resolved_date=${_styleTraceValue(resolvedContext['date_context'])} '
-          'resolved_activity=${_styleTraceValue(resolvedContext['activity'])} '
-          'activity_type=${_styleTraceValue(resolvedContext['activity_type'])} '
-          'occasion=${_styleTraceValue(resolvedContext['occasion'])} '
-          'referent_type=${_styleTraceValue(referent is Map ? referent['type'] : null)} '
-          'fallback=${_styleTraceValue(fallback)} '
-          'frontend_sha=${_styleTraceValue(Env.gitSha)} '
-          'build=${_styleTraceValue(Env.appBuildVersion)}',
+              'module=${_styleTraceValue(_module)} '
+              'endpoint=${styleViaText ? '/api/text' : '/api/module-chat'} '
+              'intent=${_styleTraceValue(responsePolicy.intent)} '
+              'action=${_styleTraceValue(responsePolicy.action)} '
+              'response_mode=${_styleTraceValue(responsePolicy.route)} '
+              'requires_clarification=${response['requires_clarification'] ?? traceMeta['requires_clarification'] ?? false} '
+              'has_board=${responseBoards.isNotEmpty || visualBoard != null} '
+              'board_id=${_styleTraceValue(responseStyleState['board_id'])} '
+              'board_revision=${_styleTraceValue(responseStyleState['revision'])} '
+              'resolved_date=${_styleTraceValue(resolvedContext['date_context'])} '
+              'resolved_activity=${_styleTraceValue(resolvedContext['activity'])} '
+              'activity_type=${_styleTraceValue(resolvedContext['activity_type'])} '
+              'occasion=${_styleTraceValue(resolvedContext['occasion'])} '
+              'referent_type=${_styleTraceValue(referent is Map ? referent['type'] : null)} '
+              'fallback=${_styleTraceValue(fallback)} '
+              'frontend_sha=${_styleTraceValue(Env.gitSha)} '
+              'build=${_styleTraceValue(Env.appBuildVersion)}',
         );
       }
       // Clarification lifecycle: rendered boards resolve a pending
       // clarification; a fresh clarification response re-arms it.
       final clarificationMsg =
-          (response['message_text'] ?? response['message'] ?? '').toString();
+      (response['message_text'] ?? response['message'] ?? '').toString();
       if (responseBoards.isNotEmpty) {
         _clarificationResolvedByCards = true;
       } else if ((response['type'] ?? '').toString().toLowerCase() ==
-              'clarification' ||
+          'clarification' ||
           _looksLikeStyleClarification(clarificationMsg)) {
         _clarificationResolvedByCards = false;
       }
       final moduleCards = !textOnlyResponse &&
-              isModuleResponse &&
-              sharedModuleCard == null
+          isModuleResponse &&
+          sharedModuleCard == null
           ? _moduleCardsFromResponse(response)
           : const <Map<String, dynamic>>[];
       final responseData = response['data'];
@@ -2034,7 +2032,7 @@ class _ChatScreenState extends State<ChatScreen>
     if (page == null) {
       debugPrint(
         'AHVI_CALENDAR_ACTION action=open_module '
-        'outcome=ignored route=$safePageKey',
+            'outcome=ignored route=$safePageKey',
       );
       return;
     }
@@ -2056,7 +2054,7 @@ class _ChatScreenState extends State<ChatScreen>
     if (normalizedCalendarRoute != null) {
       debugPrint(
         'AHVI_CALENDAR_ACTION action=view_events '
-        'outcome=navigated route=$normalizedCalendarRoute',
+            'outcome=navigated route=$normalizedCalendarRoute',
       );
     }
     await nav.push(MaterialPageRoute(builder: (_) => page!));
@@ -2837,9 +2835,9 @@ class _ChatScreenState extends State<ChatScreen>
       final maskedUrl = (item['masked_url'] ?? item['maskedUrl'] ?? imageUrl)
           .toString();
       final source =
-          (item['source'] ?? item['item_source'] ?? item['itemSource'] ?? '')
-              .toString()
-              .trim();
+      (item['source'] ?? item['item_source'] ?? item['itemSource'] ?? '')
+          .toString()
+          .trim();
 
       items.add({
         if (id.isNotEmpty) 'id': id,
@@ -3323,8 +3321,8 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _genericModuleCard(Map<String, dynamic> card, AppThemeTokens t) {
-    if (AhviChatResponseRendererRegistry.select(card).kind ==
-        AhviChatRendererKind.visualPackingChecklist) {
+    if ((card['type'] ?? '').toString() == 'visual_packing_checklist' ||
+        card['visual_sections'] is List) {
       return _visualPackingChecklistCard(card, t);
     }
     final title =
@@ -3497,11 +3495,6 @@ class _ChatScreenState extends State<ChatScreen>
       Map<String, dynamic> card,
       AppThemeTokens t,
       ) {
-    return VisualPackingChecklistCard(
-      card: card,
-      onAction: _sendMessage,
-    );
-    /*
     final sections = _packingVisualSections(card);
     if (sections.isEmpty) return const SizedBox.shrink();
     final title = (card['title'] ?? 'Carry-on Packing Checklist')
@@ -3629,7 +3622,7 @@ class _ChatScreenState extends State<ChatScreen>
           ),
         );
       },
-    ); */
+    );
   }
 
   List<Map<String, dynamic>> _packingVisualSections(Map<String, dynamic> card) {
@@ -3835,8 +3828,7 @@ class _ChatScreenState extends State<ChatScreen>
         .trim();
     final id = (section['id'] ?? title).toString().toLowerCase();
     final items = _packingSectionItems(section);
-    // Count = number of display tiles (groups), not the quantity sum.
-    final count = items.length;
+    final count = section['item_count'] ?? items.length;
     final shown = items.take(4).toList();
     return Container(
       padding: const EdgeInsets.fromLTRB(11, 11, 11, 12),
@@ -3890,26 +3882,14 @@ class _ChatScreenState extends State<ChatScreen>
           ),
           const SizedBox(height: 11),
           if (shown.isNotEmpty)
-            LayoutBuilder(
-              builder: (ctx, c) {
-                final n = shown.length;
-                const gap = 6.0;
-                final raw = (c.maxWidth - gap * (n - 1)) / n;
-                // Cap tile width so a single item never stretches full-width.
-                final tileW = raw.clamp(0.0, 110.0);
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (var i = 0; i < n; i++) ...[
-                      if (i > 0) const SizedBox(width: gap),
-                      SizedBox(
-                        width: tileW,
-                        child: _packingGridItem(shown[i], t, onChanged),
-                      ),
-                    ],
-                  ],
-                );
-              },
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < shown.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 6),
+                  Expanded(child: _packingGridItem(shown[i], t, onChanged)),
+                ],
+              ],
             ),
         ],
       ),
@@ -3987,44 +3967,58 @@ class _ChatScreenState extends State<ChatScreen>
           .trim();
       if (label.isEmpty) continue;
       pills.add(
-        GestureDetector(
-          onTap: () => _sendMessage(label),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: t.accent.primary.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: t.accent.primary.withValues(alpha: 0.18),
+        Expanded(
+          child: GestureDetector(
+            onTap: () => _sendMessage(label),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              decoration: BoxDecoration(
+                color: t.accent.primary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: t.accent.primary.withValues(alpha: 0.18),
+                ),
               ),
-            ),
-            // Intrinsic width + Wrap below => full label, no ellipsis.
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _packingActionIcon(label),
-                  size: 14,
-                  color: t.accent.primary,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  softWrap: false,
-                  style: TextStyle(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _packingActionIcon(label),
+                    size: 14,
                     color: t.accent.primary,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: t.accent.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 14,
+                    color: t.accent.primary.withValues(alpha: 0.7),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       );
     }
     if (pills.isEmpty) return const SizedBox.shrink();
-    return Wrap(spacing: 8, runSpacing: 8, children: pills);
+    final spaced = <Widget>[];
+    for (var i = 0; i < pills.length; i++) {
+      if (i > 0) spaced.add(const SizedBox(width: 8));
+      spaced.add(pills[i]);
+    }
+    return Row(children: spaced);
   }
 
   IconData _packingActionIcon(String label) {
@@ -4148,32 +4142,7 @@ class _ChatScreenState extends State<ChatScreen>
       case 'first_aid':
         return Icons.health_and_safety_outlined;
       case 'documents':
-      case 'document':
         return Icons.description_outlined;
-      case 'passport':
-        return Icons.badge_outlined;
-      case 'tickets':
-        return Icons.confirmation_number_outlined;
-      case 'wallet':
-        return Icons.account_balance_wallet_outlined;
-      case 'earphones':
-        return Icons.headphones_outlined;
-      case 'lip_balm':
-        return Icons.face_outlined;
-      case 'wet_wipes':
-        return Icons.cleaning_services_outlined;
-      case 'moisturizer':
-        return Icons.spa_outlined;
-      case 'sanitizer':
-        return Icons.sanitizer_outlined;
-      case 'face_mask':
-        return Icons.masks_outlined;
-      case 'umbrella':
-        return Icons.umbrella_outlined;
-      case 'travel_pillow':
-        return Icons.airline_seat_recline_normal_outlined;
-      case 'health':
-        return Icons.health_and_safety_outlined;
       case 'camera':
         return Icons.camera_alt_outlined;
       case 'weather':
