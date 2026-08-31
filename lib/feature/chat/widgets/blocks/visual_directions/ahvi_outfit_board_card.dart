@@ -1828,6 +1828,55 @@ int _roleRank(OutfitRole role) {
   };
 }
 
+String _archetypeTitle(dynamic value) {
+  if (value is Map) {
+    return _text(
+      value['title'] ?? value['name'] ?? value['archetype'] ?? value['label'],
+    );
+  }
+  return _text(value);
+}
+
+String _selectedArchetypeTitle(Map<String, dynamic> direction) {
+  return _archetypeTitle(
+    direction['selected_archetype'] ??
+        direction['selectedArchetype'] ??
+        direction['archetype'] ??
+        direction['style_archetype'],
+  );
+}
+
+/// Canonical primary title shared by the live card and its detail sheet.
+String resolveOutfitBoardTitle(Map<String, dynamic> direction) {
+  final selectedArchetype = _selectedArchetypeTitle(direction);
+  if (selectedArchetype.isNotEmpty) return selectedArchetype;
+
+  final rawStrategy = direction['style_strategy'];
+  final strategy = rawStrategy is Map
+      ? Map<String, dynamic>.from(rawStrategy)
+      : const <String, dynamic>{};
+  final strategyArchetype = _archetypeTitle(
+    strategy['selected_archetype'] ??
+        strategy['selectedArchetype'] ??
+        strategy['archetype'] ??
+        strategy['archetype_name'],
+  );
+  if (strategyArchetype.isNotEmpty) return strategyArchetype;
+
+  final strategyDirection = _text(
+    strategy['direction_title'] ??
+        strategy['directionTitle'] ??
+        strategy['direction'],
+  );
+  if (strategyDirection.isNotEmpty) return strategyDirection;
+
+  final title = _text(
+    direction['title'] ?? direction['board_title'] ?? direction['boardTitle'],
+    fallback: 'Styled for You',
+  );
+  return title.toLowerCase().startsWith('build outfit') ? 'Try-On' : title;
+}
+
 String _text(dynamic value, {String fallback = ''}) {
   final text = value?.toString().trim() ?? '';
   return text.isEmpty ? fallback : text;
