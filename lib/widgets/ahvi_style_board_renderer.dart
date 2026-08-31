@@ -66,9 +66,11 @@ class AhviStyleBoardRenderer extends StatelessWidget {
     final generatedTitle = (story?.headline?.trim().isNotEmpty == true)
         ? story!.headline!.trim()
         : board.title;
-    final title = (board.styleArchetype?.trim().isNotEmpty == true)
-        ? board.styleArchetype!.trim()
-        : generatedTitle;
+    final title = generatedTitle.trim().isNotEmpty
+        ? generatedTitle.trim()
+        : (board.styleArchetype?.trim().isNotEmpty == true
+              ? board.styleArchetype!.trim()
+              : 'Styled for You');
     final secondaryTitle = [
       if (board.boardRole?.trim().isNotEmpty == true) board.boardRole!.trim(),
       if (generatedTitle.trim().isNotEmpty &&
