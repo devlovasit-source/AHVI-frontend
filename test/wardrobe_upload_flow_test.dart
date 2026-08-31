@@ -208,6 +208,15 @@ Future<void> _addCustomOccasion(WidgetTester tester, String tag) async {
   await tester.pumpAndSettle();
 }
 
+List<XFile> _pickedImages(int count) => List.generate(
+  count,
+  (index) => XFile.fromData(
+    _onePxPng,
+    mimeType: 'image/png',
+    name: 'pick-$index.png',
+  ),
+);
+
 /// Repeatedly pumps small, bounded frames (never `pumpAndSettle`, which
 /// hangs on the detecting/saving steps' indeterminate animations) until one
 /// of `keys` appears in the tree.
@@ -613,5 +622,112 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
     await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
     expect(backend.saveCalls.single.single['occasions'], ['office', 'travel', 'Gym']);
+  });
+
+  testWidgets('23: picker input over six is capped with the standard warning', (
+    tester,
+  ) async {
+    final backend = _FakeBackendService();
+    var analyzedCount = 0;
+    await _openReview(
+      tester,
+      backend: backend,
+      pickedFiles: _pickedImages(7),
+      onAnalyze: (images) {
+        analyzedCount = images.length;
+        return {'items': [_detectedItemJson()]};
+      },
+      items: [_detectedItemJson()],
+    );
+
+    expect(analyzedCount, 6);
+    expect(find.text(wardrobeMaxItemsMessage), findsOneWidget);
+  });
+
+  testWidgets('24: selecting a seventh item keeps six selected', (tester) async {
+    final backend = _FakeBackendService();
+    final items = List.generate(
+      7,
+      (index) => _detectedItemJson(
+        id: 'det-$index',
+        name: 'Item $index',
+        selectedByDefault: index < 6,
+      ),
+    );
+    await _openReview(tester, backend: backend, items: items);
+
+    for (var index = 0; index < 6; index++) {
+      await tester.drag(find.byType(PageView), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.byKey(const ValueKey('wardrobe-select-det-6')));
+    await tester.pump();
+    expect(find.text(wardrobeMaxItemsMessage), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+    await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+    expect(backend.saveCalls.single.length, 6);
+  });
+
+  testWidgets('25: saving over six is blocked with the standard warning', (
+    tester,
+  ) async {
+    final backend = _FakeBackendService();
+    await _openReview(
+      tester,
+      backend: backend,
+      items: List.generate(
+        7,
+        (index) => _detectedItemJson(id: 'det-$index', selectedByDefault: true),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+    await tester.pump();
+    expect(backend.saveCallCount, 0);
+    expect(find.text(wardrobeMaxItemsMessage), findsOneWidget);
+  });
+
+  testWidgets('26: repeated max-six rejection replaces one overlay and dismisses', (
+    tester,
+  ) async {
+    final backend = _FakeBackendService();
+    await _openReview(
+      tester,
+      backend: backend,
+      items: List.generate(
+        7,
+        (index) => _detectedItemJson(id: 'det-$index', selectedByDefault: true),
+      ),
+    );
+
+    final onTap = tester
+        .widget<GestureDetector>(
+          find.byKey(const ValueKey('wardrobe-confirm-cta')),
+        )
+        .onTap!;
+    onTap();
+    onTap();
+    await tester.pump();
+    expect(find.text(wardrobeMaxItemsMessage), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3, milliseconds: 100));
+    expect(find.text(wardrobeMaxItemsMessage), findsNothing);
+  });
+
+  testWidgets('27: disposing a visible max-six warning is safe', (tester) async {
+    final backend = _FakeBackendService();
+    await _openReview(
+      tester,
+      backend: backend,
+      items: List.generate(
+        7,
+        (index) => _detectedItemJson(id: 'det-$index', selectedByDefault: true),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 4));
+    expect(tester.takeException(), isNull);
   });
 }
