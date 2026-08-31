@@ -15,6 +15,7 @@
 // ============================================================
 
 import 'package:myapp/wardrobe.dart';
+import 'package:myapp/util/occasion_normalizer.dart';
 
 class PairingEngine {
   // ============================================================
@@ -313,32 +314,30 @@ class PairingEngine {
   // ordered by a formality ranking.
   // ============================================================
   static const List<String> _occasionPriority = [
-    'Office',
-    'Work',
-    'Smart Casual',
-    'Dinner',
-    'Date Night',
-    'Casual',
-    'Daily',
-    'Weekend',
-    'Travel',
-    'Gym',
-    'Beach',
-    'Party',
-    'Festive',
-    'Wedding',
+    'work',
+    'casual',
+    'dinner',
+    'travel',
+    'sport',
+    'party',
+    'festive',
+    'wedding',
   ];
 
   static List<String> bestFor(WardrobeItem item) {
     if (item.occasions.isEmpty) return [];
 
-    final normalized = item.occasions
-        .map((o) => _titleCase(o))
-        .toSet()
-        .toList();
+    final byKey = <String, String>{};
+    for (final occasion in item.occasions) {
+      final key = canonicalOccasionKey(occasion);
+      if (key.isNotEmpty) {
+        byKey.putIfAbsent(key, () => humanizeOccasion(occasion));
+      }
+    }
+    final normalized = byKey.values.toList();
     normalized.sort((a, b) {
-      final ai = _occasionPriority.indexOf(a);
-      final bi = _occasionPriority.indexOf(b);
+      final ai = _occasionPriority.indexOf(canonicalOccasionKey(a));
+      final bi = _occasionPriority.indexOf(canonicalOccasionKey(b));
       final aRank = ai == -1 ? 999 : ai;
       final bRank = bi == -1 ? 999 : bi;
       return aRank.compareTo(bRank);
