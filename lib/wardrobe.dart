@@ -25,6 +25,7 @@ import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/widgets/ahvi_header.dart';
 import 'package:myapp/widgets/ahvi_stylist_chat.dart';
 import 'package:myapp/widgets/ahvi_item_detail_modal.dart';
+import 'package:myapp/util/occasion_normalizer.dart';
 import 'package:myapp/util/wardrobe_image_resolver.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -2241,26 +2242,6 @@ bool isPrivateWearText(String value) {
     'lounge shorts',
   ];
   return aliases.any((alias) => clean.contains(alias));
-}
-
-/// Turns a raw occasion value (possibly an internal/localisation key like
-/// `upload_occasion_everyday`, or a snake_case backend value) into a
-/// human-readable label. Never renders raw keys in the review UI.
-@visibleForTesting
-String humanizeOccasion(String raw) {
-  var v = raw.trim();
-  if (v.isEmpty) return v;
-  v = v.replaceFirst(RegExp(r'^upload_occasion_', caseSensitive: false), '');
-  v = v.replaceAll(RegExp(r'[_\-]+'), ' ').trim();
-  if (v.isEmpty) return v;
-  return v
-      .split(' ')
-      .map(
-        (w) => w.isEmpty
-            ? w
-            : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}',
-      )
-      .join(' ');
 }
 
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ MODAL STEP ENUM ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
@@ -4563,8 +4544,7 @@ class _AddItemModalState extends State<_AddItemModal>
               runSpacing: 7,
               children: _occs.map((occ) {
                 final active = item.occasions.any(
-                  (o) =>
-                      humanizeOccasion(o).toLowerCase() == occ.toLowerCase(),
+                  (o) => occasionMatches(o, occ),
                 );
                 final disabled =
                     privateWear &&
@@ -4582,11 +4562,7 @@ class _AddItemModalState extends State<_AddItemModal>
                       : () => setState(() {
                           if (active) {
                             item.occasions = item.occasions
-                                .where(
-                                  (o) =>
-                                      humanizeOccasion(o).toLowerCase() !=
-                                      occ.toLowerCase(),
-                                )
+                                .where((o) => !occasionMatches(o, occ))
                                 .toList();
                           } else {
                             item.occasions = [...item.occasions, occ];
