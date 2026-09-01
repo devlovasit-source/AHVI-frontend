@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:appwrite/appwrite.dart';
 import 'package:appwrite/models.dart';
 import 'package:appwrite/enums.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:myapp/config/env.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/style_board/saved_board_persistence.dart';
@@ -1227,6 +1228,34 @@ class AppwriteService extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint("Error deleting plan: $e");
+      rethrow;
+    }
+  }
+
+  Future<void> deleteChatSession(String sessionId) async {
+    final collectionId =
+        (dotenv.env['EXPO_PUBLIC_APPWRITE_COLLECTION_CHATS'] ?? '').trim();
+    final documentId = sessionId.trim();
+    if (collectionId.isEmpty) {
+      debugPrint(
+        'Chat session delete skipped: chats collection is not configured',
+      );
+      return;
+    }
+    if (documentId.isEmpty) {
+      debugPrint('Chat session delete skipped: session id is empty');
+      return;
+    }
+
+    try {
+      await databases.deleteDocument(
+        databaseId: Env.appwriteDatabaseId,
+        collectionId: collectionId,
+        documentId: documentId,
+      );
+      debugPrint('Chat session deleted: id=$documentId');
+    } catch (e) {
+      debugPrint('Chat session delete failed: id=$documentId error=$e');
       rethrow;
     }
   }
