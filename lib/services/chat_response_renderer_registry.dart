@@ -187,38 +187,82 @@ class AhviChatResponseRendererRegistry {
     for (final source in [response, data]) {
       final raw = source['visual_sections'] ?? source['visualSections'];
       if (raw is List) {
-        return {
-          'type': 'visual_packing_checklist',
-          'title':
-              source['title'] ??
-              response['title'] ??
-              'Carry-on Packing Checklist',
-          'subtitle': source['subtitle'] ?? response['subtitle'] ?? '',
-          'visual_sections': raw,
-          'actions':
-              source['actions'] ??
-              source['quick_actions'] ??
-              response['quick_actions'] ??
-              response['chips'],
-        };
+        return _normalizePackingCard(source, response, raw);
       }
     }
-    for (final value in [
+    final nestedCards = [
       response['card'],
       response['moduleCard'],
       data['card'],
-    ]) {
+      data['moduleCard'],
+      ..._listValues(response, const ['cards', 'module_cards', 'moduleCards']),
+      ..._listValues(data, const ['cards', 'module_cards', 'moduleCards']),
+    ];
+    for (final value in nestedCards) {
       if (value is Map) {
         final card = Map<String, dynamic>.from(value);
-        final type = (card['type'] ?? card['visual_type'] ?? '').toString();
-        if (type == 'visual_packing_checklist' ||
-            card['visual_sections'] is List ||
-            card['visualSections'] is List) {
-          return card;
+        final raw = card['visual_sections'] ?? card['visualSections'];
+        final type = (card['type'] ?? card['visual_type'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+        if (raw is List &&
+            (type == 'visual_packing_checklist' ||
+                card['visual_sections'] is List ||
+                card['visualSections'] is List)) {
+          return _normalizePackingCard(card, response, raw, fallback: data);
         }
       }
     }
     return null;
+  }
+
+  static Map<String, dynamic> _normalizePackingCard(
+    Map<String, dynamic> source,
+    Map<String, dynamic> response,
+    List<dynamic> sections, {
+    Map<String, dynamic>? fallback,
+  }) {
+    final actions =
+        source['actions'] ??
+        source['quick_actions'] ??
+        source['quickActions'] ??
+        fallback?['actions'] ??
+        fallback?['quick_actions'] ??
+        fallback?['quickActions'] ??
+        fallback?['chips'] ??
+        response['actions'] ??
+        response['quick_actions'] ??
+        response['quickActions'] ??
+        response['chips'];
+    return {
+      ...source,
+      'type': 'visual_packing_checklist',
+      'title':
+          source['title'] ??
+          fallback?['title'] ??
+          response['title'] ??
+          'Carry-on Packing Checklist',
+      'subtitle':
+          source['subtitle'] ??
+          fallback?['subtitle'] ??
+          response['subtitle'] ??
+          '',
+      'visual_sections': sections,
+      if (actions is List) 'actions': actions,
+    };
+  }
+
+  static List<dynamic> _listValues(
+    Map<String, dynamic> source,
+    List<String> keys,
+  ) {
+    final values = <dynamic>[];
+    for (final key in keys) {
+      final raw = source[key];
+      if (raw is List) values.addAll(raw);
+    }
+    return values;
   }
 
   static bool _hasStyleBoards(

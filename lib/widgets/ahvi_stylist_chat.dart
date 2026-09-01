@@ -1785,7 +1785,9 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
                 .toList(growable: false);
       final boardPayload = _StyleBoardPayload.fromResponse(response);
       final boardSelection = selectStyleBoardAlias(response);
-      final actionChips = _actionChipsFromResponse(response);
+      final actionChips = visualPackingCard == null
+          ? _actionChipsFromResponse(response)
+          : const <Map<String, dynamic>>[];
       final diagnosticSelection = AhviStyleDiagnostics.selectAlias(response);
       final canonicalBoardCollection = responsePolicy.boardCollection(response);
       final responseData = response['data'] is Map

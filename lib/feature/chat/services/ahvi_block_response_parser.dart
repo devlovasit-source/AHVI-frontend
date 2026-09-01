@@ -3,6 +3,7 @@ import 'package:myapp/feature/chat/models/ahvi_response_block.dart';
 import 'package:myapp/models/ahvi_visual_board_model.dart';
 import 'package:myapp/services/ahvi_response_parser.dart';
 import 'package:myapp/services/ahvi_response_policy.dart';
+import 'package:myapp/services/chat_response_renderer_registry.dart';
 import 'package:myapp/widgets/ahvi_module_card.dart';
 
 AhviParsedResponse parseAhviResponse(Map<String, dynamic> response) {
@@ -690,6 +691,9 @@ List<Map<String, dynamic>> _extractModuleCards(
   Map<String, dynamic> data, {
   bool suppressVisualDirectionCards = false,
 }) {
+  final packingCard = AhviChatResponseRendererRegistry.packingCard(response);
+  if (packingCard != null) return [packingCard];
+
   final out = <Map<String, dynamic>>[];
   void add(dynamic value) {
     if (value is Map) out.add(Map<String, dynamic>.from(value));
