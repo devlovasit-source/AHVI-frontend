@@ -22,6 +22,7 @@ import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/ahvi_response_parser.dart';
 import 'package:myapp/services/ahvi_speech_service.dart';
 import 'package:myapp/services/backend_service.dart';
+import 'package:myapp/services/chat_response_renderer_registry.dart';
 import 'package:myapp/services/ahvi_response_policy.dart';
 import 'package:myapp/services/style_mutation_contract.dart';
 import 'package:myapp/style_board/saved_board_persistence.dart';
@@ -32,6 +33,7 @@ import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/models/ahvi_visual_board_model.dart';
 import 'package:myapp/widgets/ahvi_module_card.dart';
 import 'package:myapp/widgets/ahvi_visual_board.dart';
+import 'package:myapp/widgets/chat_cards/visual_packing_checklist_card.dart';
 import 'package:myapp/widgets/basic_markdown_text.dart';
 import 'package:myapp/widgets/clear_chat_dialog.dart';
 import 'package:myapp/util/safe_text.dart';
@@ -3321,8 +3323,8 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _genericModuleCard(Map<String, dynamic> card, AppThemeTokens t) {
-    if ((card['type'] ?? '').toString() == 'visual_packing_checklist' ||
-        card['visual_sections'] is List) {
+    if (AhviChatResponseRendererRegistry.select(card).kind ==
+        AhviChatRendererKind.visualPackingChecklist) {
       return _visualPackingChecklistCard(card, t);
     }
     final title =
@@ -3828,7 +3830,8 @@ class _ChatScreenState extends State<ChatScreen>
         .trim();
     final id = (section['id'] ?? title).toString().toLowerCase();
     final items = _packingSectionItems(section);
-    final count = section['item_count'] ?? items.length;
+    // Count = number of display tiles (groups), not the quantity sum.
+    final count = items.length;
     final shown = items.take(4).toList();
     return Container(
       padding: const EdgeInsets.fromLTRB(11, 11, 11, 12),
@@ -3882,14 +3885,26 @@ class _ChatScreenState extends State<ChatScreen>
           ),
           const SizedBox(height: 11),
           if (shown.isNotEmpty)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < shown.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 6),
-                  Expanded(child: _packingGridItem(shown[i], t, onChanged)),
-                ],
-              ],
+            LayoutBuilder(
+              builder: (ctx, c) {
+                final n = shown.length;
+                const gap = 6.0;
+                final raw = (c.maxWidth - gap * (n - 1)) / n;
+                // Cap tile width so a single item never stretches full-width.
+                final tileW = raw.clamp(0.0, 110.0);
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var i = 0; i < n; i++) ...[
+                      if (i > 0) const SizedBox(width: gap),
+                      SizedBox(
+                        width: tileW,
+                        child: _packingGridItem(shown[i], t, onChanged),
+                      ),
+                    ],
+                  ],
+                );
+              },
             ),
         ],
       ),
@@ -3967,58 +3982,44 @@ class _ChatScreenState extends State<ChatScreen>
           .trim();
       if (label.isEmpty) continue;
       pills.add(
-        Expanded(
-          child: GestureDetector(
-            onTap: () => _sendMessage(label),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-              decoration: BoxDecoration(
-                color: t.accent.primary.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: t.accent.primary.withValues(alpha: 0.18),
+        GestureDetector(
+          onTap: () => _sendMessage(label),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: t.accent.primary.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: t.accent.primary.withValues(alpha: 0.18),
+              ),
+            ),
+            // Intrinsic width + Wrap below => full label, no ellipsis.
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _packingActionIcon(label),
+                  size: 14,
+                  color: t.accent.primary,
                 ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _packingActionIcon(label),
-                    size: 14,
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  softWrap: false,
+                  style: TextStyle(
                     color: t.accent.primary,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
                   ),
-                  const SizedBox(width: 5),
-                  Flexible(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: t.accent.primary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 14,
-                    color: t.accent.primary.withValues(alpha: 0.7),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
       );
     }
     if (pills.isEmpty) return const SizedBox.shrink();
-    final spaced = <Widget>[];
-    for (var i = 0; i < pills.length; i++) {
-      if (i > 0) spaced.add(const SizedBox(width: 8));
-      spaced.add(pills[i]);
-    }
-    return Row(children: spaced);
+    return Wrap(spacing: 8, runSpacing: 8, children: pills);
   }
 
   IconData _packingActionIcon(String label) {
@@ -4142,7 +4143,32 @@ class _ChatScreenState extends State<ChatScreen>
       case 'first_aid':
         return Icons.health_and_safety_outlined;
       case 'documents':
+      case 'document':
         return Icons.description_outlined;
+      case 'passport':
+        return Icons.badge_outlined;
+      case 'tickets':
+        return Icons.confirmation_number_outlined;
+      case 'wallet':
+        return Icons.account_balance_wallet_outlined;
+      case 'earphones':
+        return Icons.headphones_outlined;
+      case 'lip_balm':
+        return Icons.face_outlined;
+      case 'wet_wipes':
+        return Icons.cleaning_services_outlined;
+      case 'moisturizer':
+        return Icons.spa_outlined;
+      case 'sanitizer':
+        return Icons.sanitizer_outlined;
+      case 'face_mask':
+        return Icons.masks_outlined;
+      case 'umbrella':
+        return Icons.umbrella_outlined;
+      case 'travel_pillow':
+        return Icons.airline_seat_recline_normal_outlined;
+      case 'health':
+        return Icons.health_and_safety_outlined;
       case 'camera':
         return Icons.camera_alt_outlined;
       case 'weather':
