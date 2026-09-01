@@ -106,7 +106,7 @@ class _VisualPackingChecklistCardState
     final ratio = progress.$2 == 0 ? 0.0 : progress.$1 / progress.$2;
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(left: 4, right: 20, bottom: 96),
+      margin: const EdgeInsets.only(left: 4, right: 20, bottom: 8),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
         color: t.panel,
