@@ -82,6 +82,36 @@ Map<String, dynamic>? styleMutationStateFromBoard(
     'protected_item_ids',
     'anchor_item_ids',
     'board_content_hash',
+    // Narrative/title fields. A board mutation (e.g. "change footwear")
+    // only swaps the requested role's item(s); it must not silently drop
+    // the board's title, rationale, or styling tip. These are round-tripped
+    // through the mutation state so the legacy mutation endpoint — which
+    // treats this state as the board it echoes back — has them to return,
+    // and so the card renderer still has them if it doesn't.
+    'title',
+    'board_title',
+    'boardTitle',
+    'selected_archetype',
+    'selectedArchetype',
+    'archetype',
+    'style_archetype',
+    'style_strategy',
+    // "Why it works" — every fallback key the card renderer checks.
+    'short_note',
+    'shortNote',
+    'why_it_works',
+    'whyItWorks',
+    'why_this_works',
+    'explanation',
+    'reason',
+    'description',
+    // "Styling tip" — every fallback key the card renderer checks.
+    'styling_tip',
+    'stylingTip',
+    'style_tip',
+    'style_note',
+    'styleNote',
+    'styling_note',
   ]) {
     if (state[key] != null) result[key] = state[key];
   }

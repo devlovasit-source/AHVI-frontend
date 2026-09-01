@@ -1762,7 +1762,16 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       final typedModuleCard = textOnlyResponse
           ? null
           : AhviChatResponseRendererRegistry.typedModuleCard(response);
-      final visualPayload = _VisualDirectionPayload.fromResponse(response);
+      final rawVisualPayload = _VisualDirectionPayload.fromResponse(response);
+      final visualPayload = isBoardMutation
+          ? _VisualDirectionPayload(
+              directions: _retainNarrative(
+                rawVisualPayload.directions,
+                mutationState,
+              ),
+              styleState: rawVisualPayload.styleState,
+            )
+          : rawVisualPayload;
       final visualBoard =
           !textOnlyResponse &&
               !visualPayload.hasDirections &&
@@ -1783,7 +1792,19 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
                       card['visualSections'] is! List,
                 )
                 .toList(growable: false);
-      final boardPayload = _StyleBoardPayload.fromResponse(response);
+      final rawBoardPayload = _StyleBoardPayload.fromResponse(response);
+      final boardPayload = isBoardMutation
+          ? _StyleBoardPayload(
+              cards: rawBoardPayload.cards,
+              renderedBoards: _retainNarrative(
+                rawBoardPayload.renderedBoards,
+                mutationState,
+              ),
+              outfits: rawBoardPayload.outfits,
+              boardId: rawBoardPayload.boardId,
+              styleState: rawBoardPayload.styleState,
+            )
+          : rawBoardPayload;
       final boardSelection = selectStyleBoardAlias(response);
       final actionChips = _actionChipsFromResponse(response);
       final diagnosticSelection = AhviStyleDiagnostics.selectAlias(response);
@@ -2776,6 +2797,76 @@ List<Map<String, dynamic>> _actionChipsFromResponse(
 List<Map<String, dynamic>> actionChipsForTesting(
   Map<String, dynamic> response,
 ) => _actionChipsFromResponse(response);
+
+/// A board mutation (e.g. "change footwear") only swaps the requested
+/// role's item(s). The legacy mutation endpoint can return a board that
+/// omits the title/rationale/styling tip it was never asked to change —
+/// backfill those from the board being mutated so the card doesn't fall
+/// back to a generic title and blank "why it works"/"styling tip".
+///
+/// NOTE: the backend does not reliably echo back a stable board_id across
+/// a mutation turn (it may mint a fresh id on every response), so id
+/// matching can't be the primary signal here. This is only called from a
+/// single-active-board mutation flow (the ambiguous-board case is already
+/// intercepted earlier and asks the user which board to update), so when
+/// there is exactly one board in the response it is safe to assume it is
+/// the board being mutated regardless of what id it carries. With more
+/// than one board in the response, fall back to id matching so a
+/// multi-board response doesn't get every board's narrative overwritten
+/// with the same previous board's copy.
+const _kNarrativeBoardKeys = [
+  'title',
+  'board_title',
+  'boardTitle',
+  'selected_archetype',
+  'selectedArchetype',
+  'archetype',
+  'style_archetype',
+  'style_strategy',
+  // "Why it works" — every fallback key the card renderer checks.
+  'short_note',
+  'shortNote',
+  'why_it_works',
+  'whyItWorks',
+  'why_this_works',
+  'explanation',
+  'reason',
+  'description',
+  // "Styling tip" — every fallback key the card renderer checks.
+  'styling_tip',
+  'stylingTip',
+  'style_tip',
+  'style_note',
+  'styleNote',
+  'styling_note',
+];
+
+List<Map<String, dynamic>> _retainNarrative(
+  List<Map<String, dynamic>> boards,
+  Map<String, dynamic>? previousBoard,
+) {
+  if (previousBoard == null || boards.isEmpty) return boards;
+  final singleBoardResponse = boards.length == 1;
+  return boards.map((board) {
+    final merged = Map<String, dynamic>.from(board);
+    final sameBoard = singleBoardResponse ||
+        (merged['board_id'] ?? merged['boardId'] ?? '').toString().trim() ==
+            (previousBoard['board_id'] ?? previousBoard['boardId'] ?? '')
+                .toString()
+                .trim() ||
+        (merged['board_id'] ?? merged['boardId'] ?? '').toString().trim().isEmpty;
+    if (!sameBoard) return merged;
+    for (final key in _kNarrativeBoardKeys) {
+      final existing = merged[key];
+      final isBlank = existing == null ||
+          (existing is String && existing.trim().isEmpty);
+      if (isBlank && previousBoard[key] != null) {
+        merged[key] = previousBoard[key];
+      }
+    }
+    return merged;
+  }).toList(growable: false);
+}
 
 @visibleForTesting
 ({String path, List<Map<String, dynamic>> boards}) selectStyleBoardAlias(

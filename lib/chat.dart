@@ -502,6 +502,77 @@ List<dynamic> _extractStyleBoardsFromResponse(Map<String, dynamic> response) {
       .boards;
 }
 
+/// A board mutation (e.g. "change footwear") only swaps the requested
+/// role's item(s). The legacy mutation endpoint can return a board that
+/// omits the title/rationale/styling tip it was never asked to change —
+/// backfill those from the board being mutated so the card doesn't fall
+/// back to a generic title and blank "why it works"/"styling tip".
+///
+/// NOTE: the backend does not reliably echo back a stable board_id across
+/// a mutation turn (it may mint a fresh id on every response), so id
+/// matching can't be the primary signal here. This is only called from a
+/// single-active-board mutation flow (the ambiguous-board case is already
+/// intercepted earlier and asks the user which board to update), so when
+/// there is exactly one board in the response it is safe to assume it is
+/// the board being mutated regardless of what id it carries. With more
+/// than one board in the response, fall back to id matching so a
+/// multi-board response doesn't get every board's narrative overwritten
+/// with the same previous board's copy.
+const _kNarrativeBoardKeys = [
+  'title',
+  'board_title',
+  'boardTitle',
+  'selected_archetype',
+  'selectedArchetype',
+  'archetype',
+  'style_archetype',
+  'style_strategy',
+  // "Why it works" — every fallback key the card renderer checks.
+  'short_note',
+  'shortNote',
+  'why_it_works',
+  'whyItWorks',
+  'why_this_works',
+  'explanation',
+  'reason',
+  'description',
+  // "Styling tip" — every fallback key the card renderer checks.
+  'styling_tip',
+  'stylingTip',
+  'style_tip',
+  'style_note',
+  'styleNote',
+  'styling_note',
+];
+
+List<dynamic> _boardsWithRetainedNarrative(
+  List<dynamic> boards,
+  Map<String, dynamic>? previousBoard,
+) {
+  if (previousBoard == null || boards.isEmpty) return boards;
+  final singleBoardResponse = boards.length == 1;
+  return boards.map((value) {
+    if (value is! Map) return value;
+    final board = Map<String, dynamic>.from(value);
+    final sameBoard = singleBoardResponse ||
+        (board['board_id'] ?? board['boardId'] ?? '').toString().trim() ==
+            (previousBoard['board_id'] ?? previousBoard['boardId'] ?? '')
+                .toString()
+                .trim() ||
+        (board['board_id'] ?? board['boardId'] ?? '').toString().trim().isEmpty;
+    if (!sameBoard) return board;
+    for (final key in _kNarrativeBoardKeys) {
+      final existing = board[key];
+      final isBlank = existing == null ||
+          (existing is String && existing.trim().isEmpty);
+      if (isBlank && previousBoard[key] != null) {
+        board[key] = previousBoard[key];
+      }
+    }
+    return board;
+  }).toList(growable: false);
+}
+
 List<dynamic> _visibleResponseChips(
   List<dynamic> chips,
   AhviResponsePolicy policy,
@@ -1803,9 +1874,12 @@ class _ChatScreenState extends State<ChatScreen>
           ? _moduleCardFromResponse(response)
           : null;
       final isModuleResponse = _looksLikeModuleCards(response);
-      final responseBoards = isModuleResponse
+      final rawResponseBoards = isModuleResponse
           ? const <dynamic>[]
           : _extractStyleBoardsFromResponse(response);
+      final responseBoards = isBoardMutation
+          ? _boardsWithRetainedNarrative(rawResponseBoards, mutationState)
+          : rawResponseBoards;
       if (isStyleModule) {
         final responseStyleState = response['style_state'] is Map
             ? Map<String, dynamic>.from(response['style_state'] as Map)
