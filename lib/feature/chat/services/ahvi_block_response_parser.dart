@@ -639,13 +639,27 @@ Map<String, dynamic> _styleBoardToDirection(Map<String, dynamic> board) {
       it['board_image_url'],
       it['boardImageUrl'],
     );
-    canonical('image_url', it['image_url'], it['imageUrl']);
-    canonical('image_url', it['safe_image_url'], it['safeImageUrl']);
-    canonical('image_url', it['resolved_image_url'], it['resolvedImageUrl']);
-    canonical('image_url', it['catalog_image_url'], it['catalogImageUrl']);
-    canonical('image_url', it['display_image_url'], it['displayImageUrl']);
-    canonical('image_url', it['product_url'], it['productUrl']);
-    canonical('image_url', it['url'], it['link']);
+    final primaryImageUrl = [
+      it['image_url'],
+      it['imageUrl'],
+      it['safe_image_url'],
+      it['safeImageUrl'],
+      it['resolved_image_url'],
+      it['resolvedImageUrl'],
+      it['catalog_image_url'],
+      it['catalogImageUrl'],
+      it['display_image_url'],
+      it['displayImageUrl'],
+      it['product_url'],
+      it['productUrl'],
+      it['url'],
+      it['link'],
+    ]
+        .map((value) => value?.toString().trim() ?? '')
+        .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+    if (primaryImageUrl.isNotEmpty) {
+      out['image_url'] = primaryImageUrl;
+    }
     return out;
   })
       .where(

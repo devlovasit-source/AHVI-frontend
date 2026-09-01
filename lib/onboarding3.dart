@@ -745,7 +745,6 @@ class _Screen3State extends State<Screen3> {
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final horizontalPadding = size.width < 360 ? 16.0 : (size.width < 400 ? 18.0 : 20.0);
-    final bottomPadding = size.height < 700 ? 8.0 : 0.0;
     return Scaffold(
       backgroundColor: context.colors.bg2,
       body: Stack(

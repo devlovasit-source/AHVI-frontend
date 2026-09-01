@@ -210,6 +210,32 @@ void main() {
     expect(dir['source_policy'], 'mixed');
   });
 
+  test('style board conversion keeps the direct image_url alias first', () {
+    final resp = _styleThisResponse(
+      directions: const [],
+    )..['style_boards'] = [
+        {
+          'board_id': 'wardrobe-1',
+          'title': 'Wardrobe Set',
+          'items': [
+            {
+              'item_id': 'anchor-1',
+              'name': 'Pink Shirt',
+              'role': 'top',
+              'image_url': 'https://example.test/direct.png',
+              'safe_image_url': 'https://example.test/safe.png',
+              'resolved_image_url': 'https://example.test/resolved.png',
+              'board_image_url': 'https://example.test/board.png',
+            },
+          ],
+        },
+      ];
+    final dir = _directionsOf(parseAhviResponse(resp)).single;
+    final item = (dir['board_items'] as List).cast<Map>().single;
+    expect(item['image_url'], 'https://example.test/direct.png');
+    expect(item['board_image_url'], 'https://example.test/board.png');
+  });
+
   test('wardrobe fallback only when neither level has a valid policy', () {
     final dir = _directionsOf(parseAhviResponse(_styleThisResponse())).single;
     expect(dir['source_policy'], 'wardrobe');

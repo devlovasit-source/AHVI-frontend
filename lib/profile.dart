@@ -11,9 +11,8 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
-// ✅ NEW: Import the refactored analysis service and config (mirrors onboarding3.dart)
+// Shared face analysis lives in the refactored service, matching onboarding3.dart.
 import 'package:myapp/services/face_scan/face_scan_analysis_refactored.dart';
-import 'package:myapp/services/face_scan/face_scan_config.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/theme/theme_controller.dart';
 import 'package:myapp/theme/profile_theme.dart';
@@ -2219,6 +2218,7 @@ class _EditViewState extends State<_EditView>
 
   // ── Face analyser (mirrors onboarding3) ──
   late FaceDetector _faceDetector;
+  late FaceAnalysisService _analysisService;
   bool _isAnalyzingFace = false;
   FaceAnalysisData? _faceAnalysisData;
   final ImagePicker _facePicker = ImagePicker();
@@ -2288,6 +2288,7 @@ class _EditViewState extends State<_EditView>
     _faceUploaded = false;
     _bodyUploaded = false;
     _initializeFaceDetector();
+    _analysisService = FaceAnalysisService();
     _draft = widget.state.copyWith();
     _nameCtrl = TextEditingController(text: widget.state.name);
     _emailCtrl = TextEditingController(text: widget.state.email);
@@ -2419,18 +2420,18 @@ class _EditViewState extends State<_EditView>
 
       // Extract facial features (mirrors onboarding3's _analyzeFaceAdvanced)
       final faceShape = _analyzeFaceShape(face);
-      final skinToneData = _extractSkinTone(decodedImage, face);
+      final skinToneData = _analysisService.extractSkinTone(decodedImage, face);
       final skinToneLabel = skinToneData['label'] as String;
       final skinToneColor = skinToneData['color'] as Color;
       final skinToneIndex = _nearestSkinToneIndex(skinToneColor);
-      final skinQuality = _calculateSkinQuality(decodedImage, face);
-      final acneData = _detectAcne(decodedImage, face);
-      final pigmentationData = _detectPigmentation(decodedImage, face);
+      final skinQuality = _analysisService.calculateSkinQuality(decodedImage, face);
+      final acneData = _analysisService.detectAcne(decodedImage, face);
+      final pigmentationData = _analysisService.detectPigmentation(decodedImage, face);
       final eyeShapeData = _analyzeEyeShape(face);
       final lipColorData = _analyzeLipColor(decodedImage, face);
-      final darkerCircles = _detectDarkCircles(decodedImage, face);
+      final darkerCircles = _analysisService.detectDarkCircles(decodedImage, face);
 
-      final recommendations = _generateRecommendations(
+      final recommendations = _analysisService.generateRecommendations(
         skinTone: skinToneLabel,
         hasAcne: acneData['detected'] as bool,
         acneSeverity: acneData['severity'] as int,
@@ -2928,106 +2929,6 @@ class _EditViewState extends State<_EditView>
     } catch (e) {
       return 75.0;
     }
-  }
-
-  // ── Generate Recommendations ──────────────────────────────────
-  List<String> _generateRecommendations({
-    required String skinTone,
-    required bool hasAcne,
-    required int acneSeverity,
-    required bool hasPigmentation,
-    required double pigmentationIntensity,
-    required String eyeShape,
-    required bool darkCircles,
-    required String faceShape,
-  }) {
-    final recommendations = <String>[];
-
-    // Severity-aware acne recommendations (mirrors FaceAnalysisService)
-    if (hasAcne) {
-      if (acneSeverity > 50) {
-        recommendations.add(
-          'Significant acne detected — consider a dermatologist-prescribed routine with benzoyl peroxide or retinoids',
-        );
-      } else if (acneSeverity > 20) {
-        recommendations.add(
-          'Moderate acne present — use salicylic acid cleansers and non-comedogenic moisturizer daily',
-        );
-      } else {
-        recommendations.add(
-          'Mild breakouts noticed — spot-treat with salicylic acid and keep skin hydrated',
-        );
-      }
-    }
-
-    // Intensity-aware pigmentation recommendations
-    if (hasPigmentation) {
-      if (pigmentationIntensity > 0.6) {
-        recommendations.add(
-          'Uneven skin tone detected — try niacinamide + vitamin C serums and daily SPF 50+',
-        );
-      } else {
-        recommendations.add(
-          'Slight pigmentation variation — vitamin C serum and consistent SPF will help even tone',
-        );
-      }
-    }
-
-    if (darkCircles) {
-      recommendations.add(
-        'Dark circles detected — use eye creams with caffeine or retinol, and prioritize sleep',
-      );
-    }
-
-    if (eyeShape == 'Hooded') {
-      recommendations.add(
-        'Hooded eyes — highlight the inner corner and use matte shadow on the lid for a lifted effect',
-      );
-    } else if (eyeShape == 'Almond') {
-      recommendations.add(
-        'Almond eyes — most liner and shadow styles suit you; winged liner enhances your shape beautifully',
-      );
-    }
-
-    switch (faceShape) {
-      case 'Round':
-        recommendations.add(
-          'Round face — contour temples and jawline softly to add definition; avoid very round blush placement',
-        );
-        break;
-      case 'Square':
-        recommendations.add(
-          'Square face — soften strong angles with rounded blush on the apples of cheeks and soft contouring',
-        );
-        break;
-      case 'Heart':
-        recommendations.add(
-          'Heart face — balance a wider forehead with soft side-swept styles and blush on the lower cheeks',
-        );
-        break;
-      case 'Oblong':
-        recommendations.add(
-          'Oblong face — add visual width with horizontal blush placement and avoid elongating hairstyles',
-        );
-        break;
-      case 'Diamond':
-        recommendations.add(
-          'Diamond face — highlight your cheekbones, your strongest feature, and soften the chin with blush',
-        );
-        break;
-      default:
-        recommendations.add(
-          'Oval face — your balanced proportions suit almost any style; experiment freely',
-        );
-    }
-
-    recommendations.add('Stay hydrated and use SPF daily for healthy, glowing skin');
-
-    if (recommendations.isEmpty) {
-      recommendations.add('Your skin looks great! Maintain your current routine');
-    }
-
-    return recommendations;
   }
 
   Widget _buildFaceShapeCard(
