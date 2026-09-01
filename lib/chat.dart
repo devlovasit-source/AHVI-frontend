@@ -546,19 +546,7 @@ List<String> _blockStringList(dynamic value) {
 List<Map<String, dynamic>> _moduleCardsFromResponse(
     Map<String, dynamic> response,
     ) {
-  final out = <Map<String, dynamic>>[];
-  final card = response['card'];
-  if (card is Map) out.add(Map<String, dynamic>.from(card));
-  final cards = response['cards'];
-  if (cards is List) {
-    out.addAll(
-      cards.whereType<Map>().map((item) => Map<String, dynamic>.from(item)),
-    );
-  }
-  if (out.isEmpty && _looksLikeModuleCards(response)) {
-    out.add(response);
-  }
-  return out;
+  return AhviChatResponseRendererRegistry.moduleCards(response);
 }
 
 bool _looksLikeModuleCards(Map<String, dynamic> response) {
@@ -1803,6 +1791,9 @@ class _ChatScreenState extends State<ChatScreen>
           ? _moduleCardFromResponse(response)
           : null;
       final isModuleResponse = _looksLikeModuleCards(response);
+      final visualPackingCard = AhviChatResponseRendererRegistry.packingCard(
+        response,
+      );
       final responseBoards = isModuleResponse
           ? const <dynamic>[]
           : _extractStyleBoardsFromResponse(response);
@@ -1861,7 +1852,7 @@ class _ChatScreenState extends State<ChatScreen>
         _clarificationResolvedByCards = false;
       }
       final moduleCards = !textOnlyResponse &&
-              isModuleResponse &&
+              (isModuleResponse || visualPackingCard != null) &&
               sharedModuleCard == null
           ? _moduleCardsFromResponse(response)
           : const <Map<String, dynamic>>[];
@@ -1890,6 +1881,7 @@ class _ChatScreenState extends State<ChatScreen>
         parsedResponse.chips,
         responsePolicy,
       );
+      if (visualPackingCard != null) customChips = const [];
 
       // PATCH 5: STYLE THIS CHIP SAFETY - Replace hard failure message and add actions
       if (aiText.contains("couldn't build a complete style board") ||
@@ -3323,8 +3315,7 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _genericModuleCard(Map<String, dynamic> card, AppThemeTokens t) {
-    if (AhviChatResponseRendererRegistry.select(card).kind ==
-        AhviChatRendererKind.visualPackingChecklist) {
+    if (AhviChatResponseRendererRegistry.packingCard(card) != null) {
       return _visualPackingChecklistCard(card, t);
     }
     final title =
@@ -3497,10 +3488,7 @@ class _ChatScreenState extends State<ChatScreen>
       Map<String, dynamic> card,
       AppThemeTokens t,
       ) {
-    return VisualPackingChecklistCard(
-      card: card,
-      onAction: _sendMessage,
-    );
+    return VisualPackingChecklistCard(card: card, onAction: _sendMessage);
     /*
     final sections = _packingVisualSections(card);
     if (sections.isEmpty) return const SizedBox.shrink();

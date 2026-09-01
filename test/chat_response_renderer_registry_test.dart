@@ -146,4 +146,101 @@ void main() {
       AhviChatRendererKind.visualPackingChecklist,
     );
   });
+
+  test('normalizes all supported rich packing payload locations', () {
+    final section = {
+      'title': 'Essentials',
+      'items': [
+        {'label': 'Passport'},
+      ],
+    };
+    final shapes = [
+      {
+        'visual_sections': [section],
+      },
+      {
+        'visualSections': [section],
+      },
+      {
+        'data': {
+          'visual_sections': [section],
+        },
+      },
+      {
+        'data': {
+          'visualSections': [section],
+        },
+      },
+      {
+        'card': {
+          'visual_sections': [section],
+        },
+      },
+      {
+        'card': {
+          'visualSections': [section],
+        },
+      },
+      {
+        'cards': [
+          {
+            'visual_sections': [section],
+          },
+        ],
+      },
+      {
+        'cards': [
+          {
+            'visualSections': [section],
+          },
+        ],
+      },
+      {
+        'module_cards': [
+          {
+            'visual_sections': [section],
+          },
+        ],
+      },
+      {
+        'moduleCards': [
+          {
+            'visualSections': [section],
+          },
+        ],
+      },
+      {
+        'data': {
+          'module_cards': [
+            {
+              'visual_sections': [section],
+            },
+          ],
+        },
+      },
+      {
+        'data': {
+          'moduleCards': [
+            {
+              'visualSections': [section],
+            },
+          ],
+        },
+      },
+    ];
+
+    for (final response in shapes) {
+      final card = AhviChatResponseRendererRegistry.packingCard(response);
+      expect(
+        AhviChatResponseRendererRegistry.select(response).kind,
+        AhviChatRendererKind.visualPackingChecklist,
+      );
+      expect(card, isNotNull);
+      expect(card!['visual_sections'], hasLength(1));
+      final cards = AhviChatResponseRendererRegistry.moduleCards(response);
+      expect(cards, hasLength(1));
+      expect(cards.single['type'], 'visual_packing_checklist');
+      expect(cards.single['visual_sections'], hasLength(1));
+    }
+  });
 }

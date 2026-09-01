@@ -25,7 +25,11 @@ class VisualPackingChecklistPayload {
               .where((item) => item['items'] is List)
               .toList(growable: false)
         : const <Map<String, dynamic>>[];
-    final rawActions = card['actions'];
+    final rawActions =
+        card['actions'] ??
+        card['quick_actions'] ??
+        card['quickActions'] ??
+        card['chips'];
     return VisualPackingChecklistPayload(
       title: (card['title'] ?? 'Carry-on Packing Checklist').toString().trim(),
       subtitle: (card['subtitle'] ?? 'Short trip').toString().trim(),
