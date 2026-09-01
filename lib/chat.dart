@@ -995,11 +995,15 @@ class ChatScreen extends StatefulWidget {
   final String moduleContext;
   final String? initialPrompt;
   final bool showBackButton;
+  final Future<void> Function(String sessionId)? onDeleteSessionCloud;
+  final Future<String?> Function()? userNameLoader;
   const ChatScreen({
     super.key,
     this.moduleContext = 'style',
     this.initialPrompt,
     this.showBackButton = true,
+    this.onDeleteSessionCloud,
+    this.userNameLoader,
   });
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -1088,6 +1092,14 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Future<void> _fetchUser() async {
+    if (widget.userNameLoader != null) {
+      final name = await widget.userNameLoader!();
+      if (name != null && mounted) {
+        final trimmed = name.trim();
+        setState(() => _userName = trimmed.isEmpty ? 'Stylist' : trimmed);
+      }
+      return;
+    }
     final appwrite = Provider.of<AppwriteService>(context, listen: false);
     final user = await appwrite.getCurrentUser();
     if (user != null && mounted) {
@@ -1175,7 +1187,9 @@ class _ChatScreenState extends State<ChatScreen>
 
   Future<void> _saveCurrentSession() async {
     if (_chatHistory.isEmpty) return; // nothing to persist yet
+    final saveToken = _responseGuard.capture(_currentSessionId);
     final prefs = await SharedPreferences.getInstance();
+    if (!_responseGuard.accepts(saveToken, _currentSessionId)) return;
 
     // Build a readable title from the first user message
     final firstUser = _chatHistory.firstWhere(
@@ -1213,19 +1227,104 @@ class _ChatScreenState extends State<ChatScreen>
       );
     }
 
+    if (!_responseGuard.accepts(saveToken, _currentSessionId)) return;
+
     await prefs.setString(
       _kSessionsKey,
       jsonEncode(_sessions.map((s) => s.toJson()).toList()),
     );
   }
 
+  Future<bool> _requestDeleteSession(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete conversation?'),
+        content: const Text(
+          'This conversation will be removed from your chat history.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return false;
+
+    await _deleteSession(id);
+    return true;
+  }
+
   Future<void> _deleteSession(String id) async {
-    setState(() => _sessions.removeWhere((s) => s.id == id));
+    if (!_sessions.any((session) => session.id == id)) return;
+    final deletingCurrent = id == _currentSessionId;
+    if (deletingCurrent) _responseGuard.invalidate();
+
+    setState(() {
+      _sessions.removeWhere((s) => s.id == id);
+      if (deletingCurrent) {
+        _currentSessionId = DateTime.now().microsecondsSinceEpoch.toString();
+        _messages
+          ..clear()
+          ..add(_ChatMessage(text: '', isMe: false, isGreeting: true));
+        _chatHistory.clear();
+        _runningMemory = '';
+        _lastStyleContext = null;
+        _activeBoardMutationState = null;
+        _clarificationResolvedByCards = false;
+        _isTyping = false;
+        _calendarNavigationPending = false;
+        _lastRequestWasWardrobe = false;
+        _lastPlanPackContext = const {};
+        _chatController.clear();
+        for (final ctrls in _checklistAddCtrlsByTitle.values) {
+          for (final ctrl in ctrls) {
+            ctrl.dispose();
+          }
+        }
+        _checklistChecksByTitle.clear();
+        _checklistItemsByTitle.clear();
+        _checklistAddCtrlsByTitle.clear();
+        _checklistSavedByTitle.clear();
+      }
+    });
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _kSessionsKey,
       jsonEncode(_sessions.map((s) => s.toJson()).toList()),
     );
+
+    try {
+      if (widget.onDeleteSessionCloud != null) {
+        await widget.onDeleteSessionCloud!(id);
+      } else {
+        await Provider.of<AppwriteService>(
+          context,
+          listen: false,
+        ).deleteChatSession(id);
+      }
+    } catch (e) {
+      debugPrint(
+        'Chat session cloud delete failed: id=${_styleTraceValue(id)} '
+        'error_type=${e.runtimeType}',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Conversation deleted locally. Cloud sync failed.'),
+            ),
+          );
+      }
+    }
   }
 
   Future<void> _clearCurrentChat() async {
@@ -2215,12 +2314,16 @@ class _ChatScreenState extends State<ChatScreen>
               padding: const EdgeInsets.fromLTRB(20, 20, 16, 4),
               child: Row(
                 children: [
-                  Text(
-                    AppLocalizations.t(context, 'chat_history_title'),
-                    style: TextStyle(
-                      color: t.textPrimary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
+                  Expanded(
+                    child: Text(
+                      AppLocalizations.t(context, 'chat_history_title'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   const Spacer(),
@@ -2288,7 +2391,7 @@ class _ChatScreenState extends State<ChatScreen>
                         color: Colors.redAccent,
                       ),
                     ),
-                    onDismissed: (_) => _deleteSession(s.id),
+                    confirmDismiss: (_) => _requestDeleteSession(s.id),
                     child: ListTile(
                       selected: isActive,
                       selectedTileColor: t.accent.primary.withValues(
@@ -2335,6 +2438,22 @@ class _ChatScreenState extends State<ChatScreen>
                           color: t.mutedText,
                           fontSize: 11,
                         ),
+                      ),
+                      trailing: PopupMenuButton<String>(
+                        key: ValueKey('session-actions-${s.id}'),
+                        tooltip: 'Conversation actions',
+                        onSelected: (value) {
+                          if (value == 'delete') {
+                            _requestDeleteSession(s.id);
+                          }
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem<String>(
+                            value: 'delete',
+                            child: Text('Delete conversation'),
+                          ),
+                        ],
+                        icon: const Icon(Icons.more_vert),
                       ),
                     ),
                   );
