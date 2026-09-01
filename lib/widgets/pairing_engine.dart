@@ -155,29 +155,50 @@ class PairingEngine {
     ...item.occasions,
   ].join(' ').toLowerCase();
 
-  static const Set<String> _nonFashionTerms = {
-    'charger',
-    'cable',
-    'adapter',
-    'bottle',
-    'phone',
-    'remote',
-    'mouse',
-    'keyboard',
-    'laptop',
-    'earbud',
-    'headphone',
-    'airpod',
-    'plug',
-    'wire',
-    'battery',
-    'speaker',
-    'camera',
-    'mug',
-    'cup',
-    'pen',
-    'book',
-    'box',
+  static const Set<String> _nonFashionPhrases = {
+    'phone charger',
+    'wall charger',
+    'usb charger',
+    'charging cable',
+    'usb cable',
+    'power cable',
+    'laptop adapter',
+    'power adapter',
+    'usb adapter',
+    'water bottle',
+    'tv remote',
+    'remote control',
+    'computer mouse',
+    'wireless mouse',
+    'computer keyboard',
+    'wireless keyboard',
+    'laptop computer',
+    'wireless earbuds',
+    'bluetooth earbuds',
+    'bluetooth headphones',
+    'airpods',
+    'power bank',
+    'powerbank',
+    'power plug',
+    'electrical plug',
+    'charging wire',
+    'electrical wire',
+    'battery pack',
+    'batteries',
+    'bluetooth speaker',
+    'portable speaker',
+    'digital camera',
+    'security camera',
+    'coffee mug',
+    'ceramic mug',
+    'coffee cup',
+    'measuring cup',
+    'ballpoint pen',
+    'ink pen',
+    'cardboard box',
+    'storage box',
+    'shipping box',
+    'boxes',
   };
 
   static bool _isFashionItem(WardrobeItem item) {
@@ -189,23 +210,35 @@ class PairingEngine {
 
     final tokens = normalized.split(RegExp(r'\s+'));
 
-    for (final term in _nonFashionTerms) {
-      if (tokens.contains(term) || tokens.contains('${term}s')) {
-        return false;
-      }
-    }
+    for (final phrase in _nonFashionPhrases) {
+      final phraseTokens = phrase.split(' ');
 
-    if (tokens.contains('powerbank')) {
-      return false;
-    }
+      if (phraseTokens.length > tokens.length) continue;
 
-    for (var i = 0; i < tokens.length - 1; i++) {
-      if (tokens[i] == 'power' && tokens[i + 1] == 'bank') {
-        return false;
+      for (var i = 0; i <= tokens.length - phraseTokens.length; i++) {
+        var matches = true;
+
+        for (var j = 0; j < phraseTokens.length; j++) {
+          if (!_matchesFashionToken(tokens[i + j], phraseTokens[j])) {
+            matches = false;
+            break;
+          }
+        }
+
+        if (matches) return false;
       }
     }
 
     return true;
+  }
+
+  static bool _matchesFashionToken(String actual, String expected) {
+    if (actual == expected) return true;
+
+    if (expected == 'battery' && actual == 'batteries') return true;
+    if (expected == 'box' && actual == 'boxes') return true;
+
+    return false;
   }
 
   static bool _isEthnic(WardrobeItem item) {
@@ -286,6 +319,10 @@ class PairingEngine {
     WardrobeItem item,
     List<WardrobeItem> allItems,
   ) {
+    if (!_isFashionItem(item)) {
+      return [];
+    }
+
     final candidates = allItems
         .where((other) => other.id != item.id)
         .where(_isFashionItem)

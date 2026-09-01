@@ -34,6 +34,20 @@ void main() {
       expect(results.any((result) => result.id == 'charger'), isFalse);
     });
 
+    test('non-fashion anchor returns no pairing results', () {
+      final charger = makeItem(
+        id: 'charger',
+        name: 'Phone Charger',
+        cat: 'Accessories',
+      );
+
+      final shirt = makeItem(id: 'shirt', name: 'White Shirt', cat: 'Tops');
+
+      final results = PairingEngine.worksWellWith(charger, [charger, shirt]);
+
+      expect(results, isEmpty);
+    });
+
     test('Black Watch remains eligible as an accessory', () {
       final shirt = makeItem(id: 'shirt', name: 'White Shirt', cat: 'Tops');
 
@@ -83,6 +97,12 @@ void main() {
         cat: 'Accessories',
       );
 
+      final bottle = makeItem(
+        id: 'bottle',
+        name: 'Water Bottle',
+        cat: 'Accessories',
+      );
+
       final watch = makeItem(
         id: 'watch',
         name: 'Black Watch',
@@ -104,6 +124,7 @@ void main() {
         charger,
         cable,
         powerBank,
+        bottle,
         watch,
         belt,
         trousers,
@@ -115,6 +136,7 @@ void main() {
       expect(resultIds, isNot(contains('charger')));
       expect(resultIds, isNot(contains('cable')));
       expect(resultIds, isNot(contains('power-bank')));
+      expect(resultIds, isNot(contains('bottle')));
 
       expect(resultIds, contains('watch'));
       expect(resultIds, contains('belt'));
@@ -155,6 +177,76 @@ void main() {
       expect(resultIds, contains('bag'));
       expect(resultIds, contains('earrings'));
       expect(resultIds, contains('sunglasses'));
+    });
+
+    test('valid fashion names are not rejected by broad words', () {
+      final shirt = makeItem(
+        id: 'shirt',
+        name: 'Bottle Green Shirt',
+        cat: 'Tops',
+      );
+
+      final skirt = makeItem(
+        id: 'skirt',
+        name: 'Box Pleat Skirt',
+        cat: 'Bottoms',
+      );
+
+      final sunglasses = makeItem(
+        id: 'sunglasses',
+        name: 'Wire Frame Sunglasses',
+        cat: 'Accessories',
+      );
+
+      final shirtResults = PairingEngine.worksWellWith(shirt, [
+        shirt,
+        skirt,
+        sunglasses,
+      ]);
+
+      final skirtResults = PairingEngine.worksWellWith(skirt, [
+        shirt,
+        skirt,
+        sunglasses,
+      ]);
+
+      final sunglassesResults = PairingEngine.worksWellWith(sunglasses, [
+        shirt,
+        skirt,
+      ]);
+
+      expect(shirtResults.map((item) => item.id), contains('skirt'));
+
+      expect(skirtResults.map((item) => item.id), contains('shirt'));
+
+      expect(sunglassesResults.map((item) => item.id), contains('shirt'));
+    });
+
+    test('plural non-fashion variants are rejected', () {
+      final shirt = makeItem(id: 'shirt', name: 'White Shirt', cat: 'Tops');
+
+      final batteries = makeItem(
+        id: 'batteries',
+        name: 'Batteries',
+        cat: 'Accessories',
+      );
+
+      final boxes = makeItem(
+        id: 'boxes',
+        name: 'Storage Boxes',
+        cat: 'Accessories',
+      );
+
+      final results = PairingEngine.worksWellWith(shirt, [
+        shirt,
+        batteries,
+        boxes,
+      ]);
+
+      final resultIds = results.map((item) => item.id).toSet();
+
+      expect(resultIds, isNot(contains('batteries')));
+      expect(resultIds, isNot(contains('boxes')));
     });
 
     test('occasion/category normalization remains unchanged', () {
