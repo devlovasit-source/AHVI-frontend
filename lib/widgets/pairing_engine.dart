@@ -16,6 +16,7 @@
 
 import 'package:myapp/wardrobe.dart';
 import 'package:myapp/util/occasion_normalizer.dart';
+import 'package:myapp/feature/chat/services/fashion_item_filter.dart';
 
 class PairingEngine {
   // ============================================================
@@ -233,7 +234,16 @@ class PairingEngine {
     WardrobeItem item,
     List<WardrobeItem> allItems,
   ) {
-    final candidates = allItems.where((other) => other.id != item.id).toList();
+    final candidates = allItems
+        .where((other) => other.id != item.id)
+        .where(
+          (other) => isFashionItem({
+            'name': other.name,
+            'category': other.cat,
+            'tags': [...other.occasions, other.notes],
+          }),
+        )
+        .toList();
     final scored = <_ScoredItem>[];
 
     final itemCat = normalizeCategory(item.cat);
