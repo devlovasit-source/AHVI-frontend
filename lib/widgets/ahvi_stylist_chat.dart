@@ -769,6 +769,8 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
   int _staleResponseDiscardedCount = 0;
 
   final List<_ChatSession> _history = [];
+  final Set<String> _deletedSessionIds = <String>{};
+  int _historyWriteGeneration = 0;
   String? _currentSessionId;
 
   AhviModuleConfig get _config => _configFor(widget.moduleContext);
@@ -862,11 +864,11 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
   }
 
   Future<void> _persistHistoryToDisk() async {
+    final writeGeneration = ++_historyWriteGeneration;
+    final encoded = jsonEncode(_history.map((s) => s.toJson()).toList());
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _historyStorageKey,
-      jsonEncode(_history.map((s) => s.toJson()).toList()),
-    );
+    if (writeGeneration != _historyWriteGeneration) return;
+    await prefs.setString(_historyStorageKey, encoded);
   }
 
   Future<void> _clearCurrentChat() async {
@@ -894,15 +896,21 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     _scrollToBottom();
   }
 
-  void _saveCurrentSession() {
-    if (_messages.isEmpty) return;
+  void _saveCurrentSession({String? expectedSessionId}) {
+    final sessionId = _currentSessionId;
+    if (_messages.isEmpty ||
+        sessionId == null ||
+        (expectedSessionId != null && expectedSessionId != sessionId) ||
+        _deletedSessionIds.contains(sessionId)) {
+      return;
+    }
     final userMessages = _messages.where((m) => m.isUser).toList();
     if (userMessages.isEmpty) return;
     final rawText = userMessages.first.text ?? '';
     final title = truncateSafeText(rawText, 40, suffix: '…');
-    final existingIdx = _history.indexWhere((s) => s.id == _currentSessionId);
+    final existingIdx = _history.indexWhere((s) => s.id == sessionId);
     final session = _ChatSession(
-      id: _currentSessionId!,
+      id: sessionId,
       title: title,
       createdAt: DateTime.now(),
       messages: List.from(_messages),
@@ -913,6 +921,64 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       _history.insert(0, session);
     }
     _persistHistoryToDisk(); // fire-and-forget write
+  }
+
+  Future<bool> _confirmDeleteConversation(String sessionId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete conversation?'),
+        content: const Text(
+          'This conversation will be removed from your chat history.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true &&
+        mounted &&
+        _history.any((session) => session.id == sessionId);
+  }
+
+  Future<void> _deleteConversation(String sessionId) async {
+    if (!_history.any((session) => session.id == sessionId)) return;
+
+    _deletedSessionIds.add(sessionId);
+    final deletingCurrent = sessionId == _currentSessionId;
+    if (deletingCurrent) _responseGuard.invalidate();
+
+    setState(() {
+      _history.removeWhere((session) => session.id == sessionId);
+      if (deletingCurrent) {
+        _currentSessionId = DateTime.now().microsecondsSinceEpoch.toString();
+        _messages
+          ..clear()
+          ..add(_SheetMessage(textKey: _config.greetingKey, isUser: false));
+        _chatHistory.clear();
+        _runningMemory = '';
+        _lastStyleContext = null;
+        _activeBoardMutationState = null;
+        _clarificationResolvedByCards = false;
+        _typing = false;
+        _chipsVisible = true;
+        _chatHasText = false;
+        _pendingAttachment = null;
+        _inputController.clear();
+      }
+    });
+
+    // Live stylist history is local-only; persist the local deletion before
+    // returning. There is no cloud document ID to delete for this surface.
+    await _persistHistoryToDisk();
+    _scrollToBottom();
   }
 
   void _startNewChat() {
@@ -1264,8 +1330,12 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     return null;
   }
 
-  void _addAssistantReply(String text) {
-    if (!mounted) return;
+  void _addAssistantReply(String text, {required String sessionId}) {
+    if (!mounted ||
+        sessionId != _currentSessionId ||
+        _deletedSessionIds.contains(sessionId)) {
+      return;
+    }
 
     setState(() {
       _typing = false;
@@ -1274,10 +1344,13 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     });
 
     _scrollToBottom();
-    _saveCurrentSession();
+    _saveCurrentSession(expectedSessionId: sessionId);
   }
 
-  Future<bool> _tryScheduleMedicineReminderFromChat(String text) async {
+  Future<bool> _tryScheduleMedicineReminderFromChat(
+    String text, {
+    required String sessionId,
+  }) async {
     if (widget.moduleContext.toLowerCase() != 'medi') {
       return false;
     }
@@ -1291,6 +1364,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       _addAssistantReply(
         "I couldn't find ${intent.medicineName} in Medi Tracker. "
         'Please add it first.',
+        sessionId: sessionId,
       );
       return true;
     }
@@ -1306,7 +1380,10 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
     final sendAt = _nextMedicineReminderTime(intent.timeText);
 
     if (sendAt == null) {
-      _addAssistantReply('I found $medName. What time should I remind you?');
+      _addAssistantReply(
+        'I found $medName. What time should I remind you?',
+        sessionId: sessionId,
+      );
       return true;
     }
 
@@ -1314,6 +1391,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       _addAssistantReply(
         "I couldn't find ${intent.medicineName} in Medi Tracker. "
         'Please add it first.',
+        sessionId: sessionId,
       );
       return true;
     }
@@ -1345,11 +1423,13 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
         _addAssistantReply(
           "Done — I'll remind you to take $medName at "
           '${_formatMedicineReminderTime(sendAt)}.',
+          sessionId: sessionId,
         );
       } else {
         _addAssistantReply(
           'I found $medName, but could not schedule the '
           'reminder. Please try again.',
+          sessionId: sessionId,
         );
       }
     } catch (_) {
@@ -1358,6 +1438,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       _addAssistantReply(
         'I found $medName, but could not schedule the '
         'reminder. Please try again.',
+        sessionId: sessionId,
       );
     }
 
@@ -1479,7 +1560,10 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
           _isMedicineReminderCreateRequest(trimmed);
 
       if (isCreateRequest &&
-          await _tryScheduleMedicineReminderFromChat(trimmed)) {
+          await _tryScheduleMedicineReminderFromChat(
+            trimmed,
+            sessionId: responseToken.sessionId,
+          )) {
         return;
       }
 
@@ -2033,7 +2117,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
         }
       });
       _scrollToBottom();
-      _saveCurrentSession();
+      _saveCurrentSession(expectedSessionId: responseToken.sessionId);
     } catch (_) {
       debugPrint('AHVI_STYLIST_REQUEST_FAILED');
       if (!mounted ||
@@ -2047,7 +2131,7 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
         _chatHistory.add({'role': 'assistant', 'content': fallback});
       });
       _scrollToBottom();
-      _saveCurrentSession();
+      _saveCurrentSession(expectedSessionId: responseToken.sessionId);
     }
   }
 
@@ -2193,92 +2277,111 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
                         itemBuilder: (ctx, i) {
                           final session = _history[i];
                           final isActive = session.id == _currentSessionId;
-                          return GestureDetector(
-                            onTap: () {
-                              _closeDrawer();
-                              _loadSession(session);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
+                          return Dismissible(
+                            key: ValueKey(
+                              'chat-history-dismissible-${session.id}',
+                            ),
+                            direction: DismissDirection.endToStart,
+                            background: const SizedBox.shrink(),
+                            secondaryBackground: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 20),
+                              color: Colors.red.withValues(alpha: 0.15),
+                              child: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.redAccent,
                               ),
-                              color: isActive
-                                  ? t.accent.primary.withValues(alpha: 0.08)
-                                  : Colors.transparent,
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 32,
-                                    height: 32,
-                                    decoration: BoxDecoration(
-                                      color: isActive
-                                          ? t.accent.primary.withValues(
-                                              alpha: 0.15,
-                                            )
-                                          : t.panel,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
+                            ),
+                            confirmDismiss: (_) =>
+                                _confirmDeleteConversation(session.id),
+                            onDismissed: (_) => _deleteConversation(session.id),
+                            child: GestureDetector(
+                              onTap: () {
+                                _closeDrawer();
+                                _loadSession(session);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                color: isActive
+                                    ? t.accent.primary.withValues(alpha: 0.08)
+                                    : Colors.transparent,
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 32,
+                                      height: 32,
+                                      decoration: BoxDecoration(
                                         color: isActive
                                             ? t.accent.primary.withValues(
-                                                alpha: 0.4,
+                                                alpha: 0.15,
                                               )
-                                            : t.cardBorder,
-                                      ),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '',
-                                        style: TextStyle(
-                                          fontSize: 13,
+                                            : t.panel,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
                                           color: isActive
-                                              ? t.accent.primary
-                                              : t.mutedText,
+                                              ? t.accent.primary.withValues(
+                                                  alpha: 0.4,
+                                                )
+                                              : t.cardBorder,
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          session.title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                      child: Center(
+                                        child: Text(
+                                          '',
                                           style: TextStyle(
                                             fontSize: 13,
-                                            fontWeight: isActive
-                                                ? FontWeight.w700
-                                                : FontWeight.w500,
                                             color: isActive
                                                 ? t.accent.primary
-                                                : t.textPrimary,
+                                                : t.mutedText,
                                           ),
                                         ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          '${session.messages.length} messages',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: t.mutedText,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (isActive)
-                                    Container(
-                                      width: 6,
-                                      height: 6,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: t.accent.primary,
                                       ),
                                     ),
-                                ],
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            session.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: isActive
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w500,
+                                              color: isActive
+                                                  ? t.accent.primary
+                                                  : t.textPrimary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '${session.messages.length} messages',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: t.mutedText,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (isActive)
+                                      Container(
+                                        width: 6,
+                                        height: 6,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: t.accent.primary,
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
                             ),
                           );
