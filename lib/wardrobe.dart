@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:myapp/services/backend_service.dart';
+import 'package:myapp/services/sequential_upload_controller.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/connectivity_watcher.dart';
 import 'package:myapp/services/offline_cache.dart';
@@ -2003,16 +2004,30 @@ class _DetectedItem {
            ? 'ok'
            : validationStatus.trim().toLowerCase(),
        selectedByDefault =
-           selectedByDefault ?? validationStatus.trim().toLowerCase() == 'ok',
+           (selectedByDefault ?? validationStatus.trim().toLowerCase() == 'ok') &&
+           !_duplicateSignal(raw),
        selected =
            selected ??
-           (selectedByDefault ?? validationStatus.trim().toLowerCase() == 'ok');
+           ((selectedByDefault ?? validationStatus.trim().toLowerCase() == 'ok') &&
+               !_duplicateSignal(raw));
 
   bool get isApproved => validationStatus == 'ok';
   bool get isNeedsReview => validationStatus == 'needs_review';
   bool get isRejected => validationStatus == 'rejected';
   bool get isSaveable => isApproved;
+  Map<String, dynamic>? get _duplicateInfo =>
+      raw['duplicate'] is Map
+          ? Map<String, dynamic>.from(raw['duplicate'] as Map)
+          : null;
+  bool get isDuplicate => _duplicateSignal(raw);
+  String? get duplicateReason => _duplicateInfo?['reason']?.toString();
+  String? get matchedItemId => _duplicateInfo?['matched_item_id']?.toString();
+  double? get duplicateConfidence {
+    final confidence = _duplicateInfo?['confidence'];
+    return confidence is num ? confidence.toDouble() : null;
+  }
   String? get statusLabel {
+    if (isDuplicate) return 'Possible duplicate';
     if (isNeedsReview) return 'Needs review';
     if (isRejected) return 'Rejected';
     return null;
@@ -2217,6 +2232,13 @@ class _DetectedItem {
       'ITM';
 }
 
+bool _duplicateSignal(Map<String, dynamic> raw) {
+  final duplicate = raw['duplicate'];
+  return duplicate is Map &&
+      duplicate['checked'] == true &&
+      duplicate['is_duplicate'] == true;
+}
+
 /// Whether `value` (name/category/subcategory joined) reads as a private-wear
 /// garment. Exposed (non-underscore) and [visibleForTesting] purely so
 /// regression tests can prove the backend payload normalization it drives —
@@ -2363,7 +2385,7 @@ _DetectedTaxonomy _normalizeDetectedTaxonomy(Map<String, dynamic> data) {
   );
 }
 
-enum _ModalStep { camera, detecting, reviewing, saving, success, error }
+enum _ModalStep { camera, detecting, reviewing, saving, success, results, error }
 
 /// Per-item inline-edit controllers for the unified review page. One set is
 /// created per detected item (keyed by item id) so multiple items can be
@@ -2498,6 +2520,14 @@ class _AddItemModalState extends State<_AddItemModal>
   String? _saveError;
   OverlayEntry? _maxItemsOverlay;
   Timer? _maxItemsOverlayTimer;
+
+  String? _uploadBatchRequestId;
+  SequentialUploadController? _uploadController;
+  int _uploadCompletedCount = 0;
+  int _uploadTotalCount = 0;
+  Map<String, UploadItemResult> _uploadResults = {};
+  final Set<String> _addAnywayInFlight = {};
+  List<_DetectedItem> _lastSaveAttemptItems = [];
 
   // Truthful outcome of the last save call, captured from the backend's own
   // saved_count/rows — the success screen must never infer this from the
@@ -3043,6 +3073,7 @@ class _AddItemModalState extends State<_AddItemModal>
 
   void _retake() {
     _disposeItemCtrls();
+    _resetUploadSession();
     setState(() {
       _step = _ModalStep.camera;
       _capturedBytes = null;
@@ -3065,6 +3096,7 @@ class _AddItemModalState extends State<_AddItemModal>
       return;
     }
     _disposeItemCtrls();
+    _resetUploadSession();
     setState(() {
       _step = _ModalStep.detecting;
       _detectError = null;
@@ -3120,7 +3152,219 @@ class _AddItemModalState extends State<_AddItemModal>
     }
   }
 
+  Map<String, dynamic> _reviewedItemPayload(_DetectedItem item) {
+    final payload = item.toBackendPayload();
+    payload['occasions'] = canonicalOccasions(item.occasions);
+    payload['category'] = item.category;
+    payload['sub_category'] =
+        item.subCategory.isNotEmpty ? item.subCategory : item.category;
+    payload['name'] = item.name;
+    if (item.notes.trim().isNotEmpty) payload['notes'] = item.notes.trim();
+    return payload;
+  }
+
+  Map<String, dynamic> _uploadMetadata(_DetectedItem item) {
+    return {
+      'name': item.name,
+      'category': item.category,
+      'sub_category':
+          item.subCategory.isNotEmpty ? item.subCategory : item.category,
+      'color_name': item.color,
+      'color_code': item.colorCode,
+      'pattern': item.pattern,
+      'occasions': canonicalOccasions(item.occasions),
+      if (item.notes.trim().isNotEmpty) 'notes': item.notes.trim(),
+    };
+  }
+
+  Future<void> _emitSavedUploadItem(
+    _DetectedItem item,
+    UploadItemResult result,
+  ) async {
+    final wardrobeItemId = result.wardrobeItemId;
+    if (wardrobeItemId == null || wardrobeItemId.trim().isEmpty) {
+      debugPrint(
+        'Sequential upload returned ADDED_TO_WARDROBE without wardrobe_item_id '
+        'for ${item.id}',
+      );
+      return;
+    }
+    final remoteUrl = item.maskedUrl ?? item.rawUrl;
+    Uint8List? displayBytes = item.maskedImageBytes;
+    if (displayBytes == null && (remoteUrl == null || remoteUrl.isEmpty)) {
+      final index = item.sourceImageIndex;
+      displayBytes =
+          _isGalleryPick &&
+              index != null &&
+              index >= 0 &&
+              index < _galleryImages.length
+          ? _galleryImages[index]
+          : _capturedBytes;
+    }
+    widget.onSave({
+      'id': wardrobeItemId,
+      'name': _cleanUiText(item.name, fallback: 'Item'),
+      'cat': item.category,
+      'occasions': canonicalOccasions(item.occasions),
+      'notes': [item.color, item.pattern]
+          .where((v) => v != null && v.isNotEmpty && v != 'null')
+          .join(', '),
+      'imageBytes': displayBytes,
+      'imageUrl': remoteUrl,
+      'maskedUrl': remoteUrl,
+      'normalizedUrl': item.raw['normalized_url']?.toString() ??
+          item.raw['normalizedUrl']?.toString(),
+      'worn': 0,
+      'liked': false,
+      'remoteSaved': true,
+      'catalogStatus':
+          (item.raw['catalogStatus'] ?? item.raw['catalog_status'])?.toString(),
+    });
+  }
+
   Future<void> _confirmAndSave() async {
+    if (_isSavingWardrobe) return;
+    final selected = _detected
+        .where(
+          (i) =>
+              i.selected &&
+              i.isSaveable &&
+              _uploadResults[i.id]?.isAdded != true,
+        )
+        .toList();
+    if (selected.isEmpty) {
+      _toast(AppLocalizations.t(context, 'wardrobe_no_items_to_add'));
+      return;
+    }
+    if (selected.length > wardrobeMaxItems) {
+      _showMaxItemsWarning();
+      return;
+    }
+    for (final item in selected) {
+      if (isPrivateWearText('${item.name} ${item.category} ${item.subCategory}')) {
+        item.category = 'Innerwear';
+        item.subCategory = 'Private Wear';
+        item.occasions = const ['Home', 'Private', 'Lounge'];
+      }
+    }
+    setState(() {
+      _isSavingWardrobe = true;
+      _step = _ModalStep.saving;
+      _saveError = null;
+      if (_lastSaveAttemptItems.isEmpty) {
+        _lastSaveAttemptItems = List<_DetectedItem>.from(selected);
+      }
+    });
+    HapticFeedback.lightImpact();
+
+    final backendService = Provider.of<BackendService>(context, listen: false);
+    final units = <UploadBatchUnit>[];
+    for (final item in selected) {
+      final reviewed = _reviewedItemPayload(item);
+      final hasToken =
+          (reviewed['image_cache_token']?.toString().trim().isNotEmpty ?? false);
+      if (!hasToken) {
+        for (final key in const ['masked_image_base64', 'raw_image_base64']) {
+          final b64 = reviewed[key]?.toString();
+          if (b64 != null && b64.isNotEmpty) {
+            reviewed[key] = await _downscaleBase64ForUpload(b64);
+          }
+        }
+      }
+      final index = item.sourceImageIndex;
+      final imageBytes = item.previewBytes ??
+          (_isGalleryPick &&
+                  index != null &&
+                  index >= 0 &&
+                  index < _galleryImages.length
+              ? _galleryImages[index]
+              : _capturedBytes);
+      if (imageBytes == null || imageBytes.isEmpty) continue;
+      units.add(
+        UploadBatchUnit(
+          clientUploadItemId: item.id,
+          imageBytes: imageBytes,
+          metadata: _uploadMetadata(item),
+          reviewedItem: reviewed,
+        ),
+      );
+    }
+    if (units.isEmpty) {
+      setState(() {
+        _isSavingWardrobe = false;
+        _step = _ModalStep.error;
+        _saveError =
+            "Something went wrong while saving. Your changes haven't been lost.";
+      });
+      return;
+    }
+
+    _uploadTotalCount = units.length;
+    _uploadCompletedCount = 0;
+    _uploadBatchRequestId ??= 'wardrobe-${DateTime.now().microsecondsSinceEpoch}';
+    _uploadController ??= SequentialUploadController(
+      createOrResumeBatch: backendService.createOrResumeUploadBatch,
+      processItem: backendService.processUploadBatchItem,
+      getBatchStatus: backendService.getUploadBatchStatus,
+    );
+    final results = await _uploadController!.run(
+      units,
+      clientBatchRequestId: _uploadBatchRequestId!,
+      onProgress: (completed, total, result) {
+        if (!mounted) return;
+        setState(() {
+          _uploadCompletedCount = completed;
+          _uploadTotalCount = total;
+          _uploadResults[result.clientUploadItemId] = result;
+        });
+      },
+    );
+    if (!mounted) return;
+    final finalStatus = await _uploadController!.fetchFinalStatus();
+    if (!mounted) return;
+
+    final itemById = {for (final item in selected) item.id: item};
+    for (final result in results.where((result) => result.isAdded)) {
+      final item = itemById[result.clientUploadItemId];
+      if (item != null) await _emitSavedUploadItem(item, result);
+    }
+    final statusAddedCount = finalStatus?['added_count'];
+    final addedCount = statusAddedCount is num
+        ? statusAddedCount.toInt()
+        : results.where((result) => result.isAdded).length;
+    final savedItems = _lastSaveAttemptItems
+        .where((item) => _uploadResults[item.id]?.isAdded == true)
+        .toList();
+    final hasReviewable = results.any(
+      (result) =>
+          result.outcome == UploadItemOutcome.duplicate ||
+          result.outcome == UploadItemOutcome.needsReview,
+    );
+    final hasFailures = results.any((result) => !result.isAdded);
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _isSavingWardrobe = false;
+      _savedCount = addedCount;
+      _savedRequestedCount = _lastSaveAttemptItems.length;
+      _savedSingleName = savedItems.length == 1 ? savedItems.first.name : null;
+      _savedSingleColor = savedItems.length == 1 ? savedItems.first.color : null;
+      _savedSinglePattern =
+          savedItems.length == 1 ? savedItems.first.pattern : null;
+      _step = addedCount > 0 && !hasFailures
+          ? _ModalStep.success
+          : hasReviewable || addedCount > 0
+          ? _ModalStep.results
+          : _ModalStep.error;
+      _saveError = addedCount == 0 && !hasReviewable
+          ? "Something went wrong while saving. Your changes haven't been lost."
+          : null;
+    });
+    if (_step == _ModalStep.success) {
+      _toast('Saved $addedCount item${addedCount == 1 ? '' : 's'} to wardrobe.');
+    }
+  }
+
+  Future<void> _legacyConfirmAndSave() async {
     if (_isSavingWardrobe) return;
     final selected = _detected
         .where((i) => i.selected && i.isSaveable)
@@ -3337,10 +3581,75 @@ class _AddItemModalState extends State<_AddItemModal>
     _confirmAndSave();
   }
 
+  Future<void> _retryOutstandingFromResults() async {
+    if (_isSavingWardrobe) return;
+    await _confirmAndSave();
+  }
+
+  Future<void> _addAnyway(_DetectedItem item) async {
+    if (_addAnywayInFlight.contains(item.id)) return;
+    final controller = _uploadController;
+    if (controller == null) return;
+    setState(() => _addAnywayInFlight.add(item.id));
+    try {
+      final result = await controller.addAnyway(
+        item.id,
+        metadata: _uploadMetadata(item),
+        reviewedItem: _reviewedItemPayload(item),
+      );
+      if (!mounted) return;
+      setState(() => _uploadResults[item.id] = result);
+      if (result.isAdded) {
+        await _emitSavedUploadItem(item, result);
+        if (!mounted) return;
+        final finalStatus = await controller.fetchFinalStatus();
+        if (!mounted) return;
+        final addedCount =
+            _uploadResults.values.where((entry) => entry.isAdded).length;
+        final statusAddedCount = finalStatus?['added_count'];
+        final authoritativeAddedCount = statusAddedCount is num
+            ? statusAddedCount.toInt()
+            : addedCount;
+        final savedItems = _lastSaveAttemptItems
+            .where((entry) => _uploadResults[entry.id]?.isAdded == true)
+            .toList();
+        setState(() {
+          _savedCount = authoritativeAddedCount;
+          _savedSingleName =
+              savedItems.length == 1 ? savedItems.first.name : null;
+          _savedSingleColor =
+              savedItems.length == 1 ? savedItems.first.color : null;
+          _savedSinglePattern =
+              savedItems.length == 1 ? savedItems.first.pattern : null;
+          _step = _uploadResults.values.any(
+                    (entry) =>
+                        entry.outcome == UploadItemOutcome.duplicate ||
+                        entry.outcome == UploadItemOutcome.needsReview,
+                  )
+              ? _ModalStep.results
+              : _ModalStep.success;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _addAnywayInFlight.remove(item.id));
+    }
+  }
+
+  void _resetUploadSession() {
+    _uploadBatchRequestId = null;
+    _uploadController = null;
+    _uploadCompletedCount = 0;
+    _uploadTotalCount = 0;
+    _uploadResults = {};
+    _addAnywayInFlight.clear();
+    _lastSaveAttemptItems = [];
+  }
+
   /// Resets the flow back to source selection for another capture, without
   /// closing the surrounding dialog/route.
   void _startAnotherItem() {
     _disposeItemCtrls();
+    _resetUploadSession();
     setState(() {
       _step = _ModalStep.camera;
       _capturedBytes = null;
@@ -3493,6 +3802,7 @@ class _AddItemModalState extends State<_AddItemModal>
       _ModalStep.reviewing: multi ? 'Review items' : 'Review item',
       _ModalStep.saving: 'Saving to wardrobe...',
       _ModalStep.success: 'Added to wardrobe',
+      _ModalStep.results: 'Upload results',
       _ModalStep.error: "Couldn't add this item",
     };
     final subtitles = {
@@ -3503,9 +3813,10 @@ class _AddItemModalState extends State<_AddItemModal>
           : 'Edit details directly on this page',
       _ModalStep.saving: 'Please wait a moment',
       _ModalStep.success: '',
+      _ModalStep.results: 'Review duplicates and retry outstanding items',
       _ModalStep.error: '',
     };
-    // Back arrow only makes sense on the review step; saving/success/error
+    // Back arrow only makes sense on the review step; saving/success/results/error
     // have their own in-body navigation (Retry/Cancel, View/Add another).
     final showBack = _step == _ModalStep.reviewing;
     final showClose = _step != _ModalStep.saving;
@@ -3599,8 +3910,140 @@ class _AddItemModalState extends State<_AddItemModal>
         _ModalStep.reviewing => _buildReviewBody(),
         _ModalStep.saving => _buildSavingBody(),
         _ModalStep.success => _buildSuccessBody(),
+        _ModalStep.results => _buildUploadResultsBody(),
         _ModalStep.error => _buildErrorBody(),
       },
+    );
+  }
+
+  Widget _buildUploadResultsBody() {
+    final itemsById = {
+      for (final item in _lastSaveAttemptItems) item.id: item,
+    };
+    final results = _uploadResults.values.toList();
+    final added = results.where((result) => result.isAdded).length;
+    return SingleChildScrollView(
+      key: const ValueKey('wardrobe-upload-results'),
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Icon(Icons.fact_check_rounded, size: 34, color: t.accent.primary),
+          const SizedBox(height: 14),
+          Text(
+            'Upload review',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: GoogleFonts.inter().fontFamily,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: t.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$added of ${_lastSaveAttemptItems.length} items are in your wardrobe.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: GoogleFonts.inter().fontFamily,
+              fontSize: 12,
+              color: t.mutedText,
+            ),
+          ),
+          const SizedBox(height: 20),
+          ...results.map((result) {
+            final item = itemsById[result.clientUploadItemId];
+            if (item == null) return const SizedBox.shrink();
+            final duplicate = result.isDuplicate;
+            final waiting = result.outcome == UploadItemOutcome.needsReview;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: t.panel,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: t.cardBorder),
+              ),
+              child: Row(
+                children: [
+                  _uploadResultThumb(item),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: GoogleFonts.inter().fontFamily,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: t.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          duplicate
+                              ? 'Possible duplicate${result.matchedItemId == null ? '' : ' of an existing item'}'
+                              : waiting
+                              ? 'Needs review before it can be added'
+                              : result.reason ?? 'Upload failed',
+                          style: TextStyle(
+                            fontFamily: GoogleFonts.inter().fontFamily,
+                            fontSize: 11,
+                            color: duplicate ? Colors.orangeAccent : t.mutedText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (duplicate)
+                    TextButton(
+                      onPressed: _addAnywayInFlight.contains(item.id)
+                          ? null
+                          : () => _addAnyway(item),
+                      child: const Text('Add Anyway'),
+                    ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 8),
+          if (results.any((result) => !result.isAdded))
+            OutlinedButton(
+              key: const ValueKey('wardrobe-retry-outstanding-cta'),
+              onPressed: _retryOutstandingFromResults,
+              child: const Text('Retry outstanding'),
+            ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _startAnotherItem,
+            child: const Text('Add another item'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _uploadResultThumb(_DetectedItem item) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: t.backgroundPrimary,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: item.previewBytes != null
+          ? Image.memory(item.previewBytes!, fit: BoxFit.cover)
+          : Center(
+              child: Text(
+                _DetectedItem.catEmoji(item.category),
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
     );
   }
 
@@ -3814,7 +4257,9 @@ class _AddItemModalState extends State<_AddItemModal>
           ),
           const SizedBox(height: 6),
           Text(
-            'Please wait a moment',
+            _uploadTotalCount > 1
+                ? 'Processing ${_uploadCompletedCount + 1} of $_uploadTotalCount'
+                : 'Please wait a moment',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: GoogleFonts.inter().fontFamily,
@@ -4638,8 +5083,29 @@ class _AddItemModalState extends State<_AddItemModal>
                 fontFamily: GoogleFonts.inter().fontFamily,
                 fontSize: 12,
                 color: t.mutedText,
+               ),
+             ),
+          if (item.isDuplicate) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.35)),
+              ),
+              child: Text(
+                'Possible duplicate${item.matchedItemId == null ? '' : ' of an existing wardrobe item'}${item.duplicateConfidence == null ? '' : ' (${(item.duplicateConfidence! * 100).round()}% match)'}. You can review it, then choose Add Anyway if it is a different item.',
+                style: TextStyle(
+                  fontFamily: GoogleFonts.inter().fontFamily,
+                  fontSize: 11,
+                  height: 1.35,
+                  color: t.textPrimary,
+                ),
               ),
             ),
+          ],
           const SizedBox(height: 14),
           _ModalField(
             label: AppLocalizations.t(context, 'wardrobe_item_name'),
@@ -4877,6 +5343,7 @@ class _AddItemModalState extends State<_AddItemModal>
     // control while any of those states are active.
     if (_step == _ModalStep.saving ||
         _step == _ModalStep.success ||
+        _step == _ModalStep.results ||
         _step == _ModalStep.error) {
       return const SizedBox.shrink();
     }

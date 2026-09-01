@@ -1285,6 +1285,126 @@ class BackendService {
     _appwriteService.invalidateWardrobeCache();
   }
 
+  Future<Map<String, dynamic>?> createOrResumeUploadBatch({
+    required String clientBatchRequestId,
+    required int totalItems,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/wardrobe/upload-batches');
+      final headers = await _authHeaders();
+      final body = jsonEncode({
+        'user_id': await _currentUserId(),
+        'client_batch_request_id': clientBatchRequestId,
+        'total_items': totalItems,
+      });
+      final client = debugHttpClient;
+      final response = client == null
+          ? await http
+                .post(uri, headers: headers, body: body)
+                .timeout(const Duration(seconds: 20))
+          : await client
+                .post(uri, headers: headers, body: body)
+                .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return await compute(_parseJsonMap, response.body);
+      }
+      debugPrint(
+        'Create upload batch failed: ${response.statusCode} - ${response.body}',
+      );
+      return null;
+    } catch (e) {
+      debugPrint('Create upload batch error: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> processUploadBatchItem({
+    required String batchId,
+    required String clientUploadItemId,
+    required Uint8List imageBytes,
+    Map<String, dynamic>? metadata,
+    bool overrideDuplicate = false,
+    Map<String, dynamic>? reviewedItem,
+  }) async {
+    try {
+      final base64String = await compute(_encodeBytes, imageBytes);
+      final uri = Uri.parse(
+        '$baseUrl/api/wardrobe/upload-batches/${Uri.encodeComponent(batchId)}/items',
+      );
+      final headers = await _authHeaders();
+      final body = jsonEncode({
+        'user_id': await _currentUserId(),
+        'client_upload_item_id': clientUploadItemId,
+        'image_base64': base64String,
+        if (metadata != null) 'metadata': metadata,
+        'override_duplicate': overrideDuplicate,
+        if (reviewedItem != null) 'reviewed_item': reviewedItem,
+      });
+      final client = debugHttpClient;
+      final response = client == null
+          ? await http
+                .post(uri, headers: headers, body: body)
+                .timeout(const Duration(seconds: 180))
+          : await client
+                .post(uri, headers: headers, body: body)
+                .timeout(const Duration(seconds: 180));
+      final parsed = await compute(_parseJsonMap, response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (parsed['status'] == 'ADDED_TO_WARDROBE') {
+          invalidateWardrobeCacheAfterMutation();
+        }
+        return parsed;
+      }
+      debugPrint(
+        'Upload batch item failed: ${response.statusCode} - ${response.body}',
+      );
+      return {
+        'success': false,
+        'status': 'FAILED',
+        'error_code': 'REQUEST_FAILED',
+        'reason': parsed['detail']?.toString() ?? 'request_failed',
+      };
+    } catch (e) {
+      debugPrint('Upload batch item error: $e');
+      return {
+        'success': false,
+        'status': 'FAILED',
+        'error_code': 'REQUEST_FAILED',
+        'reason': e.toString(),
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>?> getUploadBatchStatus(String batchId) async {
+    try {
+      final userId = await _currentUserId();
+      final uri = Uri.parse(
+        '$baseUrl/api/wardrobe/upload-batches/${Uri.encodeComponent(batchId)}',
+      ).replace(queryParameters: {'user_id': userId});
+      final headers = await _authHeaders();
+      final client = debugHttpClient;
+      final response = client == null
+          ? await http
+                .get(uri, headers: headers)
+                .timeout(const Duration(seconds: 20))
+          : await client
+                .get(uri, headers: headers)
+                .timeout(const Duration(seconds: 20));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return await compute(_parseJsonMap, response.body);
+      }
+      debugPrint(
+        'Get upload batch status failed: ${response.statusCode} - ${response.body}',
+      );
+      return null;
+    } catch (e) {
+      debugPrint('Get upload batch status error: $e');
+      return null;
+    }
+  }
+
   /// Power the item-detail CTAs (Style This / Build Outfit).
   ///
   /// mode = 'style_this'   -> response.style_directions: 3 directions

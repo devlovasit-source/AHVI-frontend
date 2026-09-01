@@ -72,6 +72,9 @@ class _FakeBackendService extends BackendService {
   // racing a save call that resolves within the same pump.
   Completer<void>? saveGate;
 
+  int _batchItemIndex = 0;
+  final Set<String> _attemptedBatchItems = {};
+
   @override
   Future<Map<String, dynamic>?> analyzeImage(
     Uint8List imageBytes, {
@@ -102,6 +105,54 @@ class _FakeBackendService extends BackendService {
     return onSave?.call(detectedItems) ??
         {'saved_count': detectedItems.length};
   }
+
+  @override
+  Future<Map<String, dynamic>?> createOrResumeUploadBatch({
+    required String clientBatchRequestId,
+    required int totalItems,
+  }) async {
+    saveCallCount++;
+    _batchItemIndex = 0;
+    _attemptedBatchItems.clear();
+    saveCalls.add([]);
+    return {'batch_id': clientBatchRequestId};
+  }
+
+  @override
+  Future<Map<String, dynamic>?> processUploadBatchItem({
+    required String batchId,
+    required String clientUploadItemId,
+    required Uint8List imageBytes,
+    Map<String, dynamic>? metadata,
+    bool overrideDuplicate = false,
+    Map<String, dynamic>? reviewedItem,
+  }) async {
+    final payload = Map<String, dynamic>.from(
+      reviewedItem ?? metadata ?? const <String, dynamic>{},
+    );
+    saveCalls.last.add(payload);
+    if (saveGate != null) await saveGate!.future;
+    final response = onSave?.call(saveCalls.last) ??
+        {'saved_count': saveCalls.last.length};
+    final savedCount = int.tryParse(response['saved_count']?.toString() ?? '') ?? 0;
+    final wasAttempted = !_attemptedBatchItems.add(clientUploadItemId);
+    final shouldAdd =
+        savedCount > 0 && (wasAttempted || savedCount > _batchItemIndex++);
+    return shouldAdd
+        ? {
+            'status': 'ADDED_TO_WARDROBE',
+            'wardrobe_item_id': 'wardrobe-$clientUploadItemId',
+          }
+        : {
+            'status': 'FAILED',
+            'error_code': 'REQUEST_FAILED',
+            'reason': 'fake failure',
+          };
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getUploadBatchStatus(String batchId) async =>
+      {'batch_id': batchId, 'status': 'COMPLETED'};
 }
 
 Map<String, dynamic> _detectedItemJson({
@@ -273,7 +324,7 @@ void main() {
       expect(source.contains('_editItem'), isFalse);
       expect(
         RegExp(r'enum _ModalStep \{[^}]*\}').firstMatch(source)!.group(0),
-        'enum _ModalStep { camera, detecting, reviewing, saving, success, error }',
+        'enum _ModalStep { camera, detecting, reviewing, saving, success, results, error }',
       );
     });
 
@@ -417,7 +468,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('wardrobe-retry-cta')));
     await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
-    expect(backend.saveCallCount, 2);
+    expect(backend.saveCallCount, 1);
   });
 
   testWidgets('9: saved_count == requested renders a truthful full success', (
@@ -446,9 +497,9 @@ void main() {
         ],
       );
       await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
-      await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+      await _pumpUntilKeyFound(tester, const ['wardrobe-upload-results']);
       expect(find.text('Added 3 items to your wardrobe!'), findsNothing);
-      expect(find.textContaining('Added 1 of 3 items'), findsOneWidget);
+      expect(find.textContaining('1 of 3 items are in your wardrobe'), findsOneWidget);
     },
   );
 
@@ -621,7 +672,7 @@ void main() {
     expect(find.text('Travel'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
     await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
-    expect(backend.saveCalls.single.single['occasions'], ['office', 'travel', 'Gym']);
+    expect(backend.saveCalls.single.single['occasions'], ['Work', 'Travel', 'Gym']);
   });
 
   testWidgets('23: picker input over six is capped with the standard warning', (

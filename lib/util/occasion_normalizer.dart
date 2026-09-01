@@ -59,6 +59,18 @@ String humanizeOccasion(String raw) {
   return _titleCaseOccasion(key.replaceAll('_', ' '));
 }
 
+List<String> canonicalOccasions(Iterable<String> values) {
+  final seen = <String>{};
+  final canonical = <String>[];
+  for (final raw in values) {
+    final key = canonicalOccasionKey(raw);
+    final label = humanizeOccasion(raw);
+    if (key.isEmpty || label.isEmpty || !seen.add(key)) continue;
+    canonical.add(label);
+  }
+  return canonical;
+}
+
 bool occasionMatches(String a, String b) {
   final left = canonicalOccasionKey(a);
   final right = canonicalOccasionKey(b);

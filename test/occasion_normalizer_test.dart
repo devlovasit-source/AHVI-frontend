@@ -42,4 +42,17 @@ void main() {
     );
     expect(PairingEngine.bestFor(item), ['Work', 'Sport', 'Gym']);
   });
+
+  test('canonical occasions collapse aliases and preserve custom labels', () {
+    expect(
+      canonicalOccasions([
+        'upload_occasion_office',
+        'Work',
+        'workout',
+        'Sport',
+        'date_night',
+      ]),
+      ['Work', 'Sport', 'Date Night'],
+    );
+  });
 }
