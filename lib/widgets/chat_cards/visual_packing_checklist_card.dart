@@ -222,17 +222,17 @@ class _VisualPackingChecklistCardState
 
   Widget _heroVisual(AppThemeTokens t) {
     return SizedBox(
-      width: 96,
-      height: 92,
+      width: 112,
+      height: 104,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           Positioned(
-            right: 4,
+            right: 6,
             top: 16,
             child: Container(
-              width: 70,
-              height: 70,
+              width: 82,
+              height: 82,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: t.accent.secondary.withValues(alpha: 0.16),
@@ -240,12 +240,21 @@ class _VisualPackingChecklistCardState
             ),
           ),
           Positioned(
-            left: 0,
-            top: 22,
+            left: 2,
+            top: 30,
             child: Icon(
               Icons.cloud_rounded,
               size: 16,
               color: t.accent.secondary.withValues(alpha: 0.55),
+            ),
+          ),
+          Positioned(
+            left: 4,
+            top: 2,
+            child: Icon(
+              Icons.beach_access_rounded,
+              size: 20,
+              color: t.accent.secondary.withValues(alpha: 0.72),
             ),
           ),
           Positioned(
@@ -258,11 +267,11 @@ class _VisualPackingChecklistCardState
             ),
           ),
           Positioned(
-            right: 18,
+            right: 22,
             bottom: 4,
             child: Container(
-              width: 46,
-              height: 54,
+              width: 54,
+              height: 62,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -293,8 +302,8 @@ class _VisualPackingChecklistCardState
             right: 0,
             bottom: 0,
             child: Container(
-              width: 22,
-              height: 28,
+              width: 24,
+              height: 30,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: t.accent.primary,
@@ -318,7 +327,6 @@ class _VisualPackingChecklistCardState
         .toString()
         .trim();
     final items = _items(section);
-    final shown = items.take(4).toList(growable: false);
     final id = (section['id'] ?? title).toString().toLowerCase();
     return Container(
       padding: const EdgeInsets.fromLTRB(11, 11, 11, 12),
@@ -371,27 +379,37 @@ class _VisualPackingChecklistCardState
             ],
           ),
           const SizedBox(height: 11),
-          if (shown.isNotEmpty)
-            LayoutBuilder(
-              builder: (context, constraints) {
-                const gap = 6.0;
-                final rawWidth =
-                    (constraints.maxWidth - gap * (shown.length - 1)) /
-                    shown.length;
-                final tileWidth = rawWidth.clamp(0.0, 110.0);
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (var i = 0; i < shown.length; i++) ...[
-                      if (i > 0) const SizedBox(width: gap),
-                      SizedBox(width: tileWidth, child: _itemTile(shown[i], t)),
-                    ],
-                  ],
-                );
-              },
-            ),
+          if (items.isNotEmpty) _itemRow(items, t),
         ],
       ),
+    );
+  }
+
+  Widget _itemRow(List<Map<String, dynamic>> items, AppThemeTokens t) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const columns = 4;
+        const gap = 6.0;
+        final tileWidth =
+            ((constraints.maxWidth - gap * (columns - 1)) / columns)
+                .clamp(0.0, 110.0)
+                .toDouble();
+        final row = Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < items.length; i++) ...[
+              if (i > 0) const SizedBox(width: gap),
+              SizedBox(width: tileWidth, child: _itemTile(items[i], t)),
+            ],
+          ],
+        );
+        if (items.length <= columns) return row;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: row,
+        );
+      },
     );
   }
 

@@ -14,6 +14,7 @@ const _accent = AccentPalette(
 Map<String, dynamic> _card({
   List<Map<String, dynamic>>? items,
   List<dynamic>? actions,
+  String actionKey = 'actions',
 }) => {
   'type': 'visual_packing_checklist',
   'title': 'Carry-on Checklist',
@@ -30,8 +31,17 @@ Map<String, dynamic> _card({
           ],
     },
   ],
-  if (actions != null) 'actions': actions,
+  if (actions != null) actionKey: actions,
 };
+
+List<Map<String, dynamic>> _items(int count, {Set<int> packed = const {}}) => [
+  for (var i = 1; i <= count; i++)
+    {
+      'id': 'item-$i',
+      'label': 'Item $i',
+      if (packed.contains(i)) 'packed': true,
+    },
+];
 
 void main() {
   test('plural image_urls wins over singular image_url', () {
@@ -69,7 +79,7 @@ void main() {
     );
   });
 
-  testWidgets('no-image payload uses the section icon fallback', (
+  testWidgets('backend packed state and section icon fallback are preserved', (
     tester,
   ) async {
     await tester.pumpWidget(_app(VisualPackingChecklistCard(card: _card())));
@@ -115,6 +125,164 @@ void main() {
     );
     await tester.tap(find.text('Weather prep'));
     expect(sent, 'Weather prep');
+  });
+
+  testWidgets('four items use the standard non-scrolling row', (tester) async {
+    await tester.pumpWidget(
+      _app(VisualPackingChecklistCard(card: _card(items: _items(4)))),
+    );
+    for (var i = 1; i <= 4; i++) {
+      expect(find.text('Item $i'), findsOneWidget);
+    }
+    expect(find.byType(SingleChildScrollView), findsNothing);
+  });
+
+  testWidgets('five items remain available in a horizontal scroll row', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(VisualPackingChecklistCard(card: _card(items: _items(5)))),
+    );
+    for (var i = 1; i <= 5; i++) {
+      expect(find.text('Item $i'), findsOneWidget);
+    }
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
+  });
+
+  testWidgets('eight items remain reachable without shrinking their tiles', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(VisualPackingChecklistCard(card: _card(items: _items(8)))),
+    );
+    for (var i = 1; i <= 8; i++) {
+      expect(find.text('Item $i'), findsOneWidget);
+    }
+    final scroll = find.byType(SingleChildScrollView);
+    await tester.drag(scroll, const Offset(-500, 0));
+    await tester.pump();
+    expect(find.text('Item 8'), findsOneWidget);
+  });
+
+  testWidgets('checking item five updates progress across all items', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(VisualPackingChecklistCard(card: _card(items: _items(5)))),
+    );
+    expect(find.text('0 of 5 packed'), findsOneWidget);
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(-500, 0),
+    );
+    await tester.pump();
+    await tester.tap(find.byType(InkWell).at(4));
+    await tester.pump();
+    expect(find.text('1 of 5 packed'), findsOneWidget);
+  });
+
+  testWidgets('checking item eight updates progress across all items', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(VisualPackingChecklistCard(card: _card(items: _items(8)))),
+    );
+    expect(find.text('0 of 8 packed'), findsOneWidget);
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(-700, 0),
+    );
+    await tester.pump();
+    await tester.tap(find.byType(InkWell).at(7));
+    await tester.pump();
+    expect(find.text('1 of 8 packed'), findsOneWidget);
+  });
+
+  test('all action aliases remain accepted', () {
+    for (final key in ['actions', 'quick_actions', 'quickActions', 'chips']) {
+      final payload = VisualPackingChecklistPayload.fromJson(
+        _card(
+          actionKey: key,
+          actions: const [
+            {'label': 'Alias action'},
+          ],
+        ),
+      );
+      expect(payload.actions.single['label'], 'Alias action');
+    }
+  });
+
+  test('default actions remain available when aliases are absent', () {
+    final payload = VisualPackingChecklistPayload.fromJson(
+      _card(items: _items(1)),
+    );
+    expect(payload.actions.map((action) => action['label']), [
+      'Open checklist',
+      'Plan outfits',
+      'Weather prep',
+    ]);
+  });
+
+  testWidgets('empty sections render safely without an item row', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(VisualPackingChecklistCard(card: _card(items: const []))),
+    );
+    expect(find.textContaining('Tech & Power'), findsOneWidget);
+    expect(find.byType(SingleChildScrollView), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final width in [360.0, 412.0]) {
+    testWidgets('packing card has no overflow at ${width.toInt()}px', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(Size(width, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _app(
+          VisualPackingChecklistCard(
+            card: _card(
+              items: _items(8),
+              actions: const [
+                {'label': 'Open checklist'},
+                {'label': 'Plan outfits'},
+                {'label': 'Weather prep'},
+              ],
+            ),
+          ),
+        ),
+      );
+      expect(find.byIcon(Icons.beach_access_rounded), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('action labels stay accessible in responsive wrap layout', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(360, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _app(
+        VisualPackingChecklistCard(
+          card: _card(
+            items: _items(1),
+            actions: const [
+              {'label': 'Open checklist'},
+              {'label': 'Plan outfits'},
+              {'label': 'Weather prep'},
+            ],
+          ),
+        ),
+      ),
+    );
+    for (final label in ['Open checklist', 'Plan outfits', 'Weather prep']) {
+      final text = tester.widget<Text>(find.text(label));
+      expect(text.overflow, isNot(TextOverflow.ellipsis));
+    }
+    expect(tester.takeException(), isNull);
   });
 }
 
