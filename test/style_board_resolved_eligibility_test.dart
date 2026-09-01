@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/ahvi_outfit_board_card.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/visual_direction_carousel.dart';
-import 'package:myapp/style_board/editorial_board_renderer.dart';
-import 'package:myapp/style_board/editorial_board_widgets.dart';
 import 'package:myapp/theme/accent_palette.dart';
 import 'package:myapp/theme/theme_tokens.dart';
+import 'package:myapp/widgets/ahvi_unified_outfit_grid.dart';
 
 const _accent = AccentPalette(
   primary: Color(0xFF6B91FF),
@@ -19,14 +18,24 @@ void main() {
   ) async {
     await _pumpCard(tester, _direction(1));
 
-    expect(find.byType(EditorialBoardCanvas), findsOneWidget);
-    expect(find.byType(EditorialBoardItem), findsOneWidget);
+    expect(find.byType(AhviUnifiedOutfitGrid), findsOneWidget);
+    expect(
+      tester
+          .widget<AhviUnifiedOutfitGrid>(find.byType(AhviUnifiedOutfitGrid))
+          .items,
+      hasLength(1),
+    );
 
     await _pumpCard(tester, _direction(3));
     await tester.pump();
 
-    expect(find.byType(EditorialBoardCanvas), findsOneWidget);
-    expect(find.byType(EditorialBoardItem), findsNWidgets(3));
+    expect(find.byType(AhviUnifiedOutfitGrid), findsOneWidget);
+    expect(
+      tester
+          .widget<AhviUnifiedOutfitGrid>(find.byType(AhviUnifiedOutfitGrid))
+          .items,
+      hasLength(3),
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -35,8 +44,13 @@ void main() {
   ) async {
     for (final count in [3, 5]) {
       await _pumpCard(tester, _direction(count));
-      expect(find.byType(EditorialBoardCanvas), findsOneWidget);
-      expect(find.byType(EditorialBoardItem), findsNWidgets(count));
+      expect(find.byType(AhviUnifiedOutfitGrid), findsOneWidget);
+      expect(
+        tester
+            .widget<AhviUnifiedOutfitGrid>(find.byType(AhviUnifiedOutfitGrid))
+            .items,
+        hasLength(count),
+      );
       await tester.pumpWidget(const SizedBox.shrink());
     }
   });

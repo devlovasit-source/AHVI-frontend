@@ -10,11 +10,11 @@ import 'package:myapp/feature/chat/widgets/blocks/visual_directions/ahvi_outfit_
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/visual_direction_carousel.dart';
 import 'package:myapp/feature/chat/widgets/ahvi_processing_bubble.dart';
 import 'package:myapp/feature/chat/widgets/ahvi_style_this_processing_card.dart';
-import 'package:myapp/style_board/editorial_board_renderer.dart';
 import 'package:myapp/theme/accent_palette.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/wardrobe.dart';
 import 'package:myapp/widgets/ahvi_item_detail_modal.dart';
+import 'package:myapp/widgets/ahvi_unified_outfit_grid.dart';
 import 'package:myapp/widgets/style_boards.dart';
 import 'package:myapp/widgets/try_on_coming_soon.dart';
 
@@ -181,7 +181,7 @@ void main() {
         expect(find.byType(StyleBoardsScreen), findsNothing);
         expect(find.byType(VisualDirectionCarousel), findsOneWidget);
         expect(find.byType(AhviOutfitBoardCard), findsOneWidget);
-        expect(find.byType(EditorialBoardCanvas), findsOneWidget);
+        expect(find.byType(AhviUnifiedOutfitGrid), findsOneWidget);
         expect(find.text('STYLE THIS'), findsOneWidget);
         expect(find.text('1 of 3 items locked'), findsOneWidget);
         final requestLog = logs.singleWhere(
@@ -252,7 +252,7 @@ void main() {
         expect(requestAnchor?['selected_item_id'], selected.id);
         expect(find.byType(VisualDirectionCarousel), findsOneWidget);
         expect(find.byType(AhviOutfitBoardCard), findsOneWidget);
-        expect(find.byType(EditorialBoardCanvas), findsOneWidget);
+        expect(find.byType(AhviUnifiedOutfitGrid), findsOneWidget);
         expect(find.text('STYLE THIS'), findsOneWidget);
         expect(find.text('Save'), findsOneWidget);
         expect(find.text('Share'), findsOneWidget);
@@ -403,7 +403,7 @@ void main() {
       expect(calls, 0);
       expect(find.byType(TryOnComingSoonDialog), findsOneWidget);
       expect(find.byType(AhviOutfitBoardCard), findsNothing);
-      expect(find.byType(EditorialBoardCanvas), findsNothing);
+      expect(find.byType(AhviUnifiedOutfitGrid), findsNothing);
       expect(find.text('Coming soon'), findsOneWidget);
     },
   );
