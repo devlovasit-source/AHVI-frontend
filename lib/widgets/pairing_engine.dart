@@ -155,6 +155,59 @@ class PairingEngine {
     ...item.occasions,
   ].join(' ').toLowerCase();
 
+  static const Set<String> _nonFashionTerms = {
+    'charger',
+    'cable',
+    'adapter',
+    'bottle',
+    'phone',
+    'remote',
+    'mouse',
+    'keyboard',
+    'laptop',
+    'earbud',
+    'headphone',
+    'airpod',
+    'plug',
+    'wire',
+    'battery',
+    'speaker',
+    'camera',
+    'mug',
+    'cup',
+    'pen',
+    'book',
+    'box',
+  };
+
+  static bool _isFashionItem(WardrobeItem item) {
+    final normalized = _blob(
+      item,
+    ).replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+
+    if (normalized.isEmpty) return true;
+
+    final tokens = normalized.split(RegExp(r'\s+'));
+
+    for (final term in _nonFashionTerms) {
+      if (tokens.contains(term) || tokens.contains('${term}s')) {
+        return false;
+      }
+    }
+
+    if (tokens.contains('powerbank')) {
+      return false;
+    }
+
+    for (var i = 0; i < tokens.length - 1; i++) {
+      if (tokens[i] == 'power' && tokens[i + 1] == 'bank') {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   static bool _isEthnic(WardrobeItem item) {
     final blob = _blob(item);
     return blob.contains('saree') ||
@@ -233,7 +286,11 @@ class PairingEngine {
     WardrobeItem item,
     List<WardrobeItem> allItems,
   ) {
-    final candidates = allItems.where((other) => other.id != item.id).toList();
+    final candidates = allItems
+        .where((other) => other.id != item.id)
+        .where(_isFashionItem)
+        .toList();
+
     final scored = <_ScoredItem>[];
 
     final itemCat = normalizeCategory(item.cat);
