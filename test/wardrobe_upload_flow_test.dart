@@ -66,6 +66,9 @@ class _FakeBackendService extends BackendService {
 
   int analyzeCallCount = 0;
   int saveCallCount = 0;
+  int createBatchCallCount = 0;
+  int processItemCallCount = 0;
+  final List<String> processedItemIds = [];
   final List<List<Map<String, dynamic>>> saveCalls = [];
   // When set, saveWardrobeLabels suspends until this completes, so a test
   // can deterministically observe the in-flight "saving" step instead of
@@ -112,6 +115,7 @@ class _FakeBackendService extends BackendService {
     required int totalItems,
   }) async {
     saveCallCount++;
+    createBatchCallCount++;
     _batchItemIndex = 0;
     _attemptedBatchItems.clear();
     saveCalls.add([]);
@@ -127,6 +131,8 @@ class _FakeBackendService extends BackendService {
     bool overrideDuplicate = false,
     Map<String, dynamic>? reviewedItem,
   }) async {
+    processItemCallCount++;
+    processedItemIds.add(clientUploadItemId);
     final payload = Map<String, dynamic>.from(
       reviewedItem ?? metadata ?? const <String, dynamic>{},
     );
@@ -187,6 +193,7 @@ Future<void> _openReview(
   double? textScale,
   List<XFile>? pickedFiles,
   Map<String, dynamic> Function(List<Uint8List> images)? onAnalyze,
+  bool expectReview = true,
 }) async {
   backend.onAnalyze = onAnalyze ?? (_) => {'items': items};
   ImagePickerPlatform.instance = _FakeImagePickerPlatform(
@@ -233,6 +240,10 @@ Future<void> _openReview(
   await tester.pump();
 
   await tester.tap(find.byIcon(Icons.photo_library_outlined));
+  if (!expectReview) {
+    await tester.pump();
+    return;
+  }
   await _pumpUntilKeyFound(tester, const [
     'review',
     'wardrobe-error',
@@ -322,10 +333,21 @@ void main() {
     test('3: no separate Edit Item route/dialog remains', () {
       expect(source.contains('_saveEditedItem'), isFalse);
       expect(source.contains('_editItem'), isFalse);
+      final modalSteps = RegExp(
+        r'enum _ModalStep \{[^}]*\}',
+      ).firstMatch(source)!.group(0)!
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .replaceAll(', }', ' }');
       expect(
-        RegExp(r'enum _ModalStep \{[^}]*\}').firstMatch(source)!.group(0),
+        modalSteps,
         'enum _ModalStep { camera, detecting, reviewing, saving, success, results, error }',
       );
+    });
+
+    test('save has one active sequential entry point', () {
+      expect(source.contains('_legacyConfirmAndSave'), isFalse);
+      expect(source.contains('saveWardrobeLabels(payloads)'), isFalse);
+      expect(source.contains('SequentialUploadController('), isTrue);
     });
 
     test(
@@ -386,6 +408,47 @@ void main() {
     await _openReview(tester, backend: backend, items: [_detectedItemJson()]);
     expect(find.byKey(const ValueKey('review')), findsOneWidget);
     expect(find.byKey(const ValueKey('wardrobe-confirm-cta')), findsOneWidget);
+  });
+
+  testWidgets('picker cancellation does not start a save', (tester) async {
+    final backend = _FakeBackendService();
+    await _openReview(
+      tester,
+      backend: backend,
+      items: const [],
+      pickedFiles: const [],
+      expectReview: false,
+    );
+
+    await tester.tap(
+      find.byIcon(Icons.photo_library_outlined),
+      warnIfMissed: false,
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('camera')), findsOneWidget);
+    expect(backend.createBatchCallCount, 0);
+    expect(backend.processItemCallCount, 0);
+  });
+
+  testWidgets('explicit three-item save is strictly sequential', (tester) async {
+    final backend = _FakeBackendService()
+      ..onSave = (_) => const {'saved_count': 3};
+    await _openReview(
+      tester,
+      backend: backend,
+      items: [
+        _detectedItemJson(id: 'item-a', name: 'Item A'),
+        _detectedItemJson(id: 'item-b', name: 'Item B'),
+        _detectedItemJson(id: 'item-c', name: 'Item C'),
+      ],
+    );
+
+    await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+    await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+    expect(backend.createBatchCallCount, 1);
+    expect(backend.processItemCallCount, 3);
+    expect(backend.processedItemIds, ['item-a', 'item-b', 'item-c']);
   });
 
   testWidgets('4 & 14: exactly one Add CTA, single- and multi-item', (

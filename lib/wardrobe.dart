@@ -5,7 +5,6 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -2520,6 +2519,8 @@ class _AddItemModalState extends State<_AddItemModal>
   String? _saveError;
   OverlayEntry? _maxItemsOverlay;
   Timer? _maxItemsOverlayTimer;
+  Timer? _pickerInputShieldTimer;
+  bool _pickerInputShielded = false;
 
   String? _uploadBatchRequestId;
   SequentialUploadController? _uploadController;
@@ -2723,6 +2724,17 @@ class _AddItemModalState extends State<_AddItemModal>
     await _initCamera();
   }
 
+  void _shieldInputAfterPickerDismissal() {
+    _pickerInputShieldTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _pickerInputShielded = true);
+    _pickerInputShieldTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      setState(() => _pickerInputShielded = false);
+      _pickerInputShieldTimer = null;
+    });
+  }
+
   Future<void> _toggleFlash() async {
     setState(
       () => _flash = _flash == FlashMode.off ? FlashMode.torch : FlashMode.off,
@@ -2771,7 +2783,10 @@ class _AddItemModalState extends State<_AddItemModal>
         imageQuality: 82,
         limit: wardrobeMaxItems,
       );
-      if (files.isEmpty) return;
+      if (files.isEmpty) {
+        _shieldInputAfterPickerDismissal();
+        return;
+      }
       if (!mounted) return;
 
       // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Gallery picked ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â camera no longer needed, dispose to save battery
@@ -3109,49 +3124,6 @@ class _AddItemModalState extends State<_AddItemModal>
     }
   }
 
-  // Downscale a (data-uri) base64 image to <= maxDim px before upload, so the
-  // save payload stays small on weak networks (the dominant cost of slow
-  // saves). Safe for quality: the catalog re-renders generatively
-  // (ghost-mannequin), so a moderate downscale doesn't affect the output.
-  // Returns the original string on any failure.
-  Future<String> _downscaleBase64ForUpload(
-    String dataB64, {
-    int maxDim = 1536,
-  }) async {
-    try {
-      var b64 = dataB64;
-      String prefix = '';
-      final comma = b64.indexOf(',');
-      if (b64.startsWith('data:') && comma != -1) {
-        prefix = b64.substring(0, comma + 1);
-        b64 = b64.substring(comma + 1);
-      }
-      final bytes = base64Decode(b64);
-      final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      final w = frame.image.width, h = frame.image.height;
-      final longSide = w > h ? w : h;
-      frame.image.dispose();
-      if (longSide <= maxDim) return dataB64;
-      final scale = maxDim / longSide;
-      final codec2 = await ui.instantiateImageCodec(
-        bytes,
-        targetWidth: (w * scale).round(),
-        targetHeight: (h * scale).round(),
-      );
-      final frame2 = await codec2.getNextFrame();
-      final byteData = await frame2.image.toByteData(
-        format: ui.ImageByteFormat.png,
-      );
-      frame2.image.dispose();
-      if (byteData == null) return dataB64;
-      final out = base64Encode(byteData.buffer.asUint8List());
-      return '${prefix.isNotEmpty ? prefix : 'data:image/png;base64,'}$out';
-    } catch (_) {
-      return dataB64;
-    }
-  }
-
   Map<String, dynamic> _reviewedItemPayload(_DetectedItem item) {
     final payload = item.toBackendPayload();
     payload['occasions'] = canonicalOccasions(item.occasions);
@@ -3160,6 +3132,38 @@ class _AddItemModalState extends State<_AddItemModal>
         item.subCategory.isNotEmpty ? item.subCategory : item.category;
     payload['name'] = item.name;
     if (item.notes.trim().isNotEmpty) payload['notes'] = item.notes.trim();
+
+    final hasCacheToken =
+        (payload['image_cache_token']?.toString().trim().isNotEmpty ?? false);
+    final maskedEvidence = payload['masked_image_base64']?.toString().trim();
+    final alternateMaskedEvidence =
+        payload['maskedImageBase64']?.toString().trim();
+    final rawEvidence = payload['raw_image_base64']?.toString().trim();
+    final alternateRawEvidence = payload['rawImageBase64']?.toString().trim();
+
+    payload.remove('maskedImageBase64');
+    payload.remove('rawImageBase64');
+    if (hasCacheToken) {
+      payload.remove('raw_image_base64');
+      payload.remove('masked_image_base64');
+    } else if ((maskedEvidence?.isNotEmpty ?? false) ||
+        (alternateMaskedEvidence?.isNotEmpty ?? false)) {
+      payload['masked_image_base64'] =
+          (maskedEvidence?.isNotEmpty ?? false)
+          ? maskedEvidence
+          : alternateMaskedEvidence;
+      payload.remove('raw_image_base64');
+    } else {
+      payload.remove('masked_image_base64');
+      final selectedRaw = (rawEvidence?.isNotEmpty ?? false)
+          ? rawEvidence
+          : alternateRawEvidence;
+      if (selectedRaw?.isNotEmpty ?? false) {
+        payload['raw_image_base64'] = selectedRaw;
+      } else {
+        payload.remove('raw_image_base64');
+      }
+    }
     return payload;
   }
 
@@ -3189,7 +3193,42 @@ class _AddItemModalState extends State<_AddItemModal>
       );
       return;
     }
-    final remoteUrl = item.maskedUrl ?? item.rawUrl;
+    String? responseUrl(List<String> keys) {
+      for (final key in keys) {
+        final value = result.raw[key]?.toString().trim();
+        if (value != null && value.isNotEmpty && value != 'null') return value;
+      }
+      return null;
+    }
+
+    // Prefer the URLs returned for the saved wardrobe row. The detection URLs
+    // are only fallbacks; they can describe the source image rather than the
+    // processed asset persisted by the upload endpoint.
+    final imageUrl =
+        responseUrl(const ['image_url', 'imageUrl', 'raw_url', 'rawUrl']) ??
+        item.rawUrl ??
+        item.maskedUrl;
+    final maskedUrl =
+        responseUrl(const [
+          'masked_url',
+          'maskedUrl',
+          'cutout_url',
+          'cutoutUrl',
+        ]) ??
+        item.maskedUrl ??
+        imageUrl;
+    final normalizedUrl =
+        responseUrl(const [
+          'normalized_url',
+          'normalizedUrl',
+          'display_image_url',
+          'displayImageUrl',
+          'catalog_image_url',
+          'catalogImageUrl',
+        ]) ??
+        item.raw['normalized_url']?.toString() ??
+        item.raw['normalizedUrl']?.toString();
+    final remoteUrl = maskedUrl ?? imageUrl;
     Uint8List? displayBytes = item.maskedImageBytes;
     if (displayBytes == null && (remoteUrl == null || remoteUrl.isEmpty)) {
       final index = item.sourceImageIndex;
@@ -3210,10 +3249,9 @@ class _AddItemModalState extends State<_AddItemModal>
           .where((v) => v != null && v.isNotEmpty && v != 'null')
           .join(', '),
       'imageBytes': displayBytes,
-      'imageUrl': remoteUrl,
-      'maskedUrl': remoteUrl,
-      'normalizedUrl': item.raw['normalized_url']?.toString() ??
-          item.raw['normalizedUrl']?.toString(),
+      'imageUrl': imageUrl,
+      'maskedUrl': maskedUrl,
+      'normalizedUrl': normalizedUrl,
       'worn': 0,
       'liked': false,
       'remoteSaved': true,
@@ -3261,16 +3299,6 @@ class _AddItemModalState extends State<_AddItemModal>
     final units = <UploadBatchUnit>[];
     for (final item in selected) {
       final reviewed = _reviewedItemPayload(item);
-      final hasToken =
-          (reviewed['image_cache_token']?.toString().trim().isNotEmpty ?? false);
-      if (!hasToken) {
-        for (final key in const ['masked_image_base64', 'raw_image_base64']) {
-          final b64 = reviewed[key]?.toString();
-          if (b64 != null && b64.isNotEmpty) {
-            reviewed[key] = await _downscaleBase64ForUpload(b64);
-          }
-        }
-      }
       final index = item.sourceImageIndex;
       final imageBytes = item.previewBytes ??
           (_isGalleryPick &&
@@ -3361,215 +3389,6 @@ class _AddItemModalState extends State<_AddItemModal>
     });
     if (_step == _ModalStep.success) {
       _toast('Saved $addedCount item${addedCount == 1 ? '' : 's'} to wardrobe.');
-    }
-  }
-
-  Future<void> _legacyConfirmAndSave() async {
-    if (_isSavingWardrobe) return;
-    final selected = _detected
-        .where((i) => i.selected && i.isSaveable)
-        .toList();
-    if (selected.isEmpty) {
-      _toast(AppLocalizations.t(context, 'wardrobe_no_items_to_add'));
-      return;
-    }
-    if (selected.length > wardrobeMaxItems) {
-      _showMaxItemsWarning();
-      return;
-    }
-    // Privacy safety net: inline edits keep item.name/subCategory live via
-    // the controllers in bindTo(), but nothing else enforces the
-    // private-wear contract — the review UI only disables a few occasion
-    // chips. Re-derive private-wear status from the latest field values
-    // here and force the same category/subCategory/occasions the previous
-    // (now-removed) edit-confirm step used, so the backend payload can
-    // never carry a private-wear item under its normal classification.
-    for (final item in selected) {
-      if (isPrivateWearText('${item.name} ${item.category} ${item.subCategory}')) {
-        item.category = 'Innerwear';
-        item.subCategory = 'Private Wear';
-        item.occasions = const ['Home', 'Private', 'Lounge'];
-      }
-    }
-    // Guard set SYNCHRONOUSLY, before any awaited preprocessing (image
-    // downscaling, request construction, backend call) — a second tap that
-    // lands before the first `await` above must see _isSavingWardrobe==true
-    // and no-op via the early return at the top of this function.
-    setState(() {
-      _isSavingWardrobe = true;
-      _step = _ModalStep.saving;
-      _saveError = null;
-    });
-    HapticFeedback.lightImpact();
-    final payloads = selected.map((item) => item.toBackendPayload()).toList();
-    // Shrink the upload: downscale heavy base64 before sending. Skipped when a
-    // server cache token is present (base64 already dropped via toBackendPayload).
-    for (final p in payloads) {
-      final hasToken =
-          (p['image_cache_token']?.toString().trim().isNotEmpty ?? false);
-      if (hasToken) continue;
-      for (final key in const ['masked_image_base64', 'raw_image_base64']) {
-        final b64 = p[key]?.toString();
-        if (b64 != null && b64.isNotEmpty) {
-          p[key] = await _downscaleBase64ForUpload(b64);
-        }
-      }
-    }
-    final backendService = Provider.of<BackendService>(context, listen: false);
-    // TIMING: split the slow "whole process" into human-review vs upload vs
-    // server. review_ms = preview shown -> save tapped; payload_kb = upload
-    // size; save_call_ms = full client wall-time of the save (upload + server
-    // + download). Compare save_call_ms to the backend's latency_ms to isolate
-    // network/upload overhead vs server compute.
-    final int reviewMs = _previewShownAt == null
-        ? -1
-        : DateTime.now().difference(_previewShownAt!).inMilliseconds;
-    int payloadKb = -1;
-    try {
-      payloadKb = (jsonEncode(payloads).length / 1024).round();
-    } catch (_) {}
-    debugPrint(
-      'AHVI_SAVE_TIMING review_ms=$reviewMs payload_kb=$payloadKb items=${selected.length}',
-    );
-    final saveSw = Stopwatch()..start();
-    final saveResult = await backendService.saveWardrobeLabels(payloads);
-    debugPrint('AHVI_SAVE_TIMING save_call_ms=${saveSw.elapsedMilliseconds}');
-    if (!mounted) return;
-    final savedCount = saveResult == null
-        ? 0
-        : (saveResult['saved_count'] is int
-              ? saveResult['saved_count'] as int
-              : int.tryParse(saveResult['saved_count']?.toString() ?? '') ?? 0);
-    if (saveResult == null || savedCount <= 0) {
-      setState(() {
-        _isSavingWardrobe = false;
-        _step = _ModalStep.error;
-        _saveError =
-            "Something went wrong while saving. Your changes haven't been lost.";
-      });
-      return;
-    }
-
-    final savedRows = (saveResult['items'] is List)
-        ? (saveResult['items'] as List).whereType<Map>().toList()
-        : <Map>[];
-
-    final savedDisplay = <Map<String, String?>>[];
-    if (savedRows.isEmpty) {
-      for (final item in selected.take(savedCount)) {
-        savedDisplay.add({
-          'name': _cleanUiText(item.name, fallback: 'Item'),
-          'color': item.color,
-          'pattern': item.pattern,
-        });
-        final remoteUrl = item.maskedUrl ?? item.rawUrl;
-        Uint8List? displayBytes = item.maskedImageBytes;
-        if (displayBytes == null && (remoteUrl == null || remoteUrl.isEmpty)) {
-          final index = item.sourceImageIndex;
-          displayBytes =
-              _isGalleryPick &&
-                  index != null &&
-                  index >= 0 &&
-                  index < _galleryImages.length
-              ? _galleryImages[index]
-              : _capturedBytes;
-        }
-        widget.onSave({
-          'id': item.id,
-          'name': _cleanUiText(item.name, fallback: 'Item'),
-          'cat': item.category,
-          'occasions': List<String>.from(item.occasions),
-          'notes': [
-            item.color,
-            item.pattern,
-          ].where((v) => v != null && v.isNotEmpty && v != 'null').join(', '),
-          'imageBytes': displayBytes,
-          'imageUrl': remoteUrl,
-          'maskedUrl': remoteUrl,
-          'normalizedUrl': null,
-          'worn': 0,
-          'liked': false,
-          'remoteSaved': true,
-        });
-      }
-    } else {
-      for (final raw in savedRows) {
-        final row = Map<String, dynamic>.from(raw);
-        savedDisplay.add({
-          'name': _cleanUiText(row['name'], fallback: 'Item'),
-          'color': row['color_name']?.toString() ?? row['color']?.toString(),
-          'pattern': row['pattern']?.toString(),
-        });
-        final displayUrl =
-            row['display_image_url']?.toString() ??
-            row['displayImageUrl']?.toString();
-        final normalizedUrl =
-            displayUrl ??
-            row['normalized_url']?.toString() ??
-            row['normalizedUrl']?.toString();
-        final maskedUrl =
-            row['masked_url']?.toString() ?? row['maskedUrl']?.toString();
-        final imageUrl =
-            row['image_url']?.toString() ?? row['imageUrl']?.toString();
-        widget.onSave({
-          'id':
-              row[r'$id']?.toString() ??
-              row['id']?.toString() ??
-              row['item_id']?.toString() ??
-              UniqueKey().toString(),
-          'name': _cleanUiText(row['name'], fallback: 'Item'),
-          'cat': _cleanCategory(row['category']),
-          'occasions': _cleanStringList(row['occasions']),
-          'notes': _cleanUiText(row['notes']),
-          'imageBytes': null,
-          'imageUrl': imageUrl,
-          'maskedUrl': maskedUrl ?? imageUrl,
-          'normalizedUrl': normalizedUrl,
-          'worn': row['worn'] is int ? row['worn'] as int : 0,
-          'liked': row['liked'] == true,
-          'remoteSaved': true,
-          'catalogStatus': (row['catalogStatus'] ?? row['catalog_status'])
-              ?.toString(),
-        });
-      }
-    }
-    HapticFeedback.mediumImpact();
-    final requestedCount = selected.length;
-    setState(() {
-      _isSavingWardrobe = false;
-      _step = _ModalStep.success;
-      _savedCount = savedCount;
-      _savedRequestedCount = requestedCount;
-      _savedSingleName = savedDisplay.length == 1
-          ? savedDisplay.first['name']
-          : null;
-      _savedSingleColor = savedDisplay.length == 1
-          ? savedDisplay.first['color']
-          : null;
-      _savedSinglePattern = savedDisplay.length == 1
-          ? savedDisplay.first['pattern']
-          : null;
-    });
-    final catalogScheduledCount = saveResult['catalog_scheduled_count'] is int
-        ? saveResult['catalog_scheduled_count'] as int
-        : int.tryParse(
-                saveResult['catalog_scheduled_count']?.toString() ?? '',
-              ) ??
-              0;
-    if (savedCount < requestedCount) {
-      _toast(
-        'Saved $savedCount of $requestedCount items. Some were skipped because AHVI could not create clean wardrobe images.'
-        '${catalogScheduledCount > 0 ? ' Catalog enhancement for saved items is processing on a best-effort basis.' : ''}',
-      );
-    } else if (catalogScheduledCount > 0) {
-      _toast(
-        'Saved $savedCount item${savedCount == 1 ? '' : 's'} to wardrobe. '
-        'Catalog enhancement is processing on a best-effort basis.',
-      );
-    } else {
-      _toast(
-        'Saved $savedCount item${savedCount == 1 ? '' : 's'} to wardrobe.',
-      );
     }
   }
 
@@ -3682,6 +3501,7 @@ class _AddItemModalState extends State<_AddItemModal>
   @override
   void dispose() {
     _removeMaxItemsWarning();
+    _pickerInputShieldTimer?.cancel();
     _slideCtrl.dispose();
     _camCtrl?.dispose();
     _reviewPageCtrl.dispose();
@@ -3699,9 +3519,11 @@ class _AddItemModalState extends State<_AddItemModal>
     // guard or the underlying wardrobe UI in a half-saved state.
     return PopScope(
       canPop: !_isSavingWardrobe,
-      child: FadeTransition(
-        opacity: _fadeAnim,
-        child: Dialog(
+      child: AbsorbPointer(
+        absorbing: _pickerInputShielded,
+        child: FadeTransition(
+          opacity: _fadeAnim,
+          child: Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: isFullScreen
               ? EdgeInsets.zero
@@ -3789,6 +3611,7 @@ class _AddItemModalState extends State<_AddItemModal>
                     ),
                   ),
                 ),
+          ),
         ),
       ),
     );
