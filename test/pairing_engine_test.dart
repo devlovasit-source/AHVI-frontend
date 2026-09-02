@@ -249,6 +249,48 @@ void main() {
       expect(resultIds, isNot(contains('boxes')));
     });
 
+    test('single-word non-fashion names are rejected', () {
+      final shirt = makeItem(id: 'shirt', name: 'White Shirt', cat: 'Tops');
+
+      final nonFashionItems = [
+        makeItem(id: 'charger', name: 'Charger', cat: 'Accessories'),
+        makeItem(id: 'cable', name: 'Cable', cat: 'Accessories'),
+        makeItem(id: 'adapter', name: 'Adapter', cat: 'Accessories'),
+        makeItem(id: 'laptop', name: 'Laptop', cat: 'Accessories'),
+        makeItem(id: 'camera', name: 'Camera', cat: 'Accessories'),
+        makeItem(id: 'keyboard', name: 'Keyboard', cat: 'Accessories'),
+        makeItem(id: 'mouse', name: 'Mouse', cat: 'Accessories'),
+        makeItem(id: 'speaker', name: 'Speaker', cat: 'Accessories'),
+        makeItem(id: 'remote', name: 'Remote', cat: 'Accessories'),
+      ];
+
+      final results = PairingEngine.worksWellWith(shirt, [
+        shirt,
+        ...nonFashionItems,
+      ]);
+
+      final resultIds = results.map((item) => item.id).toSet();
+
+      for (final item in nonFashionItems) {
+        expect(resultIds, isNot(contains(item.id)));
+      }
+    });
+
+    test('non-fashion phrase in notes does not reject a fashion item', () {
+      final shirt = makeItem(id: 'shirt', name: 'White Shirt', cat: 'Tops');
+
+      final jacket = makeItem(
+        id: 'jacket',
+        name: 'Travel Jacket',
+        cat: 'Outerwear',
+        notes: 'Has a water bottle pocket for travel.',
+      );
+
+      final results = PairingEngine.worksWellWith(shirt, [shirt, jacket]);
+
+      expect(results.any((item) => item.id == 'jacket'), isTrue);
+    });
+
     test('occasion/category normalization remains unchanged', () {
       final shirt = makeItem(
         id: 'shirt',

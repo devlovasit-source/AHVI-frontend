@@ -155,7 +155,7 @@ class PairingEngine {
     ...item.occasions,
   ].join(' ').toLowerCase();
 
-  static const Set<String> _nonFashionPhrases = {
+    static const Set<String> _nonFashionPhrases = {
     'phone charger',
     'wall charger',
     'usb charger',
@@ -201,44 +201,71 @@ class PairingEngine {
     'boxes',
   };
 
+  static const Set<String> _nonFashionExactNames = {
+    'charger',
+    'cable',
+    'adapter',
+    'laptop',
+    'camera',
+    'keyboard',
+    'mouse',
+    'speaker',
+    'remote',
+  };
+
   static bool _isFashionItem(WardrobeItem item) {
-    final normalized = _blob(
-      item,
-    ).replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+    final name = item.name
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim();
 
-    if (normalized.isEmpty) return true;
+    if (name.isEmpty) return true;
 
-    final tokens = normalized.split(RegExp(r'\s+'));
+    final nameTokens = name.split(RegExp(r'\s+'));
 
+    // Exact-name deny list applies only to item.name.
+    if (_nonFashionExactNames.contains(name)) {
+      return false;
+    }
+
+    // Phrase checks apply only to item.name.
     for (final phrase in _nonFashionPhrases) {
       final phraseTokens = phrase.split(' ');
 
-      if (phraseTokens.length > tokens.length) continue;
+      if (phraseTokens.length > nameTokens.length) {
+        continue;
+      }
 
-      for (var i = 0; i <= tokens.length - phraseTokens.length; i++) {
+      for (var i = 0; i <= nameTokens.length - phraseTokens.length; i++) {
         var matches = true;
 
         for (var j = 0; j < phraseTokens.length; j++) {
-          if (!_matchesFashionToken(tokens[i + j], phraseTokens[j])) {
-            matches = false;
-            break;
+          final actual = nameTokens[i + j];
+          final expected = phraseTokens[j];
+
+          if (actual == expected) {
+            continue;
           }
+
+          if (expected == 'battery' && actual == 'batteries') {
+            continue;
+          }
+
+          if (expected == 'box' && actual == 'boxes') {
+            continue;
+          }
+
+          matches = false;
+          break;
         }
 
-        if (matches) return false;
+        if (matches) {
+          return false;
+        }
       }
     }
 
     return true;
-  }
-
-  static bool _matchesFashionToken(String actual, String expected) {
-    if (actual == expected) return true;
-
-    if (expected == 'battery' && actual == 'batteries') return true;
-    if (expected == 'box' && actual == 'boxes') return true;
-
-    return false;
   }
 
   static bool _isEthnic(WardrobeItem item) {
