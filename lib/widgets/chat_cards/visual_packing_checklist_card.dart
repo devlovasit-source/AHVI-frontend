@@ -106,7 +106,7 @@ class _VisualPackingChecklistCardState
     final ratio = progress.$2 == 0 ? 0.0 : progress.$1 / progress.$2;
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(left: 4, right: 20, bottom: 8),
+      margin: const EdgeInsets.only(left: 0, right: 4, bottom: 8),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
         color: t.panel,
@@ -192,8 +192,7 @@ class _VisualPackingChecklistCardState
               );
             },
           ),
-          const SizedBox(height: 14),
-          _actionRow(t),
+
         ],
       ),
     );
@@ -367,7 +366,6 @@ class _VisualPackingChecklistCardState
       decoration: BoxDecoration(
         color: t.panel,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: t.cardBorder),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -425,10 +423,10 @@ class _VisualPackingChecklistCardState
               builder: (context, constraints) {
                 const gap = 6.0;
                 const columns =
-                4; // fixed so tiles are the same size in every grid
+                2; // fixed so tiles are the same size in every grid
                 final tileWidth =
                 ((constraints.maxWidth - gap * (columns - 1)) / columns)
-                    .clamp(0.0, 110.0);
+                    .clamp(0.0, 78.0);
                 final row = Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -465,7 +463,7 @@ class _VisualPackingChecklistCardState
         ),
         const SizedBox(height: 5),
         SizedBox(
-          height: 26,
+          height: 22,
           child: Text(
             label.isEmpty ? 'Item' : label,
             maxLines: 2,
@@ -473,13 +471,13 @@ class _VisualPackingChecklistCardState
             textAlign: TextAlign.center,
             style: TextStyle(
               color: t.textPrimary,
-              fontSize: 9.8,
+              fontSize: 9.0,
               height: 1.12,
               fontWeight: FontWeight.w600,
             ),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 3),
         InkWell(
           customBorder: const CircleBorder(),
           onTap: () => setState(() {
@@ -489,7 +487,7 @@ class _VisualPackingChecklistCardState
             done
                 ? Icons.check_circle_rounded
                 : Icons.radio_button_unchecked_rounded,
-            size: 20,
+            size: 18,
             color: done
                 ? t.accent.primary
                 : t.mutedText.withValues(alpha: 0.55),
@@ -744,9 +742,9 @@ class PackingThumb extends StatelessWidget {
       width: fill ? double.infinity : size,
       height: fill ? double.infinity : size,
       decoration: BoxDecoration(
-        color: t.accent.primary.withValues(alpha: 0.09),
+        color: t.panel,
         borderRadius: BorderRadius.circular(round ? 999 : 12),
-        border: round ? null : Border.all(color: t.cardBorder),
+
       ),
       clipBehavior: Clip.antiAlias,
       alignment: Alignment.center,
