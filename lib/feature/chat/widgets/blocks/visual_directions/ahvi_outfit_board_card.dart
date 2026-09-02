@@ -2378,6 +2378,7 @@ StyleBoardData _toStyleBoardData(
         direction['why_this_works'] ??
         direction['explanation'] ??
         '',
+    stylingTip: model.stylingTip,
     items: rendered,
   );
 }

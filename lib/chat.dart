@@ -502,6 +502,34 @@ List<dynamic> _extractStyleBoardsFromResponse(Map<String, dynamic> response) {
       .boards;
 }
 
+/// Thin type-adapting wrapper around the shared [retainBoardNarrative]
+/// (style_mutation_contract.dart) — this surface's board list arrives as
+/// `List<dynamic>` (from [_extractStyleBoardsFromResponse]) rather than
+/// `List<Map<String, dynamic>>`, and any non-Map entries are passed through
+/// untouched rather than dropped, matching this surface's existing
+/// tolerance for malformed board entries. The retention logic itself is
+/// not duplicated here — see style_mutation_contract.dart for the actual
+/// backfill rules and rationale.
+List<dynamic> _boardsWithRetainedNarrative(
+  List<dynamic> boards,
+  Map<String, dynamic>? previousBoard,
+) {
+  if (previousBoard == null || boards.isEmpty) return boards;
+  final mapBoards = <Map<String, dynamic>>[];
+  final originalIsMap = <bool>[];
+  for (final value in boards) {
+    final isMap = value is Map;
+    originalIsMap.add(isMap);
+    mapBoards.add(isMap ? Map<String, dynamic>.from(value) : const {});
+  }
+  final retained = retainBoardNarrative(mapBoards, previousBoard);
+  return List<dynamic>.generate(
+    boards.length,
+    (i) => originalIsMap[i] ? retained[i] : boards[i],
+    growable: false,
+  );
+}
+
 List<dynamic> _visibleResponseChips(
   List<dynamic> chips,
   AhviResponsePolicy policy,
@@ -1803,9 +1831,12 @@ class _ChatScreenState extends State<ChatScreen>
           ? _moduleCardFromResponse(response)
           : null;
       final isModuleResponse = _looksLikeModuleCards(response);
-      final responseBoards = isModuleResponse
+      final rawResponseBoards = isModuleResponse
           ? const <dynamic>[]
           : _extractStyleBoardsFromResponse(response);
+      final responseBoards = isBoardMutation
+          ? _boardsWithRetainedNarrative(rawResponseBoards, mutationState)
+          : rawResponseBoards;
       if (isStyleModule) {
         final responseStyleState = response['style_state'] is Map
             ? Map<String, dynamic>.from(response['style_state'] as Map)

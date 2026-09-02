@@ -1762,7 +1762,16 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
       final typedModuleCard = textOnlyResponse
           ? null
           : AhviChatResponseRendererRegistry.typedModuleCard(response);
-      final visualPayload = _VisualDirectionPayload.fromResponse(response);
+      final rawVisualPayload = _VisualDirectionPayload.fromResponse(response);
+      final visualPayload = isBoardMutation
+          ? _VisualDirectionPayload(
+              directions: retainBoardNarrative(
+                rawVisualPayload.directions,
+                mutationState,
+              ),
+              styleState: rawVisualPayload.styleState,
+            )
+          : rawVisualPayload;
       final visualBoard =
           !textOnlyResponse &&
               !visualPayload.hasDirections &&
@@ -1783,7 +1792,19 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
                       card['visualSections'] is! List,
                 )
                 .toList(growable: false);
-      final boardPayload = _StyleBoardPayload.fromResponse(response);
+      final rawBoardPayload = _StyleBoardPayload.fromResponse(response);
+      final boardPayload = isBoardMutation
+          ? _StyleBoardPayload(
+              cards: rawBoardPayload.cards,
+              renderedBoards: retainBoardNarrative(
+                rawBoardPayload.renderedBoards,
+                mutationState,
+              ),
+              outfits: rawBoardPayload.outfits,
+              boardId: rawBoardPayload.boardId,
+              styleState: rawBoardPayload.styleState,
+            )
+          : rawBoardPayload;
       final boardSelection = selectStyleBoardAlias(response);
       final actionChips = _actionChipsFromResponse(response);
       final diagnosticSelection = AhviStyleDiagnostics.selectAlias(response);
