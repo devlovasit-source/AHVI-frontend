@@ -195,7 +195,28 @@ const _kTipAliases = [
 
 const _kNarrativeGroups = [_kTitleAliases, _kWhyAliases, _kTipAliases];
 
-bool _isBlankNarrativeValue(dynamic value) {
+/// `style_strategy` is a nested strategy Map, not a plain title string — a
+/// mutation response can carry `style_strategy: {}` (or one with unrelated
+/// fields) purely as scaffolding, with no actual replacement title inside
+/// it. Treating any non-null Map there as "fresh" would block backfill for
+/// the whole title group and drop the previous board's real title, so it
+/// only counts as fresh when it actually carries one of these fields.
+const _kStyleStrategyTitleFields = [
+  'archetype',
+  'archetype_name',
+  'direction_title',
+  'directionTitle',
+  'direction',
+];
+
+bool _isBlankNarrativeValue(String key, dynamic value) {
+  if (key == 'style_strategy' && value is Map) {
+    return !value.keys.any((field) {
+      if (!_kStyleStrategyTitleFields.contains(field)) return false;
+      final fieldValue = value[field];
+      return fieldValue is String && fieldValue.trim().isNotEmpty;
+    });
+  }
   return value == null || (value is String && value.trim().isEmpty);
 }
 
@@ -245,11 +266,12 @@ List<Map<String, dynamic>> retainBoardNarrative(
     if (!sameBoard) return merged;
     for (final group in _kNarrativeGroups) {
       final hasFreshValue = group.any(
-        (key) => !_isBlankNarrativeValue(merged[key]),
+        (key) => !_isBlankNarrativeValue(key, merged[key]),
       );
       if (hasFreshValue) continue;
       for (final key in group) {
-        if (_isBlankNarrativeValue(merged[key]) && previousBoard[key] != null) {
+        if (_isBlankNarrativeValue(key, merged[key]) &&
+            previousBoard[key] != null) {
           merged[key] = previousBoard[key];
         }
       }

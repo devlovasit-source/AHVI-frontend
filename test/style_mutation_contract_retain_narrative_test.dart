@@ -165,6 +165,29 @@ void main() {
       },
     );
 
+    test(
+      'style_strategy: {} must not be treated as a fresh title and must '
+      'not block retention of the previous board title',
+      () {
+        final previousBoard = <String, dynamic>{
+          'board_id': 'board-1',
+          'title': 'Refined Weekend',
+        };
+        // Mutation response carries an empty style_strategy Map with no
+        // actual title inside it, and no 'title' key of its own.
+        final responseBoards = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'board_id': 'board-1',
+            'style_strategy': <String, dynamic>{},
+          },
+        ];
+
+        final result = retainBoardNarrative(responseBoards, previousBoard);
+
+        expect(result.single['title'], 'Refined Weekend');
+      },
+    );
+
     test('returns boards unchanged when previousBoard is null', () {
       final responseBoards = <Map<String, dynamic>>[
         <String, dynamic>{'board_id': 'board-1'},
