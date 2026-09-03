@@ -108,98 +108,109 @@ class _VisualPackingChecklistCardState
     final t = context.themeTokens;
     final progress = _progress();
     final ratio = progress.$2 == 0 ? 0.0 : progress.$1 / progress.$2;
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(left: 0, right: 4, bottom: 8),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-      decoration: BoxDecoration(
-        color: t.panel,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: t.cardBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth - 24
+            : MediaQuery.sizeOf(context).width - 72;
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: Container(
+            width: width,
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+            decoration: BoxDecoration(
+              color: t.panel,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: t.cardBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _payload.title.isEmpty
-                          ? 'Carry-on Packing Checklist'
-                          : _payload.title,
-                      style: TextStyle(
-                        color: t.textPrimary,
-                        fontSize: 20,
-                        height: 1.12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.4,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _payload.title.isEmpty
+                                ? 'Carry-on Packing Checklist'
+                                : _payload.title,
+                            style: TextStyle(
+                              color: t.textPrimary,
+                              fontSize: 20,
+                              height: 1.12,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                          if (_payload.subtitle.isNotEmpty) ...[
+                            const SizedBox(height: 5),
+                            Text(
+                              _payload.subtitle,
+                              style: TextStyle(
+                                color: t.accent.primary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 14),
+                          Text(
+                            '${progress.$1} of ${progress.$2} packed',
+                            style: TextStyle(
+                              color: t.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          _progressBar(ratio, t),
+                        ],
                       ),
                     ),
-                    if (_payload.subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      Text(
-                        _payload.subtitle,
-                        style: TextStyle(
-                          color: t.accent.primary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 14),
-                    Text(
-                      '${progress.$1} of ${progress.$2} packed',
-                      style: TextStyle(
-                        color: t.textPrimary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    _progressBar(ratio, t),
+                    const SizedBox(width: 10),
+                    _heroVisual(t),
                   ],
                 ),
-              ),
-              const SizedBox(width: 10),
-              _heroVisual(t),
-            ],
+                const SizedBox(height: 18),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final columns = constraints.maxWidth < 320 ? 1 : 2;
+                    const gap = 10.0;
+                    final width =
+                        ((constraints.maxWidth - gap * (columns - 1)) /
+                            columns) -
+                        0.5;
+                    return Wrap(
+                      spacing: gap,
+                      runSpacing: gap,
+                      children: [
+                        for (var i = 0; i < _payload.sections.length; i++)
+                          SizedBox(
+                            width: width,
+                            child: _sectionCard(_payload.sections[i], i + 1, t),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 14),
+                _actionRow(t),
+              ],
+            ),
           ),
-          const SizedBox(height: 18),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth < 320 ? 1 : 2;
-              const gap = 10.0;
-              final width =
-                  ((constraints.maxWidth - gap * (columns - 1)) / columns) -
-                  0.5;
-              return Wrap(
-                spacing: gap,
-                runSpacing: gap,
-                children: [
-                  for (var i = 0; i < _payload.sections.length; i++)
-                    SizedBox(
-                      width: width,
-                      child: _sectionCard(_payload.sections[i], i + 1, t),
-                    ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 14),
-          _actionRow(t),
-        ],
-      ),
+        );
+      },
     );
   }
 
