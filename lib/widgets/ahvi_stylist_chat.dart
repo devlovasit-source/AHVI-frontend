@@ -513,7 +513,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
     moduleContext: 'prepare',
     subtitle: 'Planning Assistant',
     hintTextKey: 'daily_wear_chat_hint',
-    greetingKey: 'intent_prepare_s1',
+    greetingKey: 'prep_chat_greeting',
     quickPrompts: (ctx) => [
       AppLocalizations.t(ctx, 'intent_prepare_s1'),
       AppLocalizations.t(ctx, 'intent_prepare_s2'),
@@ -528,7 +528,7 @@ final Map<String, AhviModuleConfig> _moduleConfigs = {
     moduleContext: 'planner',
     subtitle: 'Planning Assistant',
     hintTextKey: 'daily_wear_chat_hint',
-    greetingKey: 'intent_prepare_s1',
+    greetingKey: 'prep_chat_greeting',
     quickPrompts: (ctx) => [
       AppLocalizations.t(ctx, 'intent_prepare_s1'),
       AppLocalizations.t(ctx, 'intent_prepare_s2'),
