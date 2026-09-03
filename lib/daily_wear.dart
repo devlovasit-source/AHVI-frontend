@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 import 'package:myapp/home_card_summary_provider.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/backend_service.dart';
+import 'package:myapp/services/location_context_service.dart';
 import 'package:myapp/tryon_safety.dart';
 import 'package:myapp/wardrobe.dart';
 import 'package:myapp/theme/theme_tokens.dart';
@@ -96,6 +97,32 @@ class DailyWearScreen extends StatefulWidget {
       }
     }
     return const [];
+  }
+
+  /// Resolves the coordinates DailyWear's weather request should use.
+  ///
+  /// Tries [locationLookup] (defaults to the shared [LocationContextService])
+  /// and falls back to [fallbackLat]/[fallbackLon] on denied/disabled
+  /// permission, a lookup error, or a null/invalid fix. Bounded by an
+  /// explicit timeout so a stalled GPS lookup never blocks weather forever.
+  static Future<({double lat, double lon})> resolveWeatherCoordinates({
+    Future<Map<String, dynamic>> Function()? locationLookup,
+    double fallbackLat = 16.5062,
+    double fallbackLon = 80.648,
+  }) async {
+    final lookup =
+        locationLookup ?? () => LocationContextService().getLocationContext();
+    try {
+      final ctx = await lookup().timeout(const Duration(seconds: 12));
+      final lat = ctx['lat'];
+      final lon = ctx['lon'];
+      if (lat is num && lon is num) {
+        return (lat: lat.toDouble(), lon: lon.toDouble());
+      }
+    } catch (_) {
+      // Denied/disabled/timeout/unavailable/unexpected error: keep fallback.
+    }
+    return (lat: fallbackLat, lon: fallbackLon);
   }
 
   @override
@@ -874,12 +901,11 @@ class _DailyWearScreenState extends State<DailyWearScreen>
 
   Future<void> _fetchWeather() async {
     debugPrint('AHVI_HEAVY_SCREEN_LOAD start screen=DailyWear');
-    const fallbackLat = 16.5062;
-    const fallbackLon = 80.648;
+    final coords = await DailyWearScreen.resolveWeatherCoordinates();
     try {
       final url = Uri.parse(
         'https://api.open-meteo.com/v1/forecast'
-            '?latitude=$fallbackLat&longitude=$fallbackLon'
+            '?latitude=${coords.lat}&longitude=${coords.lon}'
             '&current=temperature_2m,weathercode,apparent_temperature'
             '&timezone=auto',
       );
