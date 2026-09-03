@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Local saved-boards store backed by SharedPreferences.
@@ -17,6 +18,17 @@ class SavedBoardsStore {
 
   static Future<SharedPreferences> _instance() async {
     return _prefs ??= await SharedPreferences.getInstance();
+  }
+
+  @visibleForTesting
+  static void resetForTest() {
+    _prefs = null;
+  }
+
+  @visibleForTesting
+  static Future<void> clearForTest() async {
+    final prefs = await _instance();
+    await prefs.remove(_kStorageKey);
   }
 
   /// Build a stable id from the occasion + direction so the same look
@@ -61,6 +73,7 @@ class SavedBoardsStore {
     final id = idFor(occasion: occasion, directionName: directionName);
     final payload = <String, dynamic>{
       'id': id,
+      'board_id': direction['board_id'] ?? direction['boardId'] ?? '',
       'occasion': occasion,
       'direction_name': directionName,
       'created_at': DateTime.now().toIso8601String(),
@@ -92,5 +105,39 @@ class SavedBoardsStore {
     final current = await list();
     final filtered = current.where((b) => b['id'] != id).toList();
     await prefs.setString(_kStorageKey, jsonEncode(filtered));
+  }
+
+  /// Removes the local Saved mirror after the corresponding server board was
+  /// deleted. Canonical board identity wins; the legacy id is only used for
+  /// entries that predate board_id persistence.
+  static Future<void> removeForServerBoard(Map<String, dynamic> data) async {
+    final boardId = (data['board_id'] ?? data['boardId'] ?? '')
+        .toString()
+        .trim();
+    final occasion = (data['occasion'] ?? data['original_occasion'] ?? '')
+        .toString();
+    final directionName = (data['title'] ?? data['direction_name'] ?? '')
+        .toString();
+    final legacyId = occasion.trim().isNotEmpty && directionName.trim().isNotEmpty
+        ? idFor(occasion: occasion, directionName: directionName)
+        : '';
+    if (boardId.isEmpty && legacyId.isEmpty) return;
+
+    final prefs = await _instance();
+    final current = await list();
+    final filtered = current.where((entry) {
+      final entryBoardId = (entry['board_id'] ?? '').toString().trim();
+      if (boardId.isNotEmpty) {
+        if (entryBoardId.isNotEmpty) return entryBoardId != boardId;
+        return legacyId.isEmpty || entry['id'] != legacyId;
+      }
+      // A legacy server payload can only remove a legacy local entry.
+      return entryBoardId.isNotEmpty ||
+          legacyId.isEmpty ||
+          entry['id'] != legacyId;
+    }).toList();
+    if (filtered.length != current.length) {
+      await prefs.setString(_kStorageKey, jsonEncode(filtered));
+    }
   }
 }

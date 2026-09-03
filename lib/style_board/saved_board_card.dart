@@ -10,6 +10,7 @@ import 'package:myapp/style_board/saved_board_images.dart';
 import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:myapp/style_board/saved_board_thumb.dart';
 import 'package:myapp/style_board/board_exporter.dart';
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/util/wardrobe_image_resolver.dart';
 
@@ -376,6 +377,15 @@ class SavedBoardCard extends StatelessWidget {
                                       context,
                                       listen: false,
                                     ).deleteSavedBoard(boardId);
+                                    try {
+                                      await SavedBoardsStore.removeForServerBoard(
+                                        data,
+                                      );
+                                    } catch (e) {
+                                      debugPrint(
+                                        'AHVI_SAVED_BOARD_LOCAL_CLEANUP_FAILED err=$e',
+                                      );
+                                    }
                                     if (sheetContext.mounted) {
                                       Navigator.of(sheetContext).pop();
                                       ScaffoldMessenger.of(

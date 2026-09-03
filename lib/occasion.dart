@@ -4,6 +4,8 @@ import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/style_board/saved_board_card.dart';
+import 'package:myapp/style_board/saved_board_persistence.dart';
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 
 // ── Data model ───────────────────────────────────────────────────────────────
 class LookItem {
@@ -116,11 +118,37 @@ class _OccasionBoardState extends State<OccasionBoard> {
     }
   }
 
+  Map<String, dynamic> _boardData(dynamic board) {
+    try {
+      final data = board.data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+    } catch (_) {}
+    if (board is Map && board['data'] is Map) {
+      return Map<String, dynamic>.from(board['data'] as Map);
+    }
+    return const {};
+  }
+
   Future<void> _deleteLook(String id) async {
-    setState(() => _boards.removeWhere((board) => _boardId(board) == id));
+    final board = _boards.cast<dynamic>().firstWhere(
+      (candidate) => _boardId(candidate) == id,
+      orElse: () => null,
+    );
     try {
       final appwrite = Provider.of<AppwriteService>(context, listen: false);
       await appwrite.deleteSavedBoard(id);
+
+      if (board != null) {
+        try {
+          await SavedBoardsStore.removeForServerBoard(
+            expandSavedBoardData(_boardData(board)),
+          );
+        } catch (e) {
+          debugPrint('AHVI_SAVED_BOARD_LOCAL_CLEANUP_FAILED err=$e');
+        }
+      }
+      if (!mounted) return;
+      setState(() => _boards.removeWhere((candidate) => _boardId(candidate) == id));
       _showToast(context.tr('wardrobe_remove'));
     } catch (e) {
       _showToast(context.tr('error'));

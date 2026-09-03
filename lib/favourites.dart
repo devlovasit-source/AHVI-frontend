@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/app_localizations.dart';
 import 'package:myapp/style_board/saved_board_images.dart';
+import 'package:myapp/style_board/saved_board_persistence.dart';
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 
 // ── Data model ───────────────────────────────────────────────────────────────
 class FavouriteLookItem {
@@ -385,8 +386,15 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
         final wardrobeSource = boardEntry.source as _WardrobeSource;
         await appwrite.updateWardrobeItem(wardrobeSource.id, {'isLiked': false});
       } else {
-        // For saved boards, use the dedicated delete method
+        // Server deletion is authoritative. Local chat state is only a mirror.
         await appwrite.deleteSavedBoard(look.id);
+        try {
+          await SavedBoardsStore.removeForServerBoard(
+            expandSavedBoardData(_boardData(boardEntry.source)),
+          );
+        } catch (e) {
+          debugPrint('AHVI_SAVED_BOARD_LOCAL_CLEANUP_FAILED err=$e');
+        }
       }
 
       setState(() {
