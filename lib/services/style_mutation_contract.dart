@@ -169,6 +169,8 @@ const _kWhyAliases = [
   'explanation',
   'reason',
   'description',
+  'styling_note',
+  'stylingNote',
 ];
 
 const _kTipAliases = [
@@ -177,7 +179,6 @@ const _kTipAliases = [
   'style_tip',
   'style_note',
   'styleNote',
-  'styling_note',
 ];
 
 const _kStyleStrategyTitleFields = [

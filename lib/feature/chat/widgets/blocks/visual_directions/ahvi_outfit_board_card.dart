@@ -1946,6 +1946,8 @@ class OutfitBoardModel {
             direction['explanation'] ??
             direction['reason'] ??
             direction['description'] ??
+            direction['styling_note'] ??
+            direction['stylingNote'] ??
             strategy['why_it_works'] ??
             strategy['reason'] ??
             editorialCover['summary'],
@@ -1958,7 +1960,6 @@ class OutfitBoardModel {
             direction['style_tip'] ??
             direction['style_note'] ??
             direction['styleNote'] ??
-            direction['styling_note'] ??
             strategy['styling_tip'],
       ),
     );
