@@ -73,15 +73,6 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
               color: t.mutedText,
             ),
           ),
-          const SizedBox(height: 20),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              minHeight: 5,
-              backgroundColor: t.cardBorder,
-              valueColor: AlwaysStoppedAnimation<Color>(t.accent.primary),
-            ),
-          ),
         ],
       ),
     );
