@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:myapp/wardrobe.dart';
 import 'package:myapp/widgets/ahvi_lens_sheet.dart';
@@ -90,7 +91,14 @@ class _AhviChatPromptBarState extends State<AhviChatPromptBar> {
             debugPrint(
               '👗 [LensSheet] onAddToWardrobe tapped, context mounted: ${capturedContext.mounted}',
             );
-            showAddToWardrobeModal(capturedContext);
+            // P0.21: this screen doesn't own WardrobeScreen's state, so a
+            // successful save signals completion through the existing
+            // shared AppwriteService.invalidateWardrobeCache() notifier —
+            // WardrobeScreen listens for it and reconciles itself.
+            showAddToWardrobeModal(
+              capturedContext,
+              onSaved: (_) => AppwriteService().invalidateWardrobeCache(),
+            );
           },
     );
   }

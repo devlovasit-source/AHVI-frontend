@@ -41,6 +41,12 @@ class AppwriteService extends ChangeNotifier {
   List<Map<String, dynamic>> get cachedWardrobeItems =>
       List.unmodifiable(_wardrobeCache ?? const <Map<String, dynamic>>[]);
 
+  /// Bumped by [invalidateWardrobeCache]. Cross-screen consumers (e.g.
+  /// WardrobeScreen) can compare this against a last-seen value to detect
+  /// "did the wardrobe actually change" off the single shared notifyListeners
+  /// signal, instead of reacting to every unrelated AppwriteService change.
+  int get wardrobeGeneration => _wardrobeGeneration;
+
   // Observers notified on every auth scope change (logout, login, registration).
   // Multiple consumers (BackendService, HomeCardSummaryProvider, …) may register
   // independently via addSessionInvalidationListener.

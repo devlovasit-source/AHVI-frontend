@@ -2296,7 +2296,15 @@ class _DailyWearScreenState extends State<DailyWearScreen>
             child: ElevatedButton.icon(
               onPressed: _loadUnavailable
                   ? () => _fetchDailyBoard()
-                  : () => showAddToWardrobeModal(context),
+                  // P0.21: this screen doesn't own WardrobeScreen's state,
+                  // so a successful save signals completion through the
+                  // existing shared AppwriteService.invalidateWardrobeCache()
+                  // notifier — WardrobeScreen listens for it and reconciles.
+                  : () => showAddToWardrobeModal(
+                      context,
+                      onSaved: (_) =>
+                          AppwriteService().invalidateWardrobeCache(),
+                    ),
               icon: Icon(_loadUnavailable ? Icons.refresh_rounded : Icons.add_a_photo_outlined),
               label: Text(
                 _loadUnavailable

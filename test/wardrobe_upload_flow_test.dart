@@ -25,6 +25,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:myapp/services/appwrite_service.dart';
 import 'package:myapp/services/backend_service.dart';
 import 'package:myapp/theme/accent_palette.dart';
 import 'package:myapp/theme/theme_tokens.dart';
@@ -63,6 +64,12 @@ class _FakeImagePickerPlatform extends ImagePickerPlatform {
 class _FakeBackendService extends BackendService {
   Map<String, dynamic> Function(List<Uint8List> images)? onAnalyze;
   Map<String, dynamic> Function(List<Map<String, dynamic>> payloads)? onSave;
+  // When set, takes full control of processUploadBatchItem's per-item
+  // response (bypassing the saved_count/index heuristic below) so a test can
+  // deterministically produce NEEDS_REVIEW/duplicate outcomes and Add-Anyway
+  // overrides, which the index-based heuristic cannot express.
+  Map<String, dynamic> Function(String clientUploadItemId, bool overrideDuplicate)?
+      onProcessItem;
 
   int analyzeCallCount = 0;
   int saveCallCount = 0;
@@ -138,6 +145,9 @@ class _FakeBackendService extends BackendService {
     );
     saveCalls.last.add(payload);
     if (saveGate != null) await saveGate!.future;
+    if (onProcessItem != null) {
+      return onProcessItem!(clientUploadItemId, overrideDuplicate);
+    }
     final response = onSave?.call(saveCalls.last) ??
         {'saved_count': saveCalls.last.length};
     final savedCount = int.tryParse(response['saved_count']?.toString() ?? '') ?? 0;
@@ -248,6 +258,56 @@ Future<void> _openReview(
     'review',
     'wardrobe-error',
   ]);
+}
+
+/// Same as [_openReview] but wires a real `onSaved` callback through
+/// `showAddToWardrobeModal(context, onSaved: ...)` — the exact public entry
+/// point every active external screen (Home's chat bar, DailyWear, the main
+/// Chat screen) uses to signal a successful save back to WardrobeScreen via
+/// AppwriteService.invalidateWardrobeCache(). Proves the callback-firing
+/// contract itself: exactly one call per successfully ADDED item, never for
+/// FAILED/NEEDS_REVIEW, exactly once on retry/Add-Anyway success.
+Future<void> _openReviewWithOnSaved(
+  WidgetTester tester, {
+  required _FakeBackendService backend,
+  required List<Map<String, dynamic>> items,
+  required void Function(Map<String, dynamic> item) onSaved,
+  List<XFile>? pickedFiles,
+}) async {
+  backend.onAnalyze = (_) => {'items': items};
+  ImagePickerPlatform.instance = _FakeImagePickerPlatform(
+    pickedFiles ?? [
+      XFile.fromData(_onePxPng, mimeType: 'image/png', name: 'pick.png'),
+    ],
+  );
+
+  await tester.pumpWidget(
+    Provider<BackendService>.value(
+      value: backend,
+      child: MaterialApp(
+        theme: ThemeData(
+          useMaterial3: true,
+          extensions: [AppThemeTokens.light(_accent)],
+        ),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: ElevatedButton(
+                onPressed: () =>
+                    showAddToWardrobeModal(context, onSaved: onSaved),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.tap(find.text('open'));
+  await tester.pump();
+  await tester.tap(find.byIcon(Icons.photo_library_outlined));
+  await _pumpUntilKeyFound(tester, const ['review', 'wardrobe-error']);
 }
 
 Future<void> _scrollToAndTapAddOccasion(WidgetTester tester) async {
@@ -843,5 +903,426 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 4));
     expect(tester.takeException(), isNull);
+  });
+
+  // ------------------------------------------------------------------
+  // P0.21 — Wardrobe auto-refresh after successful upload.
+  //
+  // Root cause (see .planning/debug/p0-21-wardrobe-auto-refresh.md and the
+  // pre-commit review): the Wardrobe screen's own camera/lens sheet
+  // (_openLensSheet) is DEAD_CURRENTLY (unreferenced — confirmed via
+  // `flutter analyze`), left untouched. The real active stale-Wardrobe
+  // paths are external screens (Home's chat bar, DailyWear, main Chat) that
+  // called `showAddToWardrobeModal(context)` with no `onSaved` — see the
+  // 'P0.21 cross-screen refresh' group below. The FAB (_openAddModal) keeps
+  // its existing behavior via the extracted `_handleItemSaved` handler.
+  //
+  // These tests exercise the real `_AddItemModal` state machine (via the
+  // fake image picker + fake backend, same harness as the tests above) and
+  // assert on an `onSaved` spy — the actual production callback contract —
+  // not on source string matching.
+  // ------------------------------------------------------------------
+
+  group('P0.21 shared post-save handler', () {
+    test(
+      'source contract: the FAB routes through _handleItemSaved',
+      () {
+        final source = File('lib/wardrobe.dart').readAsStringSync();
+        // _openAddModal's showDialog must hand the modal the extracted
+        // handler, not an inline closure — required so the FAB keeps its
+        // exact pre-existing optimistic-insert + 3308946 reconciliation
+        // behavior unchanged.
+        expect(
+          source.contains('builder: (_) => _AddItemModal(onSave: _handleItemSaved)'),
+          isTrue,
+          reason: 'FAB (_openAddModal) must use the extracted _handleItemSaved handler',
+        );
+      },
+    );
+
+    testWidgets('CASE 1: a single successful item reaches onSaved exactly once automatically', (
+      tester,
+    ) async {
+      final saved = <Map<String, dynamic>>[];
+      final backend = _FakeBackendService();
+      await _openReviewWithOnSaved(
+        tester,
+        backend: backend,
+        items: [_detectedItemJson(id: 'item-1')],
+        onSaved: saved.add,
+      );
+      await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+      await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+      // No manual refresh action taken between save completing and this
+      // assertion — onSaved must already have fired.
+      expect(saved, hasLength(1));
+      expect(saved.single['id'], 'wardrobe-item-1');
+    });
+
+    testWidgets('CASE 3: three successful sequential items all reach onSaved, no duplicates', (
+      tester,
+    ) async {
+      final saved = <Map<String, dynamic>>[];
+      final backend = _FakeBackendService()..onSave = (_) => const {'saved_count': 3};
+      await _openReviewWithOnSaved(
+        tester,
+        backend: backend,
+        items: [
+          _detectedItemJson(id: 'item-a', name: 'Item A'),
+          _detectedItemJson(id: 'item-b', name: 'Item B'),
+          _detectedItemJson(id: 'item-c', name: 'Item C'),
+        ],
+        onSaved: saved.add,
+      );
+      await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+      await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+      expect(saved.map((item) => item['id']).toSet(), {
+        'wardrobe-item-a',
+        'wardrobe-item-b',
+        'wardrobe-item-c',
+      });
+      expect(saved, hasLength(3), reason: 'each item must reach onSaved exactly once');
+    });
+
+    testWidgets('CASE 4: mixed batch (2 ADDED + 1 FAILED) reaches onSaved exactly twice', (
+      tester,
+    ) async {
+      final saved = <Map<String, dynamic>>[];
+      final backend = _FakeBackendService()..onSave = (_) => const {'saved_count': 2};
+      await _openReviewWithOnSaved(
+        tester,
+        backend: backend,
+        items: [
+          _detectedItemJson(id: 'item-a', name: 'Item A'),
+          _detectedItemJson(id: 'item-b', name: 'Item B'),
+          _detectedItemJson(id: 'item-c', name: 'Item C'),
+        ],
+        onSaved: saved.add,
+      );
+      await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+      // 2 of 3 added + 0 reviewable -> results step (not success), matching
+      // _confirmAndSave's step-selection logic.
+      await _pumpUntilKeyFound(tester, const ['wardrobe-upload-results']);
+
+      expect(saved, hasLength(2), reason: 'the FAILED item must never reach onSaved');
+      expect(saved.map((item) => item['id']).toSet(), {
+        'wardrobe-item-a',
+        'wardrobe-item-b',
+      });
+    });
+
+    testWidgets(
+      'CASE 5: duplicate (NEEDS_REVIEW) does not reach onSaved until Add Anyway succeeds, then exactly once',
+      (tester) async {
+        final saved = <Map<String, dynamic>>[];
+        final backend = _FakeBackendService()
+          ..onProcessItem = (id, overrideDuplicate) => overrideDuplicate
+              ? {'status': 'ADDED_TO_WARDROBE', 'wardrobe_item_id': 'wardrobe-$id'}
+              : {
+                  'status': 'NEEDS_REVIEW',
+                  'error_code': 'DUPLICATE_WARDROBE_ITEM',
+                  'matched_item_id': 'existing-item',
+                };
+        await _openReviewWithOnSaved(
+          tester,
+          backend: backend,
+          items: [_detectedItemJson(id: 'dup-item')],
+          onSaved: saved.add,
+        );
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-upload-results']);
+
+        expect(saved, isEmpty, reason: 'a duplicate must not persist before Add Anyway');
+        expect(find.text('Add Anyway'), findsOneWidget);
+
+        await tester.tap(find.text('Add Anyway'));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+        expect(saved, hasLength(1), reason: 'Add Anyway must persist exactly once');
+        expect(saved.single['id'], 'wardrobe-dup-item');
+      },
+    );
+
+    testWidgets('CASE 6: retry after a failure reaches onSaved exactly once', (
+      tester,
+    ) async {
+      final saved = <Map<String, dynamic>>[];
+      var call = 0;
+      final backend = _FakeBackendService()
+        ..onSave = (_) {
+          call++;
+          return {'saved_count': call == 1 ? 0 : 1};
+        };
+      await _openReviewWithOnSaved(
+        tester,
+        backend: backend,
+        items: [_detectedItemJson(id: 'retry-item')],
+        onSaved: saved.add,
+      );
+      await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+      await _pumpUntilKeyFound(tester, const ['wardrobe-error']);
+      expect(saved, isEmpty, reason: 'the initial FAILED attempt must not reach onSaved');
+
+      await tester.tap(find.byKey(const ValueKey('wardrobe-retry-cta')));
+      await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+      expect(saved, hasLength(1), reason: 'the retried success must reach onSaved exactly once');
+      expect(saved.single['id'], 'wardrobe-retry-item');
+    });
+
+    test(
+      'CASE 7 (partial — see report): image reconciliation branch recovered from 3308946 is present',
+      () {
+        // _handleItemSaved's body (Appwrite calls, _fetchWardrobeItems
+        // reconciliation) is private to _WardrobeScreenState and cannot be
+        // driven from a widget test without a full Appwrite-networked
+        // WardrobeScreen mount, which does not exist in this test harness
+        // and is out of scope for this fix (no new Appwrite mocking infra
+        // introduced). This is a pinning check, not behavioral proof —
+        // documented as a known coverage gap in the P0.21 report.
+        final source = File('lib/wardrobe.dart').readAsStringSync();
+        final handlerStart = source.indexOf(
+          'Future<void> _handleItemSaved(Map<String, dynamic> item) async {',
+        );
+        final handlerEnd = source.indexOf(
+          '\n  List<WardrobeItem> get _filtered',
+        );
+        expect(handlerStart, greaterThan(0));
+        expect(handlerEnd, greaterThan(handlerStart));
+        final body = source.substring(handlerStart, handlerEnd);
+        expect(
+          body.contains(
+            "if ((item['catalogStatus'] ?? '').toString() == 'catalog_pending') {",
+          ),
+          isTrue,
+        );
+        expect(
+          body.contains('} else {'),
+          isTrue,
+          reason: 'the non-catalog_pending reconciliation branch recovered from 3308946 must exist',
+        );
+        expect(body.contains('_fetchWardrobeItems();'), isTrue);
+      },
+    );
+  });
+
+  // ------------------------------------------------------------------
+  // P0.21 (continued) — cross-screen refresh for the ACTIVE external
+  // upload entry points. home.dart has NO active add-to-wardrobe call site
+  // of its own — its only live path is _buildChatWrap() -> AhviChatPromptBar
+  // (onAddToWardrobe: null) -> ahvi_chat_prompt_bar.dart's fallback, which is
+  // the same shared call site the main Chat screen and DailyWear's chat bar
+  // use. home.dart's own _openPlusMenu is DEAD_CURRENTLY (unreferenced,
+  // confirmed via `flutter analyze`) and was left untouched (pre-commit
+  // review trim) — not part of this fix.
+  //
+  // Active paths fixed: ahvi_chat_prompt_bar.dart's shared fallback (covers
+  // Home, main Chat, DailyWear's chat bar), and daily_wear.dart's own
+  // empty-state "Add wardrobe" CTA. Both call the existing
+  // AppwriteService.invalidateWardrobeCache() notifier (already used by the
+  // FAB's own manual-add path, previously unconsumed); WardrobeScreen now
+  // listens for it.
+  //
+  // These tests exercise the real modal/save state machine and assert on
+  // AppwriteService's real (already-existing) wardrobeGeneration counter —
+  // not source string matching for the behavioral cases.
+  // ------------------------------------------------------------------
+
+  group('P0.21 cross-screen refresh (Chat bar / DailyWear)', () {
+    void invalidate(Map<String, dynamic> _) =>
+        AppwriteService().invalidateWardrobeCache();
+
+    test(
+      'source contract: each active external entry point signals through AppwriteService.invalidateWardrobeCache()',
+      () {
+        // Matched as two independent fragments (not one exact concatenated
+        // string) since each call site wraps the closure across lines
+        // differently — the point being pinned is "calls showAddToWardrobeModal
+        // with an onSaved that invalidates the cache", not exact formatting.
+        bool wiresInvalidation(String source) =>
+            source.contains('onSaved: (_) =>') &&
+            source.contains('AppwriteService().invalidateWardrobeCache()');
+        final chatBar = File(
+          'lib/widgets/ahvi_chat_prompt_bar.dart',
+        ).readAsStringSync();
+        final dailyWear = File('lib/daily_wear.dart').readAsStringSync();
+        expect(
+          wiresInvalidation(chatBar),
+          isTrue,
+          reason: 'ahvi_chat_prompt_bar.dart (Home chat bar, main Chat, '
+              'DailyWear chat bar, Diet page) must signal invalidation',
+        );
+        expect(
+          wiresInvalidation(dailyWear),
+          isTrue,
+          reason: 'daily_wear.dart empty-state "Add wardrobe" CTA must signal invalidation',
+        );
+      },
+    );
+
+    testWidgets(
+      'CASE A/B/C: a single successful item via the shared external-entry-point pattern bumps wardrobeGeneration exactly once',
+      (tester) async {
+        final before = AppwriteService().wardrobeGeneration;
+        final backend = _FakeBackendService();
+        await _openReviewWithOnSaved(
+          tester,
+          backend: backend,
+          items: [_detectedItemJson(id: 'ext-item')],
+          onSaved: invalidate,
+        );
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+        expect(AppwriteService().wardrobeGeneration, before + 1);
+      },
+    );
+
+    testWidgets(
+      'CASE E (signal fidelity): three successful sequential items bump wardrobeGeneration exactly three times',
+      (tester) async {
+        final before = AppwriteService().wardrobeGeneration;
+        final backend = _FakeBackendService()..onSave = (_) => const {'saved_count': 3};
+        await _openReviewWithOnSaved(
+          tester,
+          backend: backend,
+          items: [
+            _detectedItemJson(id: 'ext-a', name: 'Item A'),
+            _detectedItemJson(id: 'ext-b', name: 'Item B'),
+            _detectedItemJson(id: 'ext-c', name: 'Item C'),
+          ],
+          onSaved: invalidate,
+        );
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+        expect(AppwriteService().wardrobeGeneration, before + 3);
+      },
+    );
+
+    testWidgets(
+      'CASE F: a FAILED item in a mixed batch does not bump wardrobeGeneration',
+      (tester) async {
+        final before = AppwriteService().wardrobeGeneration;
+        final backend = _FakeBackendService()..onSave = (_) => const {'saved_count': 2};
+        await _openReviewWithOnSaved(
+          tester,
+          backend: backend,
+          items: [
+            _detectedItemJson(id: 'ext-d', name: 'Item D'),
+            _detectedItemJson(id: 'ext-e', name: 'Item E'),
+            _detectedItemJson(id: 'ext-f', name: 'Item F'),
+          ],
+          onSaved: invalidate,
+        );
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-upload-results']);
+
+        expect(
+          AppwriteService().wardrobeGeneration,
+          before + 2,
+          reason: 'only the 2 ADDED items may bump the signal, never the FAILED one',
+        );
+      },
+    );
+
+    testWidgets(
+      'CASE F: NEEDS_REVIEW does not bump wardrobeGeneration until Add Anyway succeeds, then exactly once',
+      (tester) async {
+        final before = AppwriteService().wardrobeGeneration;
+        final backend = _FakeBackendService()
+          ..onProcessItem = (id, overrideDuplicate) => overrideDuplicate
+              ? {'status': 'ADDED_TO_WARDROBE', 'wardrobe_item_id': 'wardrobe-$id'}
+              : {
+                  'status': 'NEEDS_REVIEW',
+                  'error_code': 'DUPLICATE_WARDROBE_ITEM',
+                  'matched_item_id': 'existing-item',
+                };
+        await _openReviewWithOnSaved(
+          tester,
+          backend: backend,
+          items: [_detectedItemJson(id: 'ext-dup')],
+          onSaved: invalidate,
+        );
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-upload-results']);
+        expect(
+          AppwriteService().wardrobeGeneration,
+          before,
+          reason: 'a duplicate awaiting review must not signal a persisted change',
+        );
+
+        await tester.tap(find.text('Add Anyway'));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+        expect(AppwriteService().wardrobeGeneration, before + 1);
+      },
+    );
+
+    testWidgets(
+      'CASE E/F: retry after a failure bumps wardrobeGeneration exactly once (only on the retried success)',
+      (tester) async {
+        final before = AppwriteService().wardrobeGeneration;
+        var call = 0;
+        final backend = _FakeBackendService()
+          ..onSave = (_) {
+            call++;
+            return {'saved_count': call == 1 ? 0 : 1};
+          };
+        await _openReviewWithOnSaved(
+          tester,
+          backend: backend,
+          items: [_detectedItemJson(id: 'ext-retry')],
+          onSaved: invalidate,
+        );
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-error']);
+        expect(AppwriteService().wardrobeGeneration, before);
+
+        await tester.tap(find.byKey(const ValueKey('wardrobe-retry-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+        expect(AppwriteService().wardrobeGeneration, before + 1);
+      },
+    );
+
+    test(
+      'CASE D (partial — see report): WardrobeScreen registers/unregisters as an AppwriteService listener and debounce-coalesces before reconciling',
+      () {
+        // Mounting the real WardrobeScreen end-to-end would require a fully
+        // networked Appwrite double (its initState already makes a live
+        // Client()/Databases() call), which is out of scope for this fix —
+        // same limitation as CASE 7 above. This pins the structural wiring:
+        // registration/deregistration lifecycle (no listener leak) and the
+        // generation-compare + debounce Timer (coalescing), not full E2E
+        // proof that a mounted screen visually refreshes.
+        final source = File('lib/wardrobe.dart').readAsStringSync();
+        expect(
+          source.contains('AppwriteService().addListener(_onAppwriteServiceChanged);'),
+          isTrue,
+          reason: 'WardrobeScreen must register for the shared invalidation signal on init',
+        );
+        expect(
+          source.contains('AppwriteService().removeListener(_onAppwriteServiceChanged);'),
+          isTrue,
+          reason: 'WardrobeScreen must unregister on dispose to avoid a listener leak',
+        );
+        final handlerStart = source.indexOf(
+          'void _onAppwriteServiceChanged() {',
+        );
+        expect(handlerStart, greaterThan(0));
+        final handlerBody = source.substring(handlerStart, handlerStart + 500);
+        expect(
+          handlerBody.contains('if (current == _lastSeenWardrobeGeneration) return;'),
+          isTrue,
+          reason: 'must ignore unrelated AppwriteService notifications (only react to real wardrobe changes)',
+        );
+        expect(
+          handlerBody.contains('Timer('),
+          isTrue,
+          reason: 'must debounce so a multi-item batch coalesces into one reconciliation fetch, not N',
+        );
+      },
+    );
   });
 }

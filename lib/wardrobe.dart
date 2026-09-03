@@ -474,12 +474,38 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   AppThemeTokens get t => context.themeTokens;
   final FocusNode _keyboardFocusNode = FocusNode();
 
+  // P0.21: external screens (Home, DailyWear, chat prompt bar) that add a
+  // wardrobe item via showAddToWardrobeModal cannot reach this screen's
+  // private state directly, so they signal completion through the existing
+  // shared AppwriteService.invalidateWardrobeCache() notifier instead. This
+  // screen listens for that and reconciles by calling the existing
+  // _fetchWardrobeItems() — debounced so a multi-item sequential batch
+  // (each successful item bumps the generation once) coalesces into one
+  // fetch instead of one per item.
+  int _lastSeenWardrobeGeneration = 0;
+  Timer? _wardrobeInvalidationDebounce;
+
+  void _onAppwriteServiceChanged() {
+    final current = AppwriteService().wardrobeGeneration;
+    if (current == _lastSeenWardrobeGeneration) return;
+    _lastSeenWardrobeGeneration = current;
+    _wardrobeInvalidationDebounce?.cancel();
+    _wardrobeInvalidationDebounce = Timer(
+      const Duration(milliseconds: 400),
+      () {
+        if (mounted) _fetchWardrobeItems();
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     debugPrint('AHVI_WARDROBE_NAV route_entry scope=wardrobe');
     _loadCachedWardrobe();
     _fetchWardrobeItems();
+    _lastSeenWardrobeGeneration = AppwriteService().wardrobeGeneration;
+    AppwriteService().addListener(_onAppwriteServiceChanged);
   }
 
   @override
@@ -806,6 +832,8 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     _silentWardrobeRefreshScheduled = false;
     // Stop any pending async-catalog refetch/retry after back-nav.
     _catalogRefreshScheduled = false;
+    _wardrobeInvalidationDebounce?.cancel();
+    AppwriteService().removeListener(_onAppwriteServiceChanged);
 
     _keyboardFocusNode.dispose();
     super.dispose();
@@ -835,10 +863,17 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     showDialog(
       context: context,
       barrierColor: t.backgroundPrimary.withValues(alpha: 0.7),
-      builder: (_) => _AddItemModal(
-        onSave: (item) async {
-          // Optimistic local insert + cache, so the UI feels instant.
-          final localItem = WardrobeItem(
+      builder: (_) => _AddItemModal(onSave: _handleItemSaved),
+    );
+  }
+
+  // Post-save handler for the Wardrobe screen's own "+" FAB
+  // (_openAddModal). External screens (Home, DailyWear, chat prompt bar)
+  // can't call this directly — they signal via AppwriteService's shared
+  // invalidation notifier instead (see _onAppwriteServiceChanged above).
+  Future<void> _handleItemSaved(Map<String, dynamic> item) async {
+    // Optimistic local insert + cache, so the UI feels instant.
+    final localItem = WardrobeItem(
             id: item['id'] as String,
             name: _cleanUiText(item['name'], fallback: 'Item'),
             cat: _cleanCategory(item['cat']),
@@ -859,12 +894,24 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
 
           final alreadySavedRemotely = item['remoteSaved'] == true;
           if (alreadySavedRemotely) {
-            // Deferred catalog (WARDROBE_ASYNC_CATALOG): the card currently
-            // shows the cutout; schedule a bounded refetch to swap in the
-            // catalog PNG when the background task lands.
             if ((item['catalogStatus'] ?? '').toString() == 'catalog_pending') {
+              // Deferred catalog (WARDROBE_ASYNC_CATALOG): the card currently
+              // shows the cutout; schedule a bounded refetch to swap in the
+              // catalog PNG when the background task lands.
               _pendingCatalogIds.add(localItem.id);
               _scheduleCatalogRefresh();
+            } else {
+              // Recovered from 3308946: the reviewed-item upload-batch save
+              // path only returns ADDED_TO_WARDROBE after the canonical row
+              // (including normalized_url) is already fully persisted
+              // server-side — nothing is pending, so reconcile the
+              // optimistic placeholder (still showing the preview-time
+              // image) with the real backend row right away instead of
+              // leaving it stale until the user manually pulls to refresh.
+              // Same canonical fetch _runCatalogRefresh already uses;
+              // fire-and-forget so the success toast/modal close isn't
+              // blocked on it.
+              _fetchWardrobeItems();
             }
             if (mounted) {
               _showToast(AppLocalizations.t(context, 'wardrobe_item_saved'));
@@ -1009,9 +1056,6 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
               _showToast('Save failed. Check logs.');
             }
           }
-        },
-      ),
-    );
   }
 
   List<WardrobeItem> get _filtered {
