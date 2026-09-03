@@ -16,7 +16,6 @@
 
 import 'package:myapp/wardrobe.dart';
 import 'package:myapp/util/occasion_normalizer.dart';
-import 'package:myapp/feature/chat/services/fashion_item_filter.dart';
 
 class PairingEngine {
   // ============================================================
@@ -156,6 +155,91 @@ class PairingEngine {
     ...item.occasions,
   ].join(' ').toLowerCase();
 
+  // ============================================================
+  // FASHION ADMISSION FILTER (Works Well With only)
+  // Name-only, token/phrase matched so real fashion names that merely
+  // contain a blocked word ("Bottle Green Shirt", "Box Pleat Skirt") are
+  // never rejected by substring collision. Notes/occasions are excluded
+  // on purpose — a jacket's care notes mentioning "water bottle pocket"
+  // must not disqualify the jacket itself.
+  // ============================================================
+  static const Set<String> _nonFashionPhrases = {
+    'phone charger',
+    'wall charger',
+    'usb charger',
+    'charging cable',
+    'usb cable',
+    'power cable',
+    'laptop adapter',
+    'power adapter',
+    'usb adapter',
+    'water bottle',
+    'tv remote',
+    'remote control',
+    'computer mouse',
+    'wireless mouse',
+    'computer keyboard',
+    'wireless keyboard',
+    'laptop computer',
+    'wireless earbuds',
+    'bluetooth earbuds',
+    'bluetooth headphones',
+    'airpods',
+    'power bank',
+    'powerbank',
+    'power plug',
+    'electrical plug',
+    'charging wire',
+    'electrical wire',
+    'battery pack',
+    'batteries',
+    'bluetooth speaker',
+    'portable speaker',
+    'digital camera',
+    'security camera',
+  };
+
+  static const Set<String> _nonFashionExactNames = {
+    'charger',
+    'cable',
+    'adapter',
+    'laptop',
+    'camera',
+    'keyboard',
+    'mouse',
+    'speaker',
+    'remote',
+  };
+
+  static bool _isFashionItem(WardrobeItem item) {
+    final name = item.name
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim();
+    if (name.isEmpty) return true;
+
+    if (_nonFashionExactNames.contains(name)) return false;
+
+    final nameTokens = name.split(RegExp(r'\s+'));
+    for (final phrase in _nonFashionPhrases) {
+      final phraseTokens = phrase.split(' ');
+      if (phraseTokens.length > nameTokens.length) continue;
+      for (var i = 0; i <= nameTokens.length - phraseTokens.length; i++) {
+        var matches = true;
+        for (var j = 0; j < phraseTokens.length; j++) {
+          final actual = nameTokens[i + j];
+          final expected = phraseTokens[j];
+          if (actual == expected) continue;
+          if (expected == 'battery' && actual == 'batteries') continue;
+          matches = false;
+          break;
+        }
+        if (matches) return false;
+      }
+    }
+    return true;
+  }
+
   static bool _isEthnic(WardrobeItem item) {
     final blob = _blob(item);
     return blob.contains('saree') ||
@@ -234,15 +318,11 @@ class PairingEngine {
     WardrobeItem item,
     List<WardrobeItem> allItems,
   ) {
+    if (!_isFashionItem(item)) return [];
+
     final candidates = allItems
         .where((other) => other.id != item.id)
-        .where(
-          (other) => isFashionItem({
-            'name': other.name,
-            'category': other.cat,
-            'tags': [...other.occasions, other.notes],
-          }),
-        )
+        .where(_isFashionItem)
         .toList();
     final scored = <_ScoredItem>[];
 
