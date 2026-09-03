@@ -312,25 +312,36 @@ void main() {
   });
 
   test('canonical title precedence is stable', () {
+    // P0.8: an explicit backend title now outranks every archetype/strategy
+    // fallback tier — it wins here even though selected_archetype and
+    // style_strategy.archetype are both also present.
     expect(
       resolveOutfitBoardTitle({
         'selected_archetype': {'title': 'Refined Weekend'},
         'style_strategy': {'archetype': 'Understated Polish'},
         'title': 'Legacy Board',
       }),
+      'Legacy Board',
+    );
+    // Without an explicit title, selected_archetype is next.
+    expect(
+      resolveOutfitBoardTitle({
+        'selected_archetype': {'title': 'Refined Weekend'},
+        'style_strategy': {'archetype': 'Understated Polish'},
+      }),
       'Refined Weekend',
     );
+    // Without title or selected_archetype, style_strategy.archetype is next.
     expect(
       resolveOutfitBoardTitle({
         'style_strategy': {'archetype': 'Understated Polish'},
-        'title': 'Legacy Board',
       }),
       'Understated Polish',
     );
+    // Without any archetype tier, style_strategy.direction_title is next.
     expect(
       resolveOutfitBoardTitle({
         'style_strategy': {'direction_title': 'Effortless Edge'},
-        'title': 'Legacy Board',
       }),
       'Effortless Edge',
     );
