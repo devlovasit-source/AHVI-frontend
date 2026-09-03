@@ -29,8 +29,13 @@ Map<String, dynamic> _direction({
 };
 
 void main() {
-  test('story headline is the active title authority', () {
+  test('explicit curated title is the active title authority', () {
     expect(
+      // Style This dynamic-title audit: story.headline is backend canned
+      // copy keyed by occasion/style_direction (see board_storyteller.py
+      // _build_headline) and previously shadowed the curated title,
+      // collapsing distinct boards onto the same headline. The explicit
+      // title now wins whenever it is present.
       resolveOutfitBoardTitle(
         _direction(
           title: 'Backend Board',
@@ -38,7 +43,7 @@ void main() {
           headline: 'Quiet Confidence',
         ),
       ),
-      'Quiet Confidence',
+      'Backend Board',
     );
     expect(
       // P0.8: explicit backend title outranks the generic style_archetype
@@ -69,8 +74,8 @@ void main() {
     );
     final board = styleBoardDataFromOutfitBoardForTesting(model, direction);
 
-    expect(model.title, 'Quiet Confidence');
-    expect(board.title, 'Quiet Confidence');
+    expect(model.title, 'Backend Board');
+    expect(board.title, 'Backend Board');
     expect(board.story?.headline, 'Quiet Confidence');
   });
 
@@ -106,22 +111,24 @@ void main() {
     expect((direction['story'] as Map)['headline'], 'Quiet Confidence');
   });
 
-  testWidgets('canonical renderer displays story headline over archetype', (
-    tester,
-  ) async {
-    final board = StyleBoardData(
-      title: 'Backend Board',
-      styleArchetype: 'Refined Weekend',
-      story: BoardStory.fromJson(const {'headline': 'Quiet Confidence'}),
-      items: const [],
-    );
-    await tester.pumpWidget(
-      MaterialApp(home: AhviStyleBoardRenderer(board: board)),
-    );
+  testWidgets(
+    'canonical renderer displays curated title, not story headline or archetype',
+    (tester) async {
+      final board = StyleBoardData(
+        title: 'Backend Board',
+        styleArchetype: 'Refined Weekend',
+        story: BoardStory.fromJson(const {'headline': 'Quiet Confidence'}),
+        items: const [],
+      );
+      await tester.pumpWidget(
+        MaterialApp(home: AhviStyleBoardRenderer(board: board)),
+      );
 
-    expect(find.text('Quiet Confidence'), findsOneWidget);
-    expect(find.text('Refined Weekend'), findsNothing);
-  });
+      expect(find.text('Backend Board'), findsOneWidget);
+      expect(find.text('Quiet Confidence'), findsNothing);
+      expect(find.text('Refined Weekend'), findsNothing);
+    },
+  );
 
   test('resolved title survives saved-board title round-trip', () {
     const title = 'Quiet Confidence';
@@ -177,18 +184,22 @@ void main() {
     );
   });
 
-  test('CASE 2: story.headline still outranks both title and archetype', () {
-    expect(
-      resolveOutfitBoardTitle(
-        _direction(
-          title: 'Weekend Terrace Brunch',
-          archetype: 'Elevated Essentials',
-          headline: 'Sunday Brunch Edit',
+  test(
+    'CASE 2: explicit title now outranks story.headline (canned/occasion '
+    'headline copy was collapsing distinct boards onto one title)',
+    () {
+      expect(
+        resolveOutfitBoardTitle(
+          _direction(
+            title: 'Weekend Terrace Brunch',
+            archetype: 'Elevated Essentials',
+            headline: 'Sunday Brunch Edit',
+          ),
         ),
-      ),
-      'Sunday Brunch Edit',
-    );
-  });
+        'Weekend Terrace Brunch',
+      );
+    },
+  );
 
   test('CASE 3: style_archetype remains the fallback when title is absent', () {
     expect(
@@ -277,7 +288,7 @@ void main() {
   // disturbed by reordering the explicit-title check.
   // ------------------------------------------------------------------
 
-  test('regression guard: headline retains highest authority', () {
+  test('regression guard: explicit title retains highest authority', () {
     expect(
       resolveOutfitBoardTitle(
         _direction(
@@ -286,9 +297,72 @@ void main() {
           headline: 'Quiet Confidence',
         ),
       ),
+      'Weekend Terrace Brunch',
+    );
+  });
+
+  test('regression guard: headline is used only when no explicit title exists', () {
+    expect(
+      resolveOutfitBoardTitle(
+        _direction(archetype: 'Elevated Essentials', headline: 'Quiet Confidence'),
+      ),
       'Quiet Confidence',
     );
   });
+
+  // ------------------------------------------------------------------
+  // Style This dynamic-title audit — proves distinct garments no longer
+  // collapse onto the same backend canned headline (e.g. "Elevated
+  // Essentials"/board_storyteller's occasion-keyed headline copy) when
+  // each direction carries its own curated title. Fixtures mirror the
+  // real backend shape: card["title"] (curated, per-card) +
+  // card["style_archetype"] (shared generic label) + story.headline
+  // (shared canned occasion/direction copy) all populated at once,
+  // as produced by services/style_flow_service.py + board_storyteller.py.
+  // ------------------------------------------------------------------
+
+  test(
+    'DISTINCT_TITLE_TEST: Pink Jacket, Black Blazer, and Saree resolve to '
+    'distinct curated titles despite sharing one generic archetype and one '
+    'generic canned headline',
+    () {
+      const sharedArchetype = 'Elevated Essentials';
+      const sharedHeadline = 'Composed Formal'; // e.g. board_storyteller's
+      // formal_event canned headline — identical across every board in one
+      // Style-This response, regardless of the anchor garment.
+
+      final pinkJacket = _direction(
+        title: 'Pink Jacket Evening Edit',
+        archetype: sharedArchetype,
+        headline: sharedHeadline,
+      );
+      final blackBlazer = _direction(
+        title: 'Black Blazer Power Look',
+        archetype: sharedArchetype,
+        headline: sharedHeadline,
+      );
+      final saree = _direction(
+        title: 'Saree Festive Drape',
+        archetype: sharedArchetype,
+        headline: sharedHeadline,
+      );
+
+      final titles = [
+        resolveOutfitBoardTitle(pinkJacket),
+        resolveOutfitBoardTitle(blackBlazer),
+        resolveOutfitBoardTitle(saree),
+      ];
+
+      expect(titles, [
+        'Pink Jacket Evening Edit',
+        'Black Blazer Power Look',
+        'Saree Festive Drape',
+      ]);
+      expect(titles.toSet().length, 3, reason: 'titles must not collapse');
+      expect(titles, isNot(contains(sharedArchetype)));
+      expect(titles, isNot(contains(sharedHeadline)));
+    },
+  );
 
   test('regression guard: style_strategy.archetype fallback remains intact', () {
     expect(

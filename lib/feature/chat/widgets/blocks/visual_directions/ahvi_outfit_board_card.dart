@@ -2562,17 +2562,17 @@ String _selectedArchetypeTitle(Map<String, dynamic> direction) {
 }
 
 /// Canonical primary title shared by the live card and its detail sheet.
+///
+/// Explicit backend-curated title (e.g. Gemini-curated editorial copy)
+/// outranks both story.headline and the generic style_archetype label.
+/// board_storyteller's story.headline is built from a small occasion/
+/// style_direction-keyed canned-phrase table (see _build_headline in
+/// brain/response/board_storyteller.py) and only falls back to the card's
+/// own curated title when no canned phrase matches — so it is never more
+/// specific than the explicit title, and multiple boards sharing an
+/// occasion/direction in one response previously collapsed onto the same
+/// canned headline (Style This dynamic-title audit).
 String resolveOutfitBoardTitle(Map<String, dynamic> direction) {
-  final rawStory = direction['story'];
-  final story = BoardStory.fromJson(
-    rawStory is Map ? Map<String, dynamic>.from(rawStory) : null,
-  );
-  if (story.headline?.trim().isNotEmpty == true) return story.headline!.trim();
-
-  // Explicit backend-curated title (e.g. Gemini-curated editorial copy)
-  // outranks the generic style_archetype label — see P0.8: the backend
-  // always populates both fields, and the archetype label was masking the
-  // curated title on the primary live generation path.
   final explicitTitle = _text(
     direction['title'] ?? direction['board_title'] ?? direction['boardTitle'],
   );
@@ -2581,6 +2581,12 @@ String resolveOutfitBoardTitle(Map<String, dynamic> direction) {
         ? 'Try-On'
         : explicitTitle;
   }
+
+  final rawStory = direction['story'];
+  final story = BoardStory.fromJson(
+    rawStory is Map ? Map<String, dynamic>.from(rawStory) : null,
+  );
+  if (story.headline?.trim().isNotEmpty == true) return story.headline!.trim();
 
   final selectedArchetype = _selectedArchetypeTitle(direction);
   if (selectedArchetype.isNotEmpty) return selectedArchetype;

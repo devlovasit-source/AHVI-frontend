@@ -63,9 +63,9 @@ class AhviStyleBoardRenderer extends StatelessWidget {
   Widget build(BuildContext context) {
     final story = board.story;
     final occasionLabel = board.roleLabel?.trim();
-    final generatedTitle = (story?.headline?.trim().isNotEmpty == true)
-        ? story!.headline!.trim()
-        : board.title;
+    final generatedTitle = board.title.trim().isNotEmpty
+        ? board.title.trim()
+        : (story?.headline?.trim() ?? '');
     final title = generatedTitle.trim().isNotEmpty
         ? generatedTitle.trim()
         : (board.styleArchetype?.trim().isNotEmpty == true
