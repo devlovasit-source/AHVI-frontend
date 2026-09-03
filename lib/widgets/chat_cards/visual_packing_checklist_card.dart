@@ -20,10 +20,10 @@ class VisualPackingChecklistPayload {
     final rawSections = card['visual_sections'] ?? card['visualSections'];
     final sections = rawSections is List
         ? rawSections
-              .whereType<Map>()
-              .map((item) => Map<String, dynamic>.from(item))
-              .where((item) => item['items'] is List)
-              .toList(growable: false)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((item) => item['items'] is List)
+        .toList(growable: false)
         : const <Map<String, dynamic>>[];
     final rawActions = card['actions'];
     return VisualPackingChecklistPayload(
@@ -33,10 +33,10 @@ class VisualPackingChecklistPayload {
       actions: rawActions is List && rawActions.isNotEmpty
           ? List<dynamic>.from(rawActions)
           : const [
-              {'label': 'Open checklist'},
-              {'label': 'Plan outfits'},
-              {'label': 'Weather prep'},
-            ],
+        {'label': 'Open checklist'},
+        {'label': 'Plan outfits'},
+        {'label': 'Weather prep'},
+      ],
     );
   }
 
@@ -106,7 +106,7 @@ class _VisualPackingChecklistCardState
     final ratio = progress.$2 == 0 ? 0.0 : progress.$1 / progress.$2;
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(left: 4, right: 20, bottom: 96),
+      margin: const EdgeInsets.only(left: 0, right: 4, bottom: 8),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
         color: t.panel,
@@ -178,7 +178,7 @@ class _VisualPackingChecklistCardState
               const gap = 10.0;
               final width =
                   ((constraints.maxWidth - gap * (columns - 1)) / columns) -
-                  0.5;
+                      0.5;
               return Wrap(
                 spacing: gap,
                 runSpacing: gap,
@@ -192,8 +192,7 @@ class _VisualPackingChecklistCardState
               );
             },
           ),
-          const SizedBox(height: 14),
-          _actionRow(t),
+
         ],
       ),
     );
@@ -218,34 +217,59 @@ class _VisualPackingChecklistCardState
 
   Widget _heroVisual(AppThemeTokens t) {
     return SizedBox(
-      width: 96,
-      height: 92,
+      width: 104,
+      height: 104,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
+          // soft backdrop
           Positioned(
-            right: 4,
-            top: 16,
+            right: 2,
+            top: 8,
             child: Container(
-              width: 70,
-              height: 70,
+              width: 82,
+              height: 82,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: t.accent.secondary.withValues(alpha: 0.16),
+                color: t.accent.secondary.withValues(alpha: 0.14),
               ),
             ),
           ),
+          // sun hat — brim + dome, tilted
           Positioned(
             left: 0,
-            top: 22,
-            child: Icon(
-              Icons.cloud_rounded,
-              size: 16,
-              color: t.accent.secondary.withValues(alpha: 0.55),
+            top: 10,
+            child: Transform.rotate(
+              angle: -0.32,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: t.accent.secondary.withValues(alpha: 0.9),
+                    ),
+                  ),
+                  Transform.translate(
+                    offset: const Offset(0, -7),
+                    child: Container(
+                      width: 38,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: t.accent.secondary,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
+          // airplane trail
           Positioned(
-            right: 0,
+            right: 2,
             top: 0,
             child: Icon(
               Icons.flight_rounded,
@@ -253,51 +277,73 @@ class _VisualPackingChecklistCardState
               color: t.accent.primary.withValues(alpha: 0.85),
             ),
           ),
+          // suitcase handle
           Positioned(
-            right: 18,
-            bottom: 4,
+            right: 34,
+            bottom: 62,
             child: Container(
-              width: 46,
-              height: 54,
+              width: 22,
+              height: 15,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    t.accent.secondary.withValues(alpha: 0.55),
-                    t.accent.primary.withValues(alpha: 0.45),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(6),
                 border: Border.all(
-                  color: t.accent.primary.withValues(alpha: 0.45),
-                  width: 1.4,
-                ),
-              ),
-              alignment: Alignment.center,
-              child: Container(
-                width: 16,
-                height: 3,
-                decoration: BoxDecoration(
-                  color: t.panel.withValues(alpha: 0.8),
-                  borderRadius: BorderRadius.circular(999),
+                  color: t.accent.primary.withValues(alpha: 0.85),
+                  width: 2.2,
                 ),
               ),
             ),
           ),
+          // suitcase body
           Positioned(
-            right: 0,
+            right: 14,
+            bottom: 4,
+            child: Container(
+              width: 56,
+              height: 62,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: t.accent.primary.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(
+                  color: t.accent.primary,
+                  width: 1.4,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 24,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: t.panel.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Container(
+                    width: 36,
+                    height: 1.4,
+                    color: t.panel.withValues(alpha: 0.35),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // passport badge
+          Positioned(
+            left: 8,
             bottom: 0,
             child: Container(
-              width: 22,
-              height: 28,
+              width: 20,
+              height: 26,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: t.accent.primary,
                 borderRadius: BorderRadius.circular(5),
                 border: Border.all(color: t.panel, width: 1.6),
               ),
-              child: Icon(Icons.menu_book_rounded, size: 12, color: t.panel),
+              child: Icon(Icons.menu_book_rounded, size: 11, color: t.panel),
             ),
           ),
         ],
@@ -306,22 +352,27 @@ class _VisualPackingChecklistCardState
   }
 
   Widget _sectionCard(
-    Map<String, dynamic> section,
-    int number,
-    AppThemeTokens t,
-  ) {
+      Map<String, dynamic> section,
+      int number,
+      AppThemeTokens t,
+      ) {
     final title = (section['title'] ?? section['label'] ?? 'Section')
         .toString()
         .trim();
     final items = _items(section);
-    final shown = items.take(4).toList(growable: false);
     final id = (section['id'] ?? title).toString().toLowerCase();
     return Container(
       padding: const EdgeInsets.fromLTRB(11, 11, 11, 12),
       decoration: BoxDecoration(
-        color: t.card.withValues(alpha: 0.55),
+        color: t.panel,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: t.cardBorder.withValues(alpha: 0.85)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -367,22 +418,32 @@ class _VisualPackingChecklistCardState
             ],
           ),
           const SizedBox(height: 11),
-          if (shown.isNotEmpty)
+          if (items.isNotEmpty)
             LayoutBuilder(
               builder: (context, constraints) {
                 const gap = 6.0;
-                final rawWidth =
-                    (constraints.maxWidth - gap * (shown.length - 1)) /
-                    shown.length;
-                final tileWidth = rawWidth.clamp(0.0, 110.0);
-                return Row(
+                const columns =
+                2; // fixed so tiles are the same size in every grid
+                final tileWidth =
+                ((constraints.maxWidth - gap * (columns - 1)) / columns)
+                    .clamp(0.0, 78.0);
+                final row = Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (var i = 0; i < shown.length; i++) ...[
+                    for (var i = 0; i < items.length; i++) ...[
                       if (i > 0) const SizedBox(width: gap),
-                      SizedBox(width: tileWidth, child: _itemTile(shown[i], t)),
+                      SizedBox(
+                        width: tileWidth,
+                        child: _itemTile(items[i], t),
+                      ),
                     ],
                   ],
+                );
+                if (items.length <= columns) return row;
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const ClampingScrollPhysics(),
+                  child: row,
                 );
               },
             ),
@@ -402,7 +463,7 @@ class _VisualPackingChecklistCardState
         ),
         const SizedBox(height: 5),
         SizedBox(
-          height: 26,
+          height: 22,
           child: Text(
             label.isEmpty ? 'Item' : label,
             maxLines: 2,
@@ -410,13 +471,13 @@ class _VisualPackingChecklistCardState
             textAlign: TextAlign.center,
             style: TextStyle(
               color: t.textPrimary,
-              fontSize: 9.8,
+              fontSize: 9.0,
               height: 1.12,
               fontWeight: FontWeight.w600,
             ),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 3),
         InkWell(
           customBorder: const CircleBorder(),
           onTap: () => setState(() {
@@ -426,7 +487,7 @@ class _VisualPackingChecklistCardState
             done
                 ? Icons.check_circle_rounded
                 : Icons.radio_button_unchecked_rounded,
-            size: 20,
+            size: 18,
             color: done
                 ? t.accent.primary
                 : t.mutedText.withValues(alpha: 0.55),
@@ -437,7 +498,7 @@ class _VisualPackingChecklistCardState
   }
 
   Widget _actionRow(AppThemeTokens t) {
-    final pills = <Widget>[];
+    final chips = <Widget>[];
     for (final raw in _payload.actions.take(3)) {
       final action = raw is Map
           ? Map<String, dynamic>.from(raw)
@@ -446,45 +507,65 @@ class _VisualPackingChecklistCardState
           .toString()
           .trim();
       if (label.isEmpty) continue;
-      pills.add(
-        GestureDetector(
-          onTap: widget.onAction == null ? null : () => widget.onAction!(label),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: t.accent.primary.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: t.accent.primary.withValues(alpha: 0.18),
+      chips.add(
+        Expanded(
+          child: GestureDetector(
+            onTap: widget.onAction == null
+                ? null
+                : () => widget.onAction!(label),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 12,
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  packingActionIconForLabel(label),
-                  size: 14,
-                  color: t.accent.primary,
+              decoration: BoxDecoration(
+                color: t.accent.primary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: t.accent.primary.withValues(alpha: 0.22),
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  softWrap: false,
-                  style: TextStyle(
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    packingActionIconForLabel(label),
+                    size: 15,
                     color: t.accent.primary,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: t.accent.primary,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 15,
+                    color: t.accent.primary.withValues(alpha: 0.6),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       );
     }
-    return pills.isEmpty
-        ? const SizedBox.shrink()
-        : Wrap(spacing: 8, runSpacing: 8, children: pills);
+    if (chips.isEmpty) return const SizedBox.shrink();
+    final row = <Widget>[];
+    for (var i = 0; i < chips.length; i++) {
+      if (i > 0) row.add(const SizedBox(width: 8));
+      row.add(chips[i]);
+    }
+    return Row(children: row);
   }
 }
 
@@ -633,11 +714,11 @@ class PackingThumb extends StatelessWidget {
         .trim();
     final icon =
         packingIconForKey(iconKey) ??
-        packingSectionIconForKey(
-          (item['section'] ?? item['category'] ?? label)
-              .toString()
-              .toLowerCase(),
-        );
+            packingSectionIconForKey(
+              (item['section'] ?? item['category'] ?? label)
+                  .toString()
+                  .toLowerCase(),
+            );
     final iconSize = fill ? 22.0 : size * 0.46;
     Widget child;
     if (imageUrl.isNotEmpty) {
@@ -661,9 +742,9 @@ class PackingThumb extends StatelessWidget {
       width: fill ? double.infinity : size,
       height: fill ? double.infinity : size,
       decoration: BoxDecoration(
-        color: t.accent.primary.withValues(alpha: 0.09),
+        color: t.panel,
         borderRadius: BorderRadius.circular(round ? 999 : 12),
-        border: round ? null : Border.all(color: t.cardBorder),
+
       ),
       clipBehavior: Clip.antiAlias,
       alignment: Alignment.center,

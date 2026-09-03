@@ -1187,6 +1187,7 @@
   "wardrobe_category_tops": "Tops",
   "wardrobe_change": "Change",
   "wardrobe_chat_greeting": "Hello! 👗 I'm your Wardrobe AI Assistant.\n\nI can help you organise your closet, plan outfits from what you already own, identify missing essentials, and build a wardrobe that truly works for you. Where shall we start?",
+  "prep_chat_greeting": "Hey! I'm AHVI AI Assistant.\nI'll help you get organised and stay ahead. What are you preparing for?",
   "wardrobe_copy_clipboard": "Copied to clipboard",
   "wardrobe_could_not_load_images": "Could not load images. Please try again.",
   "wardrobe_could_not_remove": "Could not remove \"{item}\" from cloud. Please try again.",

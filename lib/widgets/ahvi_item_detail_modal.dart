@@ -43,31 +43,31 @@ const Color _kSuccessColor = Color(0xFF34C759);
 const Color _kDangerColor = Color(0xFFA32D2D);
 
 typedef StyleWardrobeItemCall =
-    Future<Map<String, dynamic>?> Function({
-      required String itemId,
-      required String scenario,
-      Map<String, dynamic>? anchorItem,
-      String? occasion,
-    });
+Future<Map<String, dynamic>?> Function({
+required String itemId,
+required String scenario,
+Map<String, dynamic>? anchorItem,
+String? occasion,
+});
 
 // ============================================================
 // PUBLIC ENTRY POINT
 // ============================================================
 Future<void> showItemDetailModal(
-  BuildContext context, {
-  required WardrobeItem item,
-  required List<WardrobeItem> allItems,
-  Future<bool> Function(WardrobeItem item)? onWore,
-  VoidCallback? onEdit,
-  VoidCallback? onLike,
-  VoidCallback? onShare,
-  VoidCallback? onRemove,
-  VoidCallback? onBuildOutfit,
-  VoidCallback? onViewWearHistory,
-  VoidCallback? onSetWearReminder,
-  VoidCallback? onSetCareReminder,
-  StyleWardrobeItemCall? styleWardrobeItemCall,
-}) {
+    BuildContext context, {
+      required WardrobeItem item,
+      required List<WardrobeItem> allItems,
+      Future<bool> Function(WardrobeItem item)? onWore,
+      VoidCallback? onEdit,
+      VoidCallback? onLike,
+      VoidCallback? onShare,
+      VoidCallback? onRemove,
+      VoidCallback? onBuildOutfit,
+      VoidCallback? onViewWearHistory,
+      VoidCallback? onSetWearReminder,
+      VoidCallback? onSetCareReminder,
+      StyleWardrobeItemCall? styleWardrobeItemCall,
+    }) {
   return showDialog<void>(
     context: context,
     useRootNavigator: true,
@@ -197,13 +197,13 @@ class _ItemDetailModal extends StatelessWidget {
                         _Pill(
                           label: item.worn == 0
                               ? AppLocalizations.t(
-                                  context,
-                                  'item_detail_never_worn',
-                                )
+                            context,
+                            'item_detail_never_worn',
+                          )
                               : AppLocalizations.t(
-                                  context,
-                                  'item_detail_worn_times',
-                                ).replaceAll('{n}', '${item.worn}'),
+                            context,
+                            'item_detail_worn_times',
+                          ).replaceAll('{n}', '${item.worn}'),
                           bg: const Color(0xFFF2F2F7),
                           fg: const Color(0xFF8A8A8E),
                         ),
@@ -224,31 +224,31 @@ class _ItemDetailModal extends StatelessWidget {
                             ),
                             clipBehavior: Clip.antiAlias,
                             child:
+                            item
+                                .resolveImage(
+                              surface: 'wardrobe_detail',
+                            )
+                                .url !=
+                                null &&
                                 item
-                                            .resolveImage(
-                                              surface: 'wardrobe_detail',
-                                            )
-                                            .url !=
-                                        null &&
-                                    item
-                                        .resolveImage(
-                                          surface: 'wardrobe_detail',
-                                        )
-                                        .url!
-                                        .isNotEmpty
+                                    .resolveImage(
+                                  surface: 'wardrobe_detail',
+                                )
+                                    .url!
+                                    .isNotEmpty
                                 ? Image.network(
-                                    item
-                                        .resolveImage(
-                                          surface: 'wardrobe_detail',
-                                        )
-                                        .url!,
-                                    fit: BoxFit.contain,
-                                  )
+                              item
+                                  .resolveImage(
+                                surface: 'wardrobe_detail',
+                              )
+                                  .url!,
+                              fit: BoxFit.contain,
+                            )
                                 : const Icon(
-                                    Icons.checkroom,
-                                    size: 64,
-                                    color: Color(0xFFBFBFD6),
-                                  ),
+                              Icons.checkroom,
+                              size: 64,
+                              color: Color(0xFFBFBFD6),
+                            ),
                           ),
                         );
 
@@ -296,12 +296,12 @@ class _ItemDetailModal extends StatelessWidget {
                         children: item.occasions
                             .map(
                               (o) => _Pill(
-                                label: o,
-                                bg: const Color(0xFFF7F7FB),
-                                fg: const Color(0xFF3C3C43),
-                                border: const Color(0xFFE5E5EA),
-                              ),
-                            )
+                            label: o,
+                            bg: const Color(0xFFF7F7FB),
+                            fg: const Color(0xFF3C3C43),
+                            border: const Color(0xFFE5E5EA),
+                          ),
+                        )
                             .toList(),
                       ),
                       const SizedBox(height: 16),
@@ -431,10 +431,10 @@ class _ItemDetailModal extends StatelessWidget {
   }
 
   Future<void> _runStyleCta(
-    BuildContext context,
-    WardrobeItem item, {
-    required String mode,
-  }) async {
+      BuildContext context,
+      WardrobeItem item, {
+        required String mode,
+      }) async {
     final rootNav = Navigator.of(context, rootNavigator: true);
     final BuildContext appContext = rootNav.context;
     await _performStyleRequest(appContext, item, mode: mode);
@@ -451,10 +451,10 @@ class _ItemDetailModal extends StatelessWidget {
   // Curated Assets" fallback without trying to pop anything extra.
   // ============================================================
   Future<void> _performStyleRequest(
-    BuildContext appContext,
-    WardrobeItem item, {
-    required String mode,
-  }) async {
+      BuildContext appContext,
+      WardrobeItem item, {
+        required String mode,
+      }) async {
     final rootNav = Navigator.of(appContext, rootNavigator: true);
     final diagnosticCorrelationId = AhviStyleDiagnostics.nextCorrelationId();
 
@@ -465,35 +465,51 @@ class _ItemDetailModal extends StatelessWidget {
     showDialog<void>(
       context: appContext,
       barrierDismissible: false,
-      builder: (dialogContext) => Center(
-        child: mode == 'style_this'
-            ? ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(dialogContext).size.width * 0.82,
-                ),
-                child: AhviStyleThisProcessingCard(itemName: item.name),
-              )
-            : ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 300),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.20),
-                        blurRadius: 28,
-                        offset: const Offset(0, 10),
+      builder: (dialogContext) {
+        final size = MediaQuery.sizeOf(dialogContext);
+        final maxWidth = size.width * 0.86;
+        final maxHeight = size.height * 0.72;
+
+        // Keep the processing surface inside the viewport on small phones.
+        // The card itself remains unchanged; if its content becomes taller
+        // than the available height, it can scroll instead of overflowing.
+        return SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: maxWidth,
+                maxHeight: maxHeight,
+              ),
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                padding: const EdgeInsets.all(2),
+                child: mode == 'style_this'
+                    ? AhviStyleThisProcessingCard(itemName: item.name)
+                    : ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 300),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.20),
+                          blurRadius: 28,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: AhviProcessingBubble(
+                      message: ahviProcessingMessage(
+                        AhviProcessingContext.buildOutfit,
                       ),
-                    ],
-                  ),
-                  child: AhviProcessingBubble(
-                    message: ahviProcessingMessage(
-                      AhviProcessingContext.buildOutfit,
                     ),
                   ),
                 ),
               ),
-      ),
+            ),
+          ),
+        );
+      },
     );
 
     debugPrint('AHVI_MODAL_GUARD start flow=styleCta mode=$mode');
@@ -507,8 +523,8 @@ class _ItemDetailModal extends StatelessWidget {
           styleWardrobeItemCall ?? BackendService().styleWardrobeItem;
       debugPrint(
         'AHVI_STYLE_THIS_REQUEST correlation_id=$diagnosticCorrelationId '
-        'anchor_item_id=${AhviStyleDiagnostics.maskIdentifier(item.id)} '
-        'scenario=$mode source_policy=wardrobe',
+            'anchor_item_id=${AhviStyleDiagnostics.maskIdentifier(item.id)} '
+            'scenario=$mode source_policy=wardrobe',
       );
       result = await request(
         itemId: item.id,
@@ -555,21 +571,21 @@ class _ItemDetailModal extends StatelessWidget {
     final resultOutfit = result?['outfit'] ?? resultData['outfit'];
     final resultItems = resultOutfit is Map
         ? (resultOutfit['items'] ??
-              resultOutfit['board_items'] ??
-              resultOutfit['boardItems'])
+        resultOutfit['board_items'] ??
+        resultOutfit['boardItems'])
         : null;
     debugPrint(
       'AHVI_LIVE_STYLE_HANDLER '
-      'source_file=ahvi_item_detail_modal.dart function=_performStyleRequest '
-      'resolved_route=$mode board_policy=wardrobe '
-      'selected_alias=${resultOutfit is Map ? 'outfit' : 'none'} '
-      'raw_count=${resultOutfit is Map ? 1 : 0} '
-      'accepted_count=${resultOutfit is Map ? 1 : 0} rejected_count=0 '
-      'rejection_predicates=none '
-      'first_board_keys=${resultOutfit is Map ? resultOutfit.keys.join(',') : 'none'} '
-      'first_item_keys=${resultItems is List && resultItems.isNotEmpty && resultItems.first is Map ? (resultItems.first as Map).keys.join(',') : 'none'} '
-      'final_renderer=${mode == 'build_outfit' && resultOutfit is Map ? 'canonical_editorial_style' : 'pending'} '
-      'final_rendered_count=${resultOutfit is Map ? 1 : 0}',
+          'source_file=ahvi_item_detail_modal.dart function=_performStyleRequest '
+          'resolved_route=$mode board_policy=wardrobe '
+          'selected_alias=${resultOutfit is Map ? 'outfit' : 'none'} '
+          'raw_count=${resultOutfit is Map ? 1 : 0} '
+          'accepted_count=${resultOutfit is Map ? 1 : 0} rejected_count=0 '
+          'rejection_predicates=none '
+          'first_board_keys=${resultOutfit is Map ? resultOutfit.keys.join(',') : 'none'} '
+          'first_item_keys=${resultItems is List && resultItems.isNotEmpty && resultItems.first is Map ? (resultItems.first as Map).keys.join(',') : 'none'} '
+          'final_renderer=${mode == 'build_outfit' && resultOutfit is Map ? 'canonical_editorial_style' : 'pending'} '
+          'final_rendered_count=${resultOutfit is Map ? 1 : 0}',
     );
 
     if (!appContext.mounted) return;
@@ -587,13 +603,13 @@ class _ItemDetailModal extends StatelessWidget {
       final diagnosticDirections = _styleThisDirectionsFromResponse(result);
       final diagnosticFailures = diagnosticDirections.isEmpty
           ? [
-              const ['visual_directions'],
-            ]
+        const ['visual_directions'],
+      ]
           : diagnosticDirections
-                .map(
-                  (direction) => _directionContractFailures(direction, item.id),
-                )
-                .toList(growable: false);
+          .map(
+            (direction) => _directionContractFailures(direction, item.id),
+      )
+          .toList(growable: false);
       AhviStyleDiagnostics.logStyleThisContract(
         correlationId: diagnosticCorrelationId,
         response: result,
@@ -630,7 +646,7 @@ class _ItemDetailModal extends StatelessWidget {
     // dropping the user into an empty/broken result sheet.
     final bool insufficientWardrobe =
         result?['intent'] == 'insufficient_wardrobe' ||
-        result?['alert'] == true;
+            result?['alert'] == true;
     if (insufficientWardrobe) {
       _showInsufficientWardrobeAlert(appContext, item: item, result: result!);
       return;
@@ -640,9 +656,9 @@ class _ItemDetailModal extends StatelessWidget {
   }
 
   List<Map<String, dynamic>> _canonicalStyleThisDirections(
-    Map<String, dynamic>? result,
-    String anchorItemId,
-  ) {
+      Map<String, dynamic>? result,
+      String anchorItemId,
+      ) {
     if (result == null) return const [];
     final parsed = parseAhviResponse(result);
     AhviResponseBlock? visualDirectionsBlock;
@@ -655,39 +671,39 @@ class _ItemDetailModal extends StatelessWidget {
     final rawDirections = _asMapList(visualDirectionsBlock?.data['directions']);
     final directions = rawDirections
         .map((direction) {
-          final interactionMode = (direction['interaction_mode'] ?? '')
-              .toString()
-              .trim();
-          return <String, dynamic>{
-            ...direction,
-            if (interactionMode.isEmpty) 'interaction_mode': 'style_this',
-            'anchor_item_id':
-                direction['anchor_item_id'] ??
-                direction['anchorItemId'] ??
-                direction['selected_item_id'] ??
-                direction['selectedItemId'] ??
-                anchorItemId,
-            'selected_item_id':
-                direction['selected_item_id'] ??
-                direction['selectedItemId'] ??
-                direction['anchor_item_id'] ??
-                direction['anchorItemId'] ??
-                anchorItemId,
-            'originating_item_id': anchorItemId,
-          };
-        })
+      final interactionMode = (direction['interaction_mode'] ?? '')
+          .toString()
+          .trim();
+      return <String, dynamic>{
+        ...direction,
+        if (interactionMode.isEmpty) 'interaction_mode': 'style_this',
+        'anchor_item_id':
+        direction['anchor_item_id'] ??
+            direction['anchorItemId'] ??
+            direction['selected_item_id'] ??
+            direction['selectedItemId'] ??
+            anchorItemId,
+        'selected_item_id':
+        direction['selected_item_id'] ??
+            direction['selectedItemId'] ??
+            direction['anchor_item_id'] ??
+            direction['anchorItemId'] ??
+            anchorItemId,
+        'originating_item_id': anchorItemId,
+      };
+    })
         .toList(growable: false);
     return directions
         .where(
           (direction) =>
-              _directionContractFailures(direction, anchorItemId).isEmpty,
-        )
+      _directionContractFailures(direction, anchorItemId).isEmpty,
+    )
         .toList(growable: false);
   }
 
   List<Map<String, dynamic>> _styleThisDirectionsFromResponse(
-    Map<String, dynamic>? result,
-  ) {
+      Map<String, dynamic>? result,
+      ) {
     if (result == null) return const [];
     final parsed = parseAhviResponse(result);
     for (final block in parsed.blocks) {
@@ -699,9 +715,9 @@ class _ItemDetailModal extends StatelessWidget {
   }
 
   List<String> _styleThisContractFailures(
-    Map<String, dynamic>? result,
-    String anchorItemId,
-  ) {
+      Map<String, dynamic>? result,
+      String anchorItemId,
+      ) {
     if (result == null) return const ['response'];
     if (result['success'] != true) return const ['success'];
     final parsed = parseAhviResponse(result);
@@ -720,9 +736,9 @@ class _ItemDetailModal extends StatelessWidget {
   }
 
   List<String> _directionContractFailures(
-    Map<String, dynamic> direction,
-    String anchorItemId,
-  ) {
+      Map<String, dynamic> direction,
+      String anchorItemId,
+      ) {
     final failures = <String>[];
     final boardId = (direction['board_id'] ?? '').toString().trim();
     final revision = direction['revision'];
@@ -732,13 +748,13 @@ class _ItemDetailModal extends StatelessWidget {
         .toString()
         .trim();
     final declaredAnchor =
-        (direction['anchor_item_id'] ??
-                direction['anchorItemId'] ??
-                direction['originating_item_id'] ??
-                direction['originatingItemId'] ??
-                '')
-            .toString()
-            .trim();
+    (direction['anchor_item_id'] ??
+        direction['anchorItemId'] ??
+        direction['originating_item_id'] ??
+        direction['originatingItemId'] ??
+        '')
+        .toString()
+        .trim();
     final items = _asMapList(
       direction['board_items'] ?? direction['boardItems'],
     );
@@ -768,27 +784,71 @@ class _ItemDetailModal extends StatelessWidget {
   }
 
   void _showStyleRequestFailure(
-    BuildContext appContext, {
-    required WardrobeItem item,
-    required String message,
-    required List<String> failedFields,
-  }) {
+      BuildContext appContext, {
+        required WardrobeItem item,
+        required String message,
+        required List<String> failedFields,
+      }) {
     debugPrint(
       'AHVI_STYLE_THIS_CONTRACT_FAILED '
-      'anchor_item_id=${AhviStyleDiagnostics.maskIdentifier(item.id)} '
-      'failed_fields=${failedFields.isEmpty ? "unknown" : failedFields.join(",")}',
+          'anchor_item_id=${AhviStyleDiagnostics.maskIdentifier(item.id)} '
+          'failed_fields=${failedFields.isEmpty ? "unknown" : failedFields.join(",")}',
     );
-    ScaffoldMessenger.maybeOf(appContext)?.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        action: SnackBarAction(
-          label: 'Retry',
-          onPressed: () => unawaited(
-            _performStyleRequest(appContext, item, mode: 'style_this'),
+    final messenger = ScaffoldMessenger.maybeOf(appContext);
+    if (messenger == null) return;
+
+    // SnackBarAction can keep an action snackbar visible until the user
+    // interacts with it. Use a normal button inside the snackbar instead,
+    // so the failure message disappears automatically.
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          content: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () {
+                  messenger.hideCurrentSnackBar();
+                  unawaited(
+                    _performStyleRequest(
+                      appContext,
+                      item,
+                      mode: 'style_this',
+                    ),
+                  );
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'Retry',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
           ),
         ),
-      ),
-    );
+      );
   }
 
   // ============================================================
@@ -802,16 +862,16 @@ class _ItemDetailModal extends StatelessWidget {
   //     than requiring real pairings from the user's own wardrobe.
   // ============================================================
   void _showInsufficientWardrobeAlert(
-    BuildContext appContext, {
-    required WardrobeItem item,
-    required Map<String, dynamic> result,
-  }) {
+      BuildContext appContext, {
+        required WardrobeItem item,
+        required Map<String, dynamic> result,
+      }) {
     final String message =
         (result['context'] ?? result['message'])?.toString() ??
-        AppLocalizations.t(
-          appContext,
-          'item_detail_insufficient_wardrobe_default',
-        );
+            AppLocalizations.t(
+              appContext,
+              'item_detail_insufficient_wardrobe_default',
+            );
 
     showDialog<void>(
       context: appContext,
@@ -965,12 +1025,12 @@ class _ItemDetailModal extends StatelessWidget {
   }
 
   void _showStyleResultSheet(
-    BuildContext context, {
-    required String mode,
-    required WardrobeItem item,
-    required Map<String, dynamic>? result,
-    List<Map<String, dynamic>> visualDirections = const [],
-  }) {
+      BuildContext context, {
+        required String mode,
+        required WardrobeItem item,
+        required Map<String, dynamic>? result,
+        List<Map<String, dynamic>> visualDirections = const [],
+      }) {
     final bool ok = result != null && result['success'] == true;
     final String? message = result?['message']?.toString();
     final List<Map<String, dynamic>> directions = mode == 'style_this'
@@ -988,19 +1048,19 @@ class _ItemDetailModal extends StatelessWidget {
     final buildItems = outfit == null
         ? const []
         : outfit['items'] ??
-              outfit['board_items'] ??
-              outfit['boardItems'] ??
-              [];
+        outfit['board_items'] ??
+        outfit['boardItems'] ??
+        [];
     final bool isAnchorBoard =
         outfit != null && outfit['payload_type'] == 'ANCHOR_OUTFIT_BOARD';
     final bool hasBuildBoardContract =
         outfit != null &&
-        (outfit['board_id'] ?? '').toString().trim().isNotEmpty &&
-        outfit['revision'] is num;
+            (outfit['board_id'] ?? '').toString().trim().isNotEmpty &&
+            outfit['revision'] is num;
 
     final bool hasStyleBoardContract = directions.any(
-      (direction) =>
-          (direction['board_id'] ?? '').toString().trim().isNotEmpty &&
+          (direction) =>
+      (direction['board_id'] ?? '').toString().trim().isNotEmpty &&
           direction['revision'] is num,
     );
 
@@ -1008,16 +1068,16 @@ class _ItemDetailModal extends StatelessWidget {
 
     debugPrint(
       'AHVI_ACTIVE_${mode == 'style_this' ? 'STYLE_THIS' : 'BUILD_OUTFIT'}_SURFACE '
-      'source_file=ahvi_item_detail_modal.dart function=_showStyleResultSheet '
-      'requested_mode=$mode '
-      'interaction_mode=${mode == 'style_this' ? 'style_this' : 'build_outfit'} '
-      'canonical_renderer_reached=$usesActiveBoard '
-      'board_count=${mode == 'style_this'
+          'source_file=ahvi_item_detail_modal.dart function=_showStyleResultSheet '
+          'requested_mode=$mode '
+          'interaction_mode=${mode == 'style_this' ? 'style_this' : 'build_outfit'} '
+          'canonical_renderer_reached=$usesActiveBoard '
+          'board_count=${mode == 'style_this'
           ? directions.length
           : hasBuildBoardContract
           ? 1
           : 0} '
-      'selected_surface=${usesActiveBoard ? 'canonical_editorial_carousel' : 'legacy_fallback'}',
+          'selected_surface=${usesActiveBoard ? 'canonical_editorial_carousel' : 'legacy_fallback'}',
     );
 
     showModalBottomSheet(
@@ -1332,66 +1392,66 @@ class _WorksWellWithCard extends StatelessWidget {
                 .take(3)
                 .map(
                   (p) => InkWell(
-                    onTap: onSelectPairing != null
-                        ? () => onSelectPairing!(p)
-                        : null,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              width: 32,
-                              height: 32,
-                              color: const Color(0xFFEFEFF7),
-                              child:
-                                  (p
-                                              .resolveImage(
-                                                surface: 'works_well_with',
-                                              )
-                                              .url !=
-                                          null &&
-                                      p
-                                          .resolveImage(
-                                            surface: 'works_well_with',
-                                          )
-                                          .url!
-                                          .isNotEmpty)
-                                  ? Image.network(
-                                      p
-                                          .resolveImage(
-                                            surface: 'works_well_with',
-                                          )
-                                          .url!,
-                                      fit: BoxFit.contain,
-                                    )
-                                  : const Icon(
-                                      Icons.checkroom,
-                                      size: 16,
-                                      color: Color(0xFFBFBFD6),
-                                    ),
-                            ),
+                onTap: onSelectPairing != null
+                    ? () => onSelectPairing!(p)
+                    : null,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          color: const Color(0xFFEFEFF7),
+                          child:
+                          (p
+                              .resolveImage(
+                            surface: 'works_well_with',
+                          )
+                              .url !=
+                              null &&
+                              p
+                                  .resolveImage(
+                                surface: 'works_well_with',
+                              )
+                                  .url!
+                                  .isNotEmpty)
+                              ? Image.network(
+                            p
+                                .resolveImage(
+                              surface: 'works_well_with',
+                            )
+                                .url!,
+                            fit: BoxFit.contain,
+                          )
+                              : const Icon(
+                            Icons.checkroom,
+                            size: 16,
+                            color: Color(0xFFBFBFD6),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              p.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0xFF1A1A1A),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          p.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF1A1A1A),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
+            ),
           if (pairings.length > 3)
             InkWell(
               onTap: onShowAllPairings,
@@ -1525,7 +1585,7 @@ class _InsightColumn extends StatelessWidget {
           )
         else
           ...items.map(
-            (label) => Padding(
+                (label) => Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1988,7 +2048,7 @@ class _AllPairingsSheet extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 itemCount: pairings.length,
                 separatorBuilder: (_, __) =>
-                    const Divider(height: 0.5, color: Color(0xFFF0F0F4)),
+                const Divider(height: 0.5, color: Color(0xFFF0F0F4)),
                 itemBuilder: (context, index) {
                   final p = pairings[index];
                   return InkWell(
@@ -2010,31 +2070,31 @@ class _AllPairingsSheet extends StatelessWidget {
                               height: 40,
                               color: const Color(0xFFEFEFF7),
                               child:
-                                  (p
-                                              .resolveImage(
-                                                surface: 'works_well_with',
-                                              )
-                                              .url !=
-                                          null &&
-                                      p
-                                          .resolveImage(
-                                            surface: 'works_well_with',
-                                          )
-                                          .url!
-                                          .isNotEmpty)
+                              (p
+                                  .resolveImage(
+                                surface: 'works_well_with',
+                              )
+                                  .url !=
+                                  null &&
+                                  p
+                                      .resolveImage(
+                                    surface: 'works_well_with',
+                                  )
+                                      .url!
+                                      .isNotEmpty)
                                   ? Image.network(
-                                      p
-                                          .resolveImage(
-                                            surface: 'works_well_with',
-                                          )
-                                          .url!,
-                                      fit: BoxFit.contain,
-                                    )
+                                p
+                                    .resolveImage(
+                                  surface: 'works_well_with',
+                                )
+                                    .url!,
+                                fit: BoxFit.contain,
+                              )
                                   : const Icon(
-                                      Icons.checkroom,
-                                      size: 18,
-                                      color: Color(0xFFBFBFD6),
-                                    ),
+                                Icons.checkroom,
+                                size: 18,
+                                color: Color(0xFFBFBFD6),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -2280,17 +2340,17 @@ class _StyleDirectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title =
-        (direction['title'] ??
-                AppLocalizations.t(context, 'item_detail_your_look'))
-            .toString();
+    (direction['title'] ??
+        AppLocalizations.t(context, 'item_detail_your_look'))
+        .toString();
     final items = _names(direction['items']);
     final missing = _missing(direction['missing_items']);
     final note =
-        (direction[reasonKey] ??
-                direction['styling_note'] ??
-                direction['reason'] ??
-                '')
-            .toString();
+    (direction[reasonKey] ??
+        direction['styling_note'] ??
+        direction['reason'] ??
+        '')
+        .toString();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -2339,7 +2399,7 @@ class _StyleDirectionCard extends StatelessWidget {
               children: items
                   .map(
                     (n) => _StyleChip(label: n, accent: false, colors: colors),
-                  )
+              )
                   .toList(),
             ),
           ],
@@ -2360,7 +2420,7 @@ class _StyleDirectionCard extends StatelessWidget {
               children: missing
                   .map(
                     (n) => _StyleChip(label: n, accent: true, colors: colors),
-                  )
+              )
                   .toList(),
             ),
           ],
@@ -2459,8 +2519,8 @@ class _AnchorOutfitBoardCard extends StatelessWidget {
     final missing = _missingItems();
     final stylingNote =
         outfit['styling_notes']?.toString() ??
-        outfit['reason']?.toString() ??
-        '';
+            outfit['reason']?.toString() ??
+            '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2527,13 +2587,13 @@ class _AnchorItemRow extends StatelessWidget {
     final sourceLabel = isAnchor
         ? AppLocalizations.t(context, 'item_detail_source_your_piece')
         : (source == 'wardrobe'
-              ? AppLocalizations.t(context, 'item_detail_source_wardrobe')
-              : AppLocalizations.t(context, 'item_detail_source_suggested'));
+        ? AppLocalizations.t(context, 'item_detail_source_wardrobe')
+        : AppLocalizations.t(context, 'item_detail_source_suggested'));
     final sourceColor = isAnchor
         ? const Color(0xFF7B61FF)
         : (source == 'wardrobe'
-              ? const Color(0xFF34C759)
-              : const Color(0xFFFF9500));
+        ? const Color(0xFF34C759)
+        : const Color(0xFFFF9500));
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -2549,10 +2609,10 @@ class _AnchorItemRow extends StatelessWidget {
               child: imageUrl.isNotEmpty
                   ? Image.network(imageUrl, fit: BoxFit.contain)
                   : const Icon(
-                      Icons.checkroom,
-                      size: 20,
-                      color: Color(0xFFBFBFD6),
-                    ),
+                Icons.checkroom,
+                size: 20,
+                color: Color(0xFFBFBFD6),
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -2673,7 +2733,7 @@ class _AnchorBoardCanvas extends StatelessWidget {
     }
     final ordered = slots.entries.toList()
       ..sort(
-        (a, b) => template[a.key]!.zIndex.compareTo(template[b.key]!.zIndex),
+            (a, b) => template[a.key]!.zIndex.compareTo(template[b.key]!.zIndex),
       );
 
     return LayoutBuilder(
@@ -2708,8 +2768,8 @@ class _AnchorBoardCanvas extends StatelessWidget {
             final name = raw['name']?.toString() ?? '';
             debugPrint(
               'AHVI_BOARD_TILE role=${entry.key} name=$name '
-              'x=${left.toStringAsFixed(1)} y=${top.toStringAsFixed(1)} '
-              'w=${w.toStringAsFixed(1)} h=${h.toStringAsFixed(1)} z=${cfg.zIndex} anchor=$isAnchor',
+                  'x=${left.toStringAsFixed(1)} y=${top.toStringAsFixed(1)} '
+                  'w=${w.toStringAsFixed(1)} h=${h.toStringAsFixed(1)} z=${cfg.zIndex} anchor=$isAnchor',
             );
             return Positioned(
               left: left,
@@ -2759,25 +2819,25 @@ class _FlatLayTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             child: imageUrl.isNotEmpty
                 ? Image.network(
-                    imageUrl,
-                    fit: BoxFit.contain,
-                    width: double.infinity,
-                    height: double.infinity,
-                    errorBuilder: (_, __, ___) => const Center(
-                      child: Icon(
-                        Icons.checkroom,
-                        color: Color(0xFFD0CAC3),
-                        size: 32,
-                      ),
-                    ),
-                  )
+              imageUrl,
+              fit: BoxFit.contain,
+              width: double.infinity,
+              height: double.infinity,
+              errorBuilder: (_, __, ___) => const Center(
+                child: Icon(
+                  Icons.checkroom,
+                  color: Color(0xFFD0CAC3),
+                  size: 32,
+                ),
+              ),
+            )
                 : const Center(
-                    child: Icon(
-                      Icons.checkroom,
-                      color: Color(0xFFD0CAC3),
-                      size: 32,
-                    ),
-                  ),
+              child: Icon(
+                Icons.checkroom,
+                color: Color(0xFFD0CAC3),
+                size: 32,
+              ),
+            ),
           ),
         ),
         if (isAnchor)

@@ -73,6 +73,49 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('saved board hides the Try On CTA without a callback', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 520));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          useMaterial3: true,
+          extensions: [AppThemeTokens.light(_accent)],
+        ),
+        home: const Scaffold(
+          body: SizedBox(
+            width: 300,
+            height: 520,
+            child: SavedBoardCard(
+              source: {
+                'title': 'Refined Ease',
+                'occasion': 'Work',
+                'description': 'Balanced tailoring for a polished day.',
+                'items': [
+                  {
+                    'item_id': 'top-1',
+                    'name': 'Shirt',
+                    'role': 'top',
+                    'image_url': 'https://example.test/top.png',
+                    'masked_url': 'https://example.test/top-cutout.png',
+                  },
+                ],
+              },
+              wardrobeById: {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(OutlinedButton), findsOneWidget);
+    expect(find.byType(InkWell), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   // Regression: a 2-column saved-boards grid (childAspectRatio 0.54, as used
   // by everything_else.dart/party_looks.dart/occasion.dart/vacation.dart)
   // overflowed by ~7.4px on narrow screens with a scaled-up text size,
