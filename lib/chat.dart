@@ -502,6 +502,26 @@ List<dynamic> _extractStyleBoardsFromResponse(Map<String, dynamic> response) {
       .boards;
 }
 
+List<dynamic> _boardsWithRetainedNarrative(
+  List<dynamic> boards,
+  Map<String, dynamic>? previousBoard,
+) {
+  if (previousBoard == null || boards.isEmpty) return boards;
+  final mapBoards = boards
+      .map((value) => value is Map ? Map<String, dynamic>.from(value) : null)
+      .toList(growable: false);
+  final retained = retainBoardNarrative(
+    mapBoards.whereType<Map<String, dynamic>>().toList(growable: false),
+    previousBoard,
+  );
+  var retainedIndex = 0;
+  return boards
+      .map(
+        (value) => value is Map ? retained[retainedIndex++] : value,
+      )
+      .toList(growable: false);
+}
+
 List<dynamic> _visibleResponseChips(
   List<dynamic> chips,
   AhviResponsePolicy policy,
@@ -1893,9 +1913,12 @@ class _ChatScreenState extends State<ChatScreen>
       final visualPackingCard = AhviChatResponseRendererRegistry.packingCard(
         response,
       );
-      final responseBoards = isModuleResponse
+      final rawResponseBoards = isModuleResponse
           ? const <dynamic>[]
           : _extractStyleBoardsFromResponse(response);
+      final responseBoards = isBoardMutation
+          ? _boardsWithRetainedNarrative(rawResponseBoards, mutationState)
+          : rawResponseBoards;
       if (isStyleModule) {
         final responseStyleState = response['style_state'] is Map
             ? Map<String, dynamic>.from(response['style_state'] as Map)

@@ -74,6 +74,21 @@ void main() {
     expect(board.story?.headline, 'Quiet Confidence');
   });
 
+  test('primary board parser maps stylingTip into StyleBoardData', () {
+    final direction = {
+      ..._direction(title: 'Weekend Edit'),
+      'styling_tip': 'Cuff the sleeves for a cleaner finish.',
+    };
+    final model = OutfitBoardModel.fromPayload(
+      direction,
+      editorialCover: const {},
+    );
+    final board = styleBoardDataFromOutfitBoardForTesting(model, direction);
+
+    expect(model.stylingTip, 'Cuff the sleeves for a cleaner finish.');
+    expect(board.stylingTip, 'Cuff the sleeves for a cleaner finish.');
+  });
+
   test('response aliases preserve story for the shared parser path', () {
     final parsed = parseAhviResponse({
       'route': 'wardrobe_style',

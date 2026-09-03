@@ -82,6 +82,29 @@ Map<String, dynamic>? styleMutationStateFromBoard(
     'protected_item_ids',
     'anchor_item_ids',
     'board_content_hash',
+    'title',
+    'board_title',
+    'boardTitle',
+    'selected_archetype',
+    'selectedArchetype',
+    'archetype',
+    'style_archetype',
+    'style_strategy',
+    'short_note',
+    'shortNote',
+    'why_it_works',
+    'whyItWorks',
+    'why_this_works',
+    'explanation',
+    'reason',
+    'description',
+    'styling_tip',
+    'stylingTip',
+    'style_tip',
+    'style_note',
+    'styleNote',
+    'styling_note',
+    'story',
   ]) {
     if (state[key] != null) result[key] = state[key];
   }
@@ -124,4 +147,160 @@ Map<String, dynamic>? styleMutationStateFromBoards(
       ? responseState
       : null;
   return styleMutationStateFromBoard(board, responseState: stateForBoard);
+}
+
+const _kTitleAliases = [
+  'title',
+  'board_title',
+  'boardTitle',
+  'selected_archetype',
+  'selectedArchetype',
+  'archetype',
+  'style_archetype',
+  'style_strategy',
+];
+
+const _kWhyAliases = [
+  'short_note',
+  'shortNote',
+  'why_it_works',
+  'whyItWorks',
+  'why_this_works',
+  'explanation',
+  'reason',
+  'description',
+];
+
+const _kTipAliases = [
+  'styling_tip',
+  'stylingTip',
+  'style_tip',
+  'style_note',
+  'styleNote',
+  'styling_note',
+];
+
+const _kStyleStrategyTitleFields = [
+  'archetype',
+  'archetype_name',
+  'direction_title',
+  'directionTitle',
+  'direction',
+];
+
+bool _isBlankNarrativeValue(String key, dynamic value) {
+  if (key == 'style_strategy' && value is Map) {
+    return !value.keys.any((field) {
+      if (!_kStyleStrategyTitleFields.contains(field)) return false;
+      final fieldValue = value[field];
+      return fieldValue is String && fieldValue.trim().isNotEmpty;
+    });
+  }
+  return value == null || (value is String && value.trim().isEmpty);
+}
+
+bool _hasFreshNarrative(
+  Map<String, dynamic> board,
+  List<String> aliases, {
+  String? storyField,
+}) {
+  if (aliases.any((key) => !_isBlankNarrativeValue(key, board[key]))) {
+    return true;
+  }
+  final story = board['story'];
+  if (storyField != null && story is Map) {
+    final value = story[storyField];
+    return value is String && value.trim().isNotEmpty;
+  }
+  return false;
+}
+
+bool _hasFreshTitle(
+  Map<String, dynamic> board,
+  Map<String, dynamic> previousBoard,
+) {
+  const explicitAliases = [
+    'title',
+    'board_title',
+    'boardTitle',
+    'selected_archetype',
+    'selectedArchetype',
+  ];
+  if (_hasFreshNarrative(board, explicitAliases, storyField: 'headline')) {
+    return true;
+  }
+  // Keep the curated title when a mutation only echoes a generic archetype.
+  final previousHasExplicitTitle = _hasFreshNarrative(
+    previousBoard,
+    explicitAliases,
+    storyField: 'headline',
+  );
+  return !previousHasExplicitTitle &&
+      _hasFreshNarrative(board, const ['archetype', 'style_archetype', 'style_strategy']);
+}
+
+/// Retains narrative fields omitted by a board mutation without allowing a
+/// stale high-priority alias to shadow fresh copy under another alias.
+List<Map<String, dynamic>> retainBoardNarrative(
+  List<Map<String, dynamic>> boards,
+  Map<String, dynamic>? previousBoard,
+) {
+  if (previousBoard == null || boards.isEmpty) return boards;
+  final singleBoardResponse = boards.length == 1;
+  final previousId =
+      (previousBoard['board_id'] ?? previousBoard['boardId'] ?? '')
+          .toString()
+          .trim();
+  final previousStory = previousBoard['story'];
+
+  return boards.map((board) {
+    final merged = Map<String, dynamic>.from(board);
+    final boardId = (merged['board_id'] ?? merged['boardId'] ?? '')
+        .toString()
+        .trim();
+    final sameBoard =
+        singleBoardResponse || (boardId.isNotEmpty && boardId == previousId);
+    if (!sameBoard) return merged;
+
+    final groups = <({List<String> aliases, String? storyField})>[
+      (aliases: _kTitleAliases, storyField: 'headline'),
+      (aliases: _kWhyAliases, storyField: 'why'),
+      (aliases: _kTipAliases, storyField: 'tip'),
+    ];
+    for (final group in groups) {
+      final hasFresh = group.storyField == 'headline'
+          ? _hasFreshTitle(merged, previousBoard)
+          : _hasFreshNarrative(
+              merged,
+              group.aliases,
+              storyField: group.storyField,
+            );
+      if (hasFresh) {
+        continue;
+      }
+      for (final key in group.aliases) {
+        if (_isBlankNarrativeValue(key, merged[key]) &&
+            previousBoard[key] != null) {
+          merged[key] = previousBoard[key];
+        }
+      }
+      if (previousStory is Map) {
+        final storyField = group.storyField!;
+        final story = merged['story'] is Map
+            ? Map<String, dynamic>.from(merged['story'] as Map)
+            : <String, dynamic>{};
+        final storyValue = previousStory[storyField];
+        if (storyValue is String && storyValue.trim().isNotEmpty) {
+          final currentStoryValue = story[storyField];
+          if (currentStoryValue == null ||
+              (currentStoryValue is String &&
+                  currentStoryValue.trim().isEmpty)) {
+            story[storyField] = storyValue;
+            merged['story'] = story;
+          }
+        }
+      }
+    }
+    return merged;
+  }).toList(growable: false);
 }
