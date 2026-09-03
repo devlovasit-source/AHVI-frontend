@@ -8,7 +8,7 @@ class HomeRoutineCardData {
   final Color color; // module pastel accent
   final String label; // module name — never ellipsized
   final String primary; // headline (max 2 lines)
-  final String context; // supporting copy (max 1 line)
+  final String context; // supporting copy (up to 2 lines)
   final String stateLabel; // compact pill text (e.g. Done / In progress)
   final String cta; // always-visible call to action
   final bool done;
@@ -206,20 +206,32 @@ class _RoutineCard extends StatelessWidget {
                 ),
               ),
             ),
-            // 4 — one-line supporting context. Flexible like the headline
-            // above — on a short card this yields (down to 0px) instead of
-            // overflowing the fixed icon row / CTA row below it.
+            // 4 — supporting context, up to 2 lines. Flexible + LayoutBuilder
+            // (same pattern as the Prep & Plan card's description): on a
+            // short card this hides cleanly once there's no room for even
+            // one full line, instead of being squeezed into a partial-line
+            // clipped fragment.
             if (data.context.trim().isNotEmpty)
               Flexible(
-                child: Text(
-                  data.context,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: overdue ? const Color(0xFFE5484D) : p.textMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: LayoutBuilder(
+                  builder: (context, contextConstraints) {
+                    const oneLineHeight = 12.0 * 1.3;
+                    if (contextConstraints.maxHeight < oneLineHeight) {
+                      return const SizedBox.shrink();
+                    }
+                    final allowTwoLines =
+                        contextConstraints.maxHeight >= oneLineHeight * 2;
+                    return Text(
+                      data.context,
+                      maxLines: allowTwoLines ? 2 : 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: overdue ? const Color(0xFFE5484D) : p.textMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    );
+                  },
                 ),
               ),
             const SizedBox(height: 6),

@@ -7162,18 +7162,17 @@ class _Screen4State extends State<Screen4>
         context,
         listen: false,
       ).moveHomeSubtitle;
-      if (sub.isNotEmpty) {
-        return sub.length > 20 ? '${sub.substring(0, 17)}...' : sub;
-      }
+      // Render the full provider text — the card's own maxLines/ellipsis
+      // (word-width aware) handles overflow. A blind char-count substring
+      // here used to cut mid-word ("workout recom...") regardless of how it
+      // actually rendered.
+      if (sub.isNotEmpty) return sub;
     } catch (_) {}
     final workoutLabel = _workoutLabel;
     if (workoutLabel.isNotEmpty && workoutLabel != 'workout_mobility') {
-      String displayLabel = workoutLabel.startsWith('workout_')
+      return workoutLabel.startsWith('workout_')
           ? AppLocalizations.t(context, workoutLabel)
           : workoutLabel;
-      return displayLabel.length > 20
-          ? '${displayLabel.substring(0, 17)}...'
-          : displayLabel;
     }
     return AppLocalizations.t(context, 'routine_move_desc'); // "7-min stretch"
   }

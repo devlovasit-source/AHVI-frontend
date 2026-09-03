@@ -134,4 +134,77 @@ void main() {
     final title = t.widget<Text>(find.text('Wear').first);
     expect(title.overflow, TextOverflow.visible);
   });
+
+  // ── Regression: Move supporting-copy truncation/collapse ────────────────
+
+  HomeRoutineCardData singleCard({required String context, String primary = 'Move headline'}) =>
+      HomeRoutineCardData(
+        icon: Icons.directions_run_rounded,
+        color: const Color(0xFF6B8FD4),
+        label: 'Move',
+        primary: primary,
+        context: context,
+        stateLabel: '',
+        cta: 'Move',
+        done: false,
+        overdue: false,
+        onOpen: () {},
+      );
+
+  testWidgets(
+      'MOVE_COPY_COMPLETE: reasonable-length context renders in full at normal card height, not a manual substring cut',
+      (t) async {
+    const longButReasonable = 'Best window is now, keep your streak going';
+    await _pump(
+      t,
+      HomeRoutineCarousel(cards: [singleCard(context: longButReasonable)], palette: _palette),
+      height: 170,
+    );
+    // The Text widget still holds the complete provider string — Flutter's
+    // own (width-aware) ellipsis handles overflow, not a blind char-count
+    // substring producing a mid-word fragment like "workout recom...".
+    expect(find.text(longButReasonable), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets(
+      'MOVE_COPY_COMPLETE: context up to 2 lines is allowed instead of forcing a single truncated line',
+      (t) async {
+    const longButReasonable = 'Best window is now, keep your streak going';
+    await _pump(
+      t,
+      HomeRoutineCarousel(cards: [singleCard(context: longButReasonable)], palette: _palette),
+      height: 170,
+    );
+    final text = t.widget<Text>(find.text(longButReasonable));
+    expect(text.maxLines, greaterThan(1));
+  });
+
+  testWidgets(
+      'context never renders as a clipped partial-line fragment — hides cleanly on a squeezed card instead',
+      (t) async {
+    // Height too small for even one context line: previously the bare
+    // Flexible(child: Text(maxLines: 1)) would be squeezed into a
+    // sub-line-height box and paint a clipped sliver of glyphs. Now it must
+    // hide entirely rather than render a broken fragment.
+    await _pump(
+      t,
+      HomeRoutineCarousel(cards: [singleCard(context: 'Keep your streak going')], palette: _palette),
+      height: 118,
+    );
+    expect(find.text('Keep your streak going'), findsNothing);
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('an exceptionally long context still degrades gracefully via native ellipsis, no overflow',
+      (t) async {
+    const exceptional =
+        'This is an unusually long supporting sentence that goes on and on well past what any Home card should ever realistically need to show to a user';
+    await _pump(
+      t,
+      HomeRoutineCarousel(cards: [singleCard(context: exceptional)], palette: _palette),
+      height: 170,
+    );
+    expect(t.takeException(), isNull);
+  });
 }
