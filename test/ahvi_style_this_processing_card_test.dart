@@ -52,7 +52,7 @@ void main() {
     testWidgets('shows the AHVI brand row', (tester) async {
       await _pumpCard(tester, itemName: 'White Shirt');
       expect(find.text('AHVI'), findsOneWidget);
-      expect(find.text('✦'), findsOneWidget);
+      expect(find.byIcon(Icons.auto_awesome), findsNWidgets(2));
     });
 
     testWidgets('shows the selected item name', (tester) async {

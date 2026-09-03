@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 
-/// Compact, AHVI-branded processing card shown while Style This builds
+/// Premium, AHVI-branded processing card shown while Style This builds
 /// directions for a wardrobe item. Presentation only -- the request, anchor,
 /// and result handling all live in the caller; this widget just renders the
-/// "waiting" state over the existing dimmed item-detail barrier.
+/// "waiting" state over the existing dimmed item-detail barrier. The caller
+/// centers and width-constrains this widget (see ahvi_item_detail_modal.dart).
 class AhviStyleThisProcessingCard extends StatelessWidget {
   final String itemName;
 
@@ -18,10 +19,10 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
     final title = name.isEmpty ? 'Styling your piece' : 'Styling your $name';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
       decoration: BoxDecoration(
         color: t.card,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: t.cardBorder),
         boxShadow: [
           BoxShadow(
@@ -33,63 +34,52 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                '✦',
-                style: TextStyle(
-                  color: t.accent.primary,
-                  fontSize: 13,
-                  height: 1,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(width: 6),
+              Icon(Icons.auto_awesome, size: 16, color: t.accent.primary),
+              const SizedBox(width: 7),
               Text(
                 'AHVI',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2,
+                style: TextStyle(
+                  fontFamily: 'Anton',
+                  fontSize: 24,
+                  letterSpacing: 1.8,
                   color: t.accent.primary,
                 ),
               ),
+              const SizedBox(width: 7),
+              Icon(Icons.auto_awesome, size: 16, color: t.accent.primary),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 18),
           Text(
             title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: GoogleFonts.inter(
-              fontSize: 15,
+              fontSize: 18,
               fontWeight: FontWeight.w700,
               color: t.textPrimary,
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 6),
           Text(
             'Finding the best pieces from your wardrobe…',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: GoogleFonts.inter(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w500,
+              fontSize: 13,
+              height: 1.35,
               color: t.mutedText,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
           ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: SizedBox(
-              height: 3,
-              child: LinearProgressIndicator(
-                color: t.accent.primary,
-                backgroundColor: t.accent.primary.withValues(alpha: 0.15),
-              ),
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 5,
+              backgroundColor: t.cardBorder,
+              valueColor: AlwaysStoppedAnimation<Color>(t.accent.primary),
             ),
           ),
         ],
