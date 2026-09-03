@@ -720,12 +720,16 @@ void main() {
     final backend = _FakeBackendService();
     await _openReview(tester, backend: backend, items: [_detectedItemJson()]);
 
-    await _addCustomOccasion(tester, 'Gym');
-    expect(find.text('Gym'), findsOneWidget);
+    await _addCustomOccasion(tester, 'Beach Mode');
+    expect(find.text('Beach Mode'), findsOneWidget);
+    await tester.pump();
+    expect(find.text('Beach Mode'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
     await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
 
-    expect(backend.saveCalls.single.single['occasions'], contains('Gym'));
+    final occasions = backend.saveCalls.single.single['occasions'] as List;
+    expect(occasions, contains('Beach Mode'));
+    expect(occasions, contains('Everyday'));
   });
 
   testWidgets('20: custom occasion input is limited to 24 characters', (

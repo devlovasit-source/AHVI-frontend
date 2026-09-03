@@ -71,6 +71,20 @@ List<String> canonicalOccasions(Iterable<String> values) {
   return canonical;
 }
 
+/// Normalizes known preset aliases while preserving the user's custom value.
+/// Manual tags are backend-authoritative metadata, not automatic occasions.
+List<String> preserveOccasionValues(Iterable<String> values) {
+  final seen = <String>{};
+  final preserved = <String>[];
+  for (final raw in values) {
+    final trimmed = raw.trim();
+    final key = canonicalOccasionKey(trimmed);
+    if (key.isEmpty || !seen.add(key)) continue;
+    preserved.add(isPresetOccasion(trimmed) ? humanizeOccasion(trimmed) : trimmed);
+  }
+  return preserved;
+}
+
 bool occasionMatches(String a, String b) {
   final left = canonicalOccasionKey(a);
   final right = canonicalOccasionKey(b);

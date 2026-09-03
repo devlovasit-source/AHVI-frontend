@@ -55,4 +55,11 @@ void main() {
       ['Work', 'Sport', 'Date Night'],
     );
   });
+
+  test('upload payload preserves custom occasion spelling', () {
+    expect(
+      preserveOccasionValues(['office', 'Beach Mode', 'beach mode']),
+      ['Work', 'Beach Mode'],
+    );
+  });
 }

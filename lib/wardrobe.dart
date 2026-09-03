@@ -3170,7 +3170,7 @@ class _AddItemModalState extends State<_AddItemModal>
 
   Map<String, dynamic> _reviewedItemPayload(_DetectedItem item) {
     final payload = item.toBackendPayload();
-    payload['occasions'] = canonicalOccasions(item.occasions);
+    payload['occasions'] = preserveOccasionValues(item.occasions);
     payload['category'] = item.category;
     payload['sub_category'] =
         item.subCategory.isNotEmpty ? item.subCategory : item.category;
@@ -3220,7 +3220,7 @@ class _AddItemModalState extends State<_AddItemModal>
       'color_name': item.color,
       'color_code': item.colorCode,
       'pattern': item.pattern,
-      'occasions': canonicalOccasions(item.occasions),
+      'occasions': preserveOccasionValues(item.occasions),
       if (item.notes.trim().isNotEmpty) 'notes': item.notes.trim(),
     };
   }
@@ -3288,7 +3288,7 @@ class _AddItemModalState extends State<_AddItemModal>
       'id': wardrobeItemId,
       'name': _cleanUiText(item.name, fallback: 'Item'),
       'cat': item.category,
-      'occasions': canonicalOccasions(item.occasions),
+      'occasions': preserveOccasionValues(item.occasions),
       'notes': [item.color, item.pattern]
           .where((v) => v != null && v.isNotEmpty && v != 'null')
           .join(', '),
