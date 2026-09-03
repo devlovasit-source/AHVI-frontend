@@ -1047,21 +1047,25 @@ class _Screen4State extends State<Screen4>
   Future<void> _fetchWeatherSignalImproved() async {
     try {
       final weather = await _WeatherService.fetchWeather();
-      final temp = (weather['temperature'] as num?)?.toDouble() ?? 28.0;
+      final available = weather['success'] == true;
+      final rawTemp = weather['temperature'];
+      final temp = (available && rawTemp is num) ? rawTemp.toDouble() : null;
+      final rawCode = weather['weather_code'];
+      final code = rawCode is num ? rawCode.toInt() : null;
       final rawIsDay = weather['is_day'];
       final isDay = rawIsDay is bool
           ? rawIsDay
           : (rawIsDay == null ? true : rawIsDay == 1);
-      final description = _WeatherService.getWeatherDescription(
-        weather['weather_code'] as int? ?? 0,
-        isDay: isDay,
-      );
+      final description = (temp != null && code != null)
+          ? _WeatherService.getWeatherDescription(code, isDay: isDay)
+                .toLowerCase()
+          : '';
 
       if (mounted) {
         setState(() {
           _weatherSignal = _WeatherSignal(
             tempCelsius: temp,
-            description: description.toLowerCase(),
+            description: description,
           );
           _invalidateSuggestionCache();
         });
@@ -1070,10 +1074,7 @@ class _Screen4State extends State<Screen4>
       debugPrint('🌦️ Weather fetch error: $e');
       if (mounted) {
         setState(() {
-          _weatherSignal = _WeatherSignal(
-            tempCelsius: 28.0,
-            description: 'partly cloudy',
-          );
+          _weatherSignal = const _WeatherSignal();
         });
       }
     }
