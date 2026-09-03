@@ -1840,10 +1840,16 @@ class _AhviStylistChatSheetState extends State<_AhviStylistChatSheet>
           (responsePolicy.hasCanonicalRoute &&
               !responsePolicy.canRenderBoards(response));
       final selection = AhviChatResponseRendererRegistry.select(response);
-      final visualPackingCard = textOnlyResponse
+      // Packing checklist / typed module cards are not Style Boards — they
+      // must not be suppressed by board-route-unauthorized (canRenderBoards
+      // is a Style Board authorization check and was incorrectly nulling
+      // these out on every planner/checklist response, e.g. plan_pack ->
+      // planner_action). Only a genuinely safety-sensitive response should
+      // hide them.
+      final visualPackingCard = responsePolicy.isSafetySensitive
           ? null
           : AhviChatResponseRendererRegistry.packingCard(response);
-      final typedModuleCard = textOnlyResponse
+      final typedModuleCard = responsePolicy.isSafetySensitive
           ? null
           : AhviChatResponseRendererRegistry.typedModuleCard(response);
       final visualPayload = _VisualDirectionPayload.fromResponse(response);

@@ -1950,7 +1950,14 @@ class _ChatScreenState extends State<ChatScreen>
           _looksLikeStyleClarification(clarificationMsg)) {
         _clarificationResolvedByCards = false;
       }
-      final moduleCards = !textOnlyResponse &&
+      // Packing checklist cards are not Style Boards — a board-route-
+      // unauthorized response_mode (e.g. planner_action for plan_pack) must
+      // not suppress them; only a genuinely safety-sensitive response should.
+      // Every other (non-packing) module-card case keeps its existing
+      // textOnlyResponse gating unchanged.
+      final packingAllowedDespiteRoute =
+          visualPackingCard != null && !responsePolicy.isSafetySensitive;
+      final moduleCards = (!textOnlyResponse || packingAllowedDespiteRoute) &&
               (isModuleResponse || visualPackingCard != null) &&
               sharedModuleCard == null
           ? _moduleCardsFromResponse(response)
