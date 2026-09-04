@@ -703,7 +703,14 @@ class _ItemDetailModal extends StatelessWidget {
     String anchorItemId,
   ) {
     if (result == null) return const ['response'];
-    if (result['success'] != true) return const ['success'];
+    if (result['success'] != true) {
+      final error = result['error'];
+      if (error is Map) {
+        final code = (error['code'] ?? '').toString().trim().toLowerCase();
+        if (code.isNotEmpty) return [code];
+      }
+      return const ['success'];
+    }
     final parsed = parseAhviResponse(result);
     final failures = <String>[];
     var foundDirections = false;
@@ -773,6 +780,12 @@ class _ItemDetailModal extends StatelessWidget {
     required String message,
     required List<String> failedFields,
   }) {
+    final anchorImageNotReady = failedFields.contains(
+      'anchor_image_not_board_ready',
+    );
+    final displayMessage = anchorImageNotReady
+        ? 'This item is not board-ready yet. Reprocess its photo in Wardrobe before trying Style This again.'
+        : message;
     debugPrint(
       'AHVI_STYLE_THIS_CONTRACT_FAILED '
       'anchor_item_id=${AhviStyleDiagnostics.maskIdentifier(item.id)} '
@@ -780,13 +793,17 @@ class _ItemDetailModal extends StatelessWidget {
     );
     ScaffoldMessenger.maybeOf(appContext)?.showSnackBar(
       SnackBar(
-        content: Text(message),
-        action: SnackBarAction(
-          label: 'Retry',
-          onPressed: () => unawaited(
-            _performStyleRequest(appContext, item, mode: 'style_this'),
-          ),
-        ),
+        content: Text(displayMessage),
+        // There is no safe existing-item reprocessing operation yet. Do not
+        // offer a retry that would submit the same known-invalid anchor.
+        action: anchorImageNotReady
+            ? null
+            : SnackBarAction(
+                label: 'Retry',
+                onPressed: () => unawaited(
+                  _performStyleRequest(appContext, item, mode: 'style_this'),
+                ),
+              ),
       ),
     );
   }

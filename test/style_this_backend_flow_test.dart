@@ -362,6 +362,7 @@ void main() {
 
       completer.complete(null);
       await tester.pumpAndSettle();
+      expect(find.byType(AhviStyleThisProcessingCard), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -503,6 +504,47 @@ void main() {
     expect(find.byType(StyleBoardsScreen), findsNothing);
     expect(find.byType(VisualDirectionCarousel), findsNothing);
     expect(find.byType(AhviOutfitBoardCard), findsNothing);
+  });
+
+  testWidgets('not-board-ready Style This response has typed copy and no retry', (
+    tester,
+  ) async {
+    var calls = 0;
+    await _pumpItemDetail(
+      tester,
+      styleCall:
+          ({
+            required requestedItemId,
+            required requestedScenario,
+            requestAnchorItem,
+            occasion,
+          }) async {
+            calls++;
+            return {
+              'success': false,
+              'error': {
+                'code': 'ANCHOR_IMAGE_NOT_BOARD_READY',
+                'message': 'This item needs reprocessing.',
+              },
+              'style_directions': const [],
+            };
+          },
+    );
+
+    await tester.tap(find.text('Style'));
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(
+      find.text(
+        'This item is not board-ready yet. Reprocess its photo in Wardrobe before trying Style This again.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Retry'), findsNothing);
+    expect(find.byType(VisualDirectionCarousel), findsNothing);
+    expect(find.byType(AhviOutfitBoardCard), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('recommendation mode remains feedback-only', (tester) async {
