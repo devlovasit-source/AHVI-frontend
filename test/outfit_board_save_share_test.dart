@@ -146,6 +146,71 @@ void main() {
     },
   );
 
+  testWidgets('Save uses the live board after three mutations', (tester) async {
+    var liveBoard = {
+      ..._direction(),
+      'board_id': 'board-initial',
+      'revision': 0,
+    };
+    Map<String, dynamic>? captured;
+
+    await _pumpBar(
+      tester,
+      OutfitActionBar(
+        direction: _direction(),
+        currentDirectionOverride: () => liveBoard,
+        editorialCover: const {},
+        primaryLabel: 'Office Look',
+        missingName: '',
+        shareBoundaryKey: GlobalKey(),
+        saveBoardOverride:
+            ({
+              required occasion,
+              required outfitDescription,
+              required imageUrl,
+              required title,
+              required itemIds,
+              required items,
+              required isFavourite,
+            }) async {
+              captured = {
+                'board_id': liveBoard['board_id'],
+                'revision': liveBoard['revision'],
+                'itemIds': itemIds,
+                'items': items,
+              };
+              return 'doc-live';
+            },
+      ),
+    );
+
+    for (var revision = 1; revision <= 3; revision++) {
+      final itemId = 'shirt-$revision';
+      liveBoard = {
+        ...liveBoard,
+        'board_id': 'board-$revision',
+        'revision': revision,
+        'board_items': [
+          {
+            'name': 'Shirt $revision',
+            'item_id': itemId,
+            'role': 'top',
+            'image_url': 'https://x/$itemId.png',
+            'masked_url': 'https://x/$itemId-cutout.png',
+          },
+        ],
+      };
+      await tester.pump();
+    }
+
+    await _confirmSave(tester);
+
+    expect(captured?['board_id'], 'board-3');
+    expect(captured?['revision'], 3);
+    expect(captured?['itemIds'], <String>['shirt-3']);
+    expect((captured?['items'] as List).single['item_id'], 'shirt-3');
+  });
+
   testWidgets('Double-tap Save does not create duplicate saves', (
     tester,
   ) async {

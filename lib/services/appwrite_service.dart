@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:appwrite/appwrite.dart';
@@ -8,6 +9,23 @@ import 'package:myapp/config/env.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/style_board/saved_board_persistence.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+String _maskDiagnosticIdentifier(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return 'empty';
+  if (trimmed.length <= 4) return 'masked';
+  return '${trimmed.substring(0, 2)}...${trimmed.substring(trimmed.length - 2)}';
+}
+
+String _extractSavedBoardRevision(String masterGarment) {
+  try {
+    final decoded = jsonDecode(masterGarment);
+    if (decoded is Map<String, dynamic>) {
+      return (decoded['revision'] ?? 0).toString();
+    }
+  } catch (_) {}
+  return '0';
+}
 
 class AppwriteService extends ChangeNotifier {
   static final AppwriteService _shared = AppwriteService._internal();
@@ -1374,17 +1392,33 @@ class AppwriteService extends ChangeNotifier {
         'is_favourite=${content.isFavourite} '
         'item_count=${content.itemIds.length}',
       );
+      debugPrint(
+        'AHVI_BOARD_SAVE_WRITE endpoint=appwrite_databases.createDocument '
+        'board_id=${_maskDiagnosticIdentifier(content.boardId)} '
+        'revision=${_extractSavedBoardRevision(content.masterGarment)} '
+        'item_count=${content.itemIds.length} '
+        'item_ids=${content.itemIds.map(_maskDiagnosticIdentifier).join(",")}',
+      );
       final document = await databases.createDocument(
         databaseId: Env.appwriteDatabaseId,
         collectionId: Env.savedBoardsCollection,
         documentId: ID.unique(),
         data: data,
       );
+      debugPrint(
+        'AHVI_BOARD_SAVE_RESPONSE status=success '
+        'document_id=${_maskDiagnosticIdentifier(document.$id)}',
+      );
       return document.$id.trim().isEmpty ? null : document;
     } on SavedBoardPersistenceException catch (e) {
       debugPrint('AHVI_BOARD_SAVE_FAILED reason=${e.reason}');
       rethrow;
-    } catch (_) {
+    } catch (e) {
+      final status = e is AppwriteException ? e.code.toString() : 'unknown';
+      final type = e is AppwriteException ? e.type : e.runtimeType.toString();
+      debugPrint(
+        'AHVI_BOARD_SAVE_RESPONSE status=failed code=$status type=$type',
+      );
       debugPrint('AHVI_BOARD_SAVE_FAILED reason=appwrite_write_failed');
       return null;
     }

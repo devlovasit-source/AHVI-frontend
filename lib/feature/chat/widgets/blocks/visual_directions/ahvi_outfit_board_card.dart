@@ -30,6 +30,7 @@ import 'package:myapp/widgets/ahvi_unified_outfit_grid.dart';
 typedef OutfitBoardMessageSender = void Function(String message);
 typedef OutfitBoardTap = void Function(Map<String, dynamic> board);
 typedef OutfitBoardStateChanged = void Function(Map<String, dynamic> board);
+typedef OutfitBoardDirectionProvider = Map<String, dynamic> Function();
 
 const double editorialBoardHeaderHeight = 30;
 const double editorialBoardContextHeight = 72;
@@ -666,6 +667,7 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
               OutfitActionBar(
                 interactionMode: mode,
                 direction: _currentDirection,
+                currentDirectionOverride: () => _currentDirection,
                 editorialCover: widget.editorialCover,
                 primaryLabel: _model.title,
                 missingName: _model.missingName,
@@ -1193,6 +1195,7 @@ class OutfitActionBar extends StatefulWidget {
   final Map<String, dynamic> editorialCover;
   final String primaryLabel;
   final String missingName;
+  final OutfitBoardDirectionProvider? currentDirectionOverride;
   final OutfitBoardMessageSender? onSendMessage;
   final GlobalKey? shareBoundaryKey;
   // Test seams (production uses the real Appwrite + share_plus paths).
@@ -1208,6 +1211,7 @@ class OutfitActionBar extends StatefulWidget {
     required this.editorialCover,
     required this.primaryLabel,
     required this.missingName,
+    this.currentDirectionOverride,
     this.interactionMode = BoardInteractionMode.recommendation,
     this.onSendMessage,
     this.shareBoundaryKey,
@@ -1229,15 +1233,17 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
   BackendService? _backend;
   ScaffoldMessengerState? _messenger;
 
-  String _boardIdentity(OutfitActionBar value) {
-    final boardId = _text(
-      value.direction['board_id'] ?? value.direction['boardId'],
-    );
-    final revision = value.direction['revision']?.toString() ?? '0';
-    final rawTitle = _text(
-      value.direction['title'] ?? value.direction['direction_name'],
-    );
-    return '$boardId|$revision|$rawTitle|${value.primaryLabel}';
+  Map<String, dynamic> get _activeDirection =>
+      widget.currentDirectionOverride?.call() ?? widget.direction;
+
+  String _boardIdentity([OutfitActionBar? value]) {
+    final source = value == null
+        ? _activeDirection
+        : value.currentDirectionOverride?.call() ?? value.direction;
+    final boardId = _text(source['board_id'] ?? source['boardId']);
+    final revision = source['revision']?.toString() ?? '0';
+    final rawTitle = _text(source['title'] ?? source['direction_name']);
+    return '$boardId|$revision|$rawTitle|${value?.primaryLabel ?? widget.primaryLabel}';
   }
 
   @override
@@ -1265,7 +1271,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
     // Fire-and-forget; also the adaptive stylist-brain training signal.
     // Never let a missing provider or feedback error break Save/Share.
     try {
-      _backend?.sendBoardFeedback(action: action, board: widget.direction);
+      _backend?.sendBoardFeedback(action: action, board: _activeDirection);
     } catch (_) {}
   }
 
@@ -1430,7 +1436,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
   String get _occasion {
     final cover = _text(widget.editorialCover['occasion_label']);
     if (cover.isNotEmpty) return cover;
-    final direct = _text(widget.direction['occasion']);
+    final direct = _text(_activeDirection['occasion']);
     return direct.isNotEmpty ? direct : 'Curated Look';
   }
 
@@ -1452,10 +1458,9 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
   }
 
   List<Map<String, dynamic>> _saveItems() {
+    final direction = _activeDirection;
     final items = _maps(
-      widget.direction['board_items'] ??
-          widget.direction['boardItems'] ??
-          widget.direction['items'],
+      direction['board_items'] ?? direction['boardItems'] ?? direction['items'],
     );
     return items;
   }
@@ -1481,7 +1486,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
   String _saveImageUrl() {
     final candidates = <ResolvedWardrobeImage>[
       resolveWardrobeImage(
-        widget.direction,
+        _activeDirection,
         surface: 'style_board_cover',
         itemId: _id,
       ),
@@ -1509,11 +1514,11 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
 
   String _saveExplanation() {
     final why = _text(
-      widget.direction['why'] ??
-          widget.direction['why_it_works'] ??
-          widget.direction['explanation'] ??
-          widget.direction['style_tip'] ??
-          widget.direction['style_tip'],
+      _activeDirection['why'] ??
+          _activeDirection['why_it_works'] ??
+          _activeDirection['explanation'] ??
+          _activeDirection['style_tip'] ??
+          _activeDirection['style_tip'],
     );
     return why.isEmpty ? 'AHVI styled look' : why;
   }
@@ -1528,7 +1533,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
     required bool isFavourite,
   }) async {
     final content = buildSavedBoardContent(
-      board: widget.direction,
+      board: _activeDirection,
       items: items,
       selection: SavedBoardSelection(
         bucket: occasion,
@@ -1546,7 +1551,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
 
   Future<SavedBoardSelection?> _showSaveSheet() {
     var bucket = inferSavedBoardBucket({
-      ...widget.direction,
+      ..._activeDirection,
       'occasion': _occasion,
     });
     var isFavourite = false;
@@ -1648,11 +1653,22 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
     if (_saving || _saved) return;
     final selection = await _showSaveSheet();
     if (selection == null || !mounted) return;
-    final saveIdentity = _boardIdentity(widget);
+    final saveIdentity = _boardIdentity();
     setState(() => _saving = true);
     debugPrint('AHVI_BOARD_SAVE_START');
     try {
       final items = _saveItems();
+      final activeDirection = _activeDirection;
+      final activeBoardId = _text(
+        activeDirection['board_id'] ?? activeDirection['boardId'],
+      );
+      debugPrint(
+        'AHVI_BOARD_SAVE_REQUEST endpoint=appwrite_saved_boards '
+        'board_id=${AhviStyleDiagnostics.maskIdentifier(activeBoardId)} '
+        'revision=${activeDirection['revision'] ?? 0} '
+        'item_count=${items.length} '
+        'item_ids=${_saveItemIds().map(AhviStyleDiagnostics.maskIdentifier).join(",")}',
+      );
       final saver = widget.saveBoardOverride ?? _defaultSaveBoard;
       final docId = await saver(
         occasion: selection.bucket,
@@ -1663,12 +1679,17 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
         items: items,
         isFavourite: selection.isFavourite,
       );
-      if (!mounted || saveIdentity != _boardIdentity(widget)) return;
+      if (!mounted) return;
+      if (saveIdentity != _boardIdentity()) {
+        debugPrint('AHVI_BOARD_SAVE_FAILED reason=board_mutated_during_save');
+        setState(() => _saving = false);
+        return;
+      }
       if (docId == null || docId.isEmpty) {
         throw Exception('appwrite_returned_null_document');
       }
       final boardId = _text(
-        widget.direction['board_id'] ?? widget.direction['boardId'],
+        activeDirection['board_id'] ?? activeDirection['boardId'],
       );
       debugPrint(
         'AHVI_BOARD_SAVE_SUCCESS document_id=$docId '
@@ -1684,7 +1705,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
         SavedBoardsStore.saveBoard(
           occasion: _occasion,
           directionName: widget.primaryLabel,
-          direction: widget.direction,
+          direction: activeDirection,
           editorialCover: widget.editorialCover,
         ),
       );
