@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,7 +7,6 @@ import 'package:myapp/feature/chat/widgets/ahvi_processing_bubble.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:myapp/home_card_summary_provider.dart';
 import 'package:myapp/services/appwrite_service.dart';
@@ -127,6 +125,33 @@ class DailyWearScreen extends StatefulWidget {
 
   @override
   State<DailyWearScreen> createState() => _DailyWearScreenState();
+}
+
+/// Maps a BackendService.getCurrentWeather() response onto the (temp, feel,
+/// code) triple _applyWeather expects. The canonical /api/weather proxy
+/// requests temperature_2m/weather_code/wind_speed_10m from Open-Meteo and
+/// does not currently guarantee an apparent/feels-like value, so feel falls
+/// back to actual temperature rather than inventing one. Throws StateError
+/// on an unavailable/malformed response; callers must catch and treat the
+/// weather as honestly unavailable -- never substitute a fabricated value.
+({int temp, int feel, int code}) mapDailyWearWeather(
+  Map<String, dynamic> weather,
+) {
+  if (weather['status'] != 'available') {
+    throw StateError(weather['reason']?.toString() ?? 'weather_unavailable');
+  }
+  final raw = weather['raw'] as Map? ?? const {};
+  final tempRaw = weather['temperature_c'] ?? weather['temperature'];
+  final codeRaw = raw['code'] ?? weather['weather_code'];
+  if (tempRaw is! num || codeRaw is! num) {
+    throw StateError('weather_malformed');
+  }
+  // Feels-like is optional and not currently guaranteed by the backend
+  // contract -- a missing or malformed value degrades to actual temperature
+  // rather than discarding an otherwise-valid reading.
+  final feelCandidate = raw['apparent_temperature'] ?? weather['feels_like_c'];
+  final feelRaw = feelCandidate is num ? feelCandidate : tempRaw;
+  return (temp: tempRaw.round(), feel: feelRaw.round(), code: codeRaw.toInt());
 }
 
 class _DailyWearScreenState extends State<DailyWearScreen>
@@ -901,59 +926,34 @@ class _DailyWearScreenState extends State<DailyWearScreen>
 
   Future<void> _fetchWeather() async {
     debugPrint('AHVI_HEAVY_SCREEN_LOAD start screen=DailyWear');
-    final coords = await DailyWearScreen.resolveWeatherCoordinates();
     try {
-      final url = Uri.parse(
-        'https://api.open-meteo.com/v1/forecast'
-            '?latitude=${coords.lat}&longitude=${coords.lon}'
-            '&current=temperature_2m,weathercode,apparent_temperature'
-            '&timezone=auto',
-      );
-      final res = await http.get(url).timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final current = data['current'] as Map<String, dynamic>;
-        final temp = (current['temperature_2m'] as num).round();
-        final feel = (current['apparent_temperature'] as num).round();
-        final code = current['weathercode'] as int;
-        _applyWeather(temp, feel, code, context);
-      }
+      // Canonical weather source -- same BackendService().getCurrentWeather()
+      // contract Home uses, which resolves device location internally via
+      // LocationContextService. No direct Open-Meteo call and no hardcoded
+      // coordinates here: DailyWearScreen.resolveWeatherCoordinates() remains
+      // available for callers that need raw coordinates, but weather itself
+      // must come from the shared backend path, not a duplicate provider.
+      final weather = await BackendService().getCurrentWeather();
+      final mapped = mapDailyWearWeather(weather);
+      _applyWeather(mapped.temp, mapped.feel, mapped.code, context);
     } catch (_) {
-      debugPrint('AHVI_HEAVY_SCREEN_LOAD timeout screen=DailyWear');
-      final hour = DateTime.now().hour;
-      const baseTemps = [
-        22,
-        21,
-        21,
-        21,
-        22,
-        23,
-        25,
-        27,
-        29,
-        31,
-        32,
-        33,
-        33,
-        33,
-        32,
-        31,
-        30,
-        29,
-        28,
-        27,
-        26,
-        25,
-        24,
-        23,
-      ];
-      final t = baseTemps[hour];
-      final feel = t + (hour >= 10 && hour <= 16 ? 2 : 0);
-      final code = (hour >= 6 && hour <= 18)
-          ? (hour >= 11 && hour <= 14 ? 1 : 2)
-          : 0;
-      _applyWeather(t, feel, code);
+      debugPrint('AHVI_HEAVY_SCREEN_LOAD weather_unavailable screen=DailyWear');
+      _applyWeatherUnavailable();
     }
+  }
+
+  /// Honest unavailable state: no fabricated temperature/condition. Only the
+  /// weather chrome updates -- outfit order/banner are left as-is rather than
+  /// sorted against a made-up temperature.
+  void _applyWeatherUnavailable() {
+    if (!mounted) return;
+    setState(() {
+      _weatherIcon = '—';
+      _weatherLabel = 'Weather unavailable';
+      _weatherDetail = '';
+      _weatherTemp = '--°';
+      _weatherContext = '';
+    });
   }
 
   void _applyWeather(int temp, int feel, int code, [BuildContext? ctx]) {

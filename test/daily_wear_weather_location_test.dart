@@ -97,24 +97,102 @@ void main() {
     });
   });
 
-  group('DailyWear weather request wiring + fallback (regression)', () {
+  group('DailyWear weather routing (regression: canonical backend, no fabrication)', () {
     final source = File('lib/daily_wear.dart').readAsStringSync();
 
-    test('_fetchWeather resolves coordinates via DailyWearScreen.resolveWeatherCoordinates',
-        () {
-      expect(source, contains('DailyWearScreen.resolveWeatherCoordinates()'));
-      expect(source, contains("'?latitude=\${coords.lat}&longitude=\${coords.lon}'"));
+    String extractMethod(String signature, String nextSignature) {
+      final start = source.indexOf(signature);
+      if (start < 0) throw StateError('$signature not found');
+      final end = source.indexOf(nextSignature, start);
+      if (end <= start) {
+        throw StateError('$nextSignature not found after $signature');
+      }
+      return source.substring(start, end);
+    }
+
+    final fetchWeather = extractMethod(
+      'Future<void> _fetchWeather() async {',
+      'void _applyWeatherUnavailable() {',
+    );
+
+    test('E. _fetchWeather uses BackendService().getCurrentWeather(), the canonical Home-shared path', () {
+      expect(fetchWeather, contains('BackendService().getCurrentWeather()'));
+      expect(fetchWeather, contains('mapDailyWearWeather(weather)'));
     });
 
-    test('open-meteo request failure fallback (existing degradation) is untouched',
-        () {
-      final fetchWeather = source.substring(
-        source.indexOf('Future<void> _fetchWeather()'),
-        source.indexOf('void _applyWeather('),
+    test('E. no mounted DailyWear path calls api.open-meteo.com directly', () {
+      expect(source, isNot(contains('api.open-meteo.com')));
+    });
+
+    test('D. provider/backend exception no longer produces a fabricated baseTemps reading', () {
+      expect(fetchWeather, isNot(contains('baseTemps')));
+      expect(fetchWeather, isNot(contains('DateTime.now().hour')));
+      expect(fetchWeather, contains('_applyWeatherUnavailable();'));
+    });
+
+    test('F. no hardcoded Hyderabad coordinates reintroduced anywhere in the file', () {
+      expect(source, isNot(contains('17.385')));
+      expect(source, isNot(contains('78.486')));
+      expect(source, isNot(contains('78.4867')));
+    });
+
+    test('F. resolveWeatherCoordinates (device-location work from 1480b64) is preserved', () {
+      expect(source, contains('static Future<({double lat, double lon})> resolveWeatherCoordinates'));
+      expect(source, contains('LocationContextService().getLocationContext()'));
+    });
+  });
+
+  group('mapDailyWearWeather (regression: honest mapping, no fabrication)', () {
+    test('A. available backend response with a real temperature/code maps through unchanged', () {
+      final mapped = mapDailyWearWeather(const {
+        'status': 'available',
+        'temperature_c': 24.6,
+        'raw': {'code': 3, 'apparent_temperature': 23.9},
+      });
+      expect(mapped.temp, 25); // 24.6 rounds to 25
+      expect(mapped.feel, 24);
+      expect(mapped.code, 3);
+    });
+
+    test('feels-like degrades to actual temperature when the backend omits it', () {
+      final mapped = mapDailyWearWeather(const {
+        'status': 'available',
+        'temperature_c': 18.2,
+        'raw': {'code': 1},
+      });
+      expect(mapped.temp, 18);
+      expect(mapped.feel, 18);
+    });
+
+    test('B. backend status=unavailable throws instead of returning any temperature', () {
+      expect(
+        () => mapDailyWearWeather(const {
+          'status': 'unavailable',
+          'reason': 'weather_location_missing',
+        }),
+        throwsStateError,
       );
-      expect(fetchWeather, contains('catch (_) {'));
-      expect(fetchWeather, contains('baseTemps'));
-      expect(fetchWeather, contains('_applyWeather(t, feel, code);'));
+    });
+
+    test('C. missing temperature throws instead of fabricating a value', () {
+      expect(
+        () => mapDailyWearWeather(const {
+          'status': 'available',
+          'raw': {'code': 1},
+        }),
+        throwsStateError,
+      );
+    });
+
+    test('C. missing weather code throws instead of defaulting to a fake condition', () {
+      expect(
+        () => mapDailyWearWeather(const {
+          'status': 'available',
+          'temperature_c': 22.0,
+          'raw': <String, dynamic>{},
+        }),
+        throwsStateError,
+      );
     });
   });
 }
