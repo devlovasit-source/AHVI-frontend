@@ -60,6 +60,12 @@ class UploadItemResult {
 
   bool get isAdded => outcome == UploadItemOutcome.added;
   bool get isDuplicate => outcome == UploadItemOutcome.duplicate;
+  // FAILED is retryable by the backend, while REJECTED is a terminal verdict
+  // about the image and must remain non-overridable.
+  bool get canAddAnyway =>
+      outcome == UploadItemOutcome.duplicate ||
+      outcome == UploadItemOutcome.needsReview ||
+      outcome == UploadItemOutcome.failed;
 
   factory UploadItemResult.fromRaw(
     String clientUploadItemId,

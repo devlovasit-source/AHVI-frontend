@@ -68,8 +68,11 @@ class _FakeBackendService extends BackendService {
   // response (bypassing the saved_count/index heuristic below) so a test can
   // deterministically produce NEEDS_REVIEW/duplicate outcomes and Add-Anyway
   // overrides, which the index-based heuristic cannot express.
-  Map<String, dynamic> Function(String clientUploadItemId, bool overrideDuplicate)?
-      onProcessItem;
+  Map<String, dynamic> Function(
+    String clientUploadItemId,
+    bool overrideDuplicate,
+  )?
+  onProcessItem;
 
   int analyzeCallCount = 0;
   int saveCallCount = 0;
@@ -81,6 +84,7 @@ class _FakeBackendService extends BackendService {
   // can deterministically observe the in-flight "saving" step instead of
   // racing a save call that resolves within the same pump.
   Completer<void>? saveGate;
+  Map<String, dynamic>? batchStatus;
 
   int _batchItemIndex = 0;
   final Set<String> _attemptedBatchItems = {};
@@ -112,8 +116,7 @@ class _FakeBackendService extends BackendService {
     saveCallCount++;
     saveCalls.add(detectedItems);
     if (saveGate != null) await saveGate!.future;
-    return onSave?.call(detectedItems) ??
-        {'saved_count': detectedItems.length};
+    return onSave?.call(detectedItems) ?? {'saved_count': detectedItems.length};
   }
 
   @override
@@ -148,9 +151,10 @@ class _FakeBackendService extends BackendService {
     if (onProcessItem != null) {
       return onProcessItem!(clientUploadItemId, overrideDuplicate);
     }
-    final response = onSave?.call(saveCalls.last) ??
-        {'saved_count': saveCalls.last.length};
-    final savedCount = int.tryParse(response['saved_count']?.toString() ?? '') ?? 0;
+    final response =
+        onSave?.call(saveCalls.last) ?? {'saved_count': saveCalls.last.length};
+    final savedCount =
+        int.tryParse(response['saved_count']?.toString() ?? '') ?? 0;
     final wasAttempted = !_attemptedBatchItems.add(clientUploadItemId);
     final shouldAdd =
         savedCount > 0 && (wasAttempted || savedCount > _batchItemIndex++);
@@ -168,7 +172,7 @@ class _FakeBackendService extends BackendService {
 
   @override
   Future<Map<String, dynamic>?> getUploadBatchStatus(String batchId) async =>
-      {'batch_id': batchId, 'status': 'COMPLETED'};
+      batchStatus ?? {'batch_id': batchId, 'status': 'COMPLETED'};
 }
 
 Map<String, dynamic> _detectedItemJson({
@@ -207,9 +211,8 @@ Future<void> _openReview(
 }) async {
   backend.onAnalyze = onAnalyze ?? (_) => {'items': items};
   ImagePickerPlatform.instance = _FakeImagePickerPlatform(
-    pickedFiles ?? [
-      XFile.fromData(_onePxPng, mimeType: 'image/png', name: 'pick.png'),
-    ],
+    pickedFiles ??
+        [XFile.fromData(_onePxPng, mimeType: 'image/png', name: 'pick.png')],
   );
 
   // Provider wraps the whole MaterialApp (not just `home`): the upload
@@ -254,10 +257,7 @@ Future<void> _openReview(
     await tester.pump();
     return;
   }
-  await _pumpUntilKeyFound(tester, const [
-    'review',
-    'wardrobe-error',
-  ]);
+  await _pumpUntilKeyFound(tester, const ['review', 'wardrobe-error']);
 }
 
 /// Same as [_openReview] but wires a real `onSaved` callback through
@@ -276,9 +276,8 @@ Future<void> _openReviewWithOnSaved(
 }) async {
   backend.onAnalyze = (_) => {'items': items};
   ImagePickerPlatform.instance = _FakeImagePickerPlatform(
-    pickedFiles ?? [
-      XFile.fromData(_onePxPng, mimeType: 'image/png', name: 'pick.png'),
-    ],
+    pickedFiles ??
+        [XFile.fromData(_onePxPng, mimeType: 'image/png', name: 'pick.png')],
   );
 
   await tester.pumpWidget(
@@ -318,8 +317,8 @@ Future<void> _scrollToAndTapAddOccasion(WidgetTester tester) async {
 }
 
 Finder _customOccasionField() => find.byWidgetPredicate(
-  (widget) => widget is TextField &&
-      widget.decoration?.hintText == 'e.g. Beach, Gym',
+  (widget) =>
+      widget is TextField && widget.decoration?.hintText == 'e.g. Beach, Gym',
 );
 
 Future<void> _addCustomOccasion(WidgetTester tester, String tag) async {
@@ -332,11 +331,8 @@ Future<void> _addCustomOccasion(WidgetTester tester, String tag) async {
 
 List<XFile> _pickedImages(int count) => List.generate(
   count,
-  (index) => XFile.fromData(
-    _onePxPng,
-    mimeType: 'image/png',
-    name: 'pick-$index.png',
-  ),
+  (index) =>
+      XFile.fromData(_onePxPng, mimeType: 'image/png', name: 'pick-$index.png'),
 );
 
 /// Repeatedly pumps small, bounded frames (never `pumpAndSettle`, which
@@ -393,9 +389,9 @@ void main() {
     test('3: no separate Edit Item route/dialog remains', () {
       expect(source.contains('_saveEditedItem'), isFalse);
       expect(source.contains('_editItem'), isFalse);
-      final modalSteps = RegExp(
-        r'enum _ModalStep \{[^}]*\}',
-      ).firstMatch(source)!.group(0)!
+      final modalSteps = RegExp(r'enum _ModalStep \{[^}]*\}')
+          .firstMatch(source)!
+          .group(0)!
           .replaceAll(RegExp(r'\s+'), ' ')
           .replaceAll(', }', ' }');
       expect(
@@ -423,7 +419,9 @@ void main() {
             .where((line) => !line.trim().startsWith('//'))
             .where(
               (line) =>
-                  line.contains('Ã') || line.contains('â€') || line.contains('Γ'),
+                  line.contains('Ã') ||
+                  line.contains('â€') ||
+                  line.contains('Γ'),
             )
             .toList();
         expect(
@@ -434,19 +432,16 @@ void main() {
       },
     );
 
-    test(
-      '16: catalog_pending scheduling is preserved for saved items',
-      () {
-        expect(
-          source.contains(
-            "if ((item['catalogStatus'] ?? '').toString() == 'catalog_pending') {",
-          ),
-          isTrue,
-        );
-        expect(source.contains('_pendingCatalogIds.add(localItem.id)'), isTrue);
-        expect(source.contains('_scheduleCatalogRefresh()'), isTrue);
-      },
-    );
+    test('16: catalog_pending scheduling is preserved for saved items', () {
+      expect(
+        source.contains(
+          "if ((item['catalogStatus'] ?? '').toString() == 'catalog_pending') {",
+        ),
+        isTrue,
+      );
+      expect(source.contains('_pendingCatalogIds.add(localItem.id)'), isTrue);
+      expect(source.contains('_scheduleCatalogRefresh()'), isTrue);
+    });
 
     test(
       '17: each saved item is inserted into the live wardrobe list on save',
@@ -490,7 +485,9 @@ void main() {
     expect(backend.processItemCallCount, 0);
   });
 
-  testWidgets('explicit three-item save is strictly sequential', (tester) async {
+  testWidgets('explicit three-item save is strictly sequential', (
+    tester,
+  ) async {
     final backend = _FakeBackendService()
       ..onSave = (_) => const {'saved_count': 3};
     await _openReview(
@@ -622,7 +619,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
       await _pumpUntilKeyFound(tester, const ['wardrobe-upload-results']);
       expect(find.text('Added 3 items to your wardrobe!'), findsNothing);
-      expect(find.textContaining('1 of 3 items are in your wardrobe'), findsOneWidget);
+      expect(
+        find.textContaining('1 of 3 items are in your wardrobe'),
+        findsOneWidget,
+      );
     },
   );
 
@@ -644,7 +644,9 @@ void main() {
       );
 
       final subCatField = find.byWidgetPredicate(
-        (w) => w is TextField && w.decoration?.hintText == 'e.g. Shirt, Saree, Sneakers',
+        (w) =>
+            w is TextField &&
+            w.decoration?.hintText == 'e.g. Shirt, Saree, Sneakers',
       );
       expect(subCatField, findsOneWidget);
       await tester.enterText(subCatField, 'Boxer Briefs');
@@ -652,10 +654,7 @@ void main() {
 
       // Reactivity: the private-wear banner appears immediately, without a
       // separate confirm step.
-      expect(
-        find.textContaining("marked as private wear"),
-        findsOneWidget,
-      );
+      expect(find.textContaining("marked as private wear"), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
       await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
@@ -695,26 +694,25 @@ void main() {
     expect(find.byKey(const ValueKey('wardrobe-confirm-cta')), findsNothing);
   });
 
-  testWidgets(
-    '18: large text scale renders the review page without overflow',
-    (tester) async {
-      final backend = _FakeBackendService();
-      await _openReview(
-        tester,
-        backend: backend,
-        textScale: 2.0,
-        items: [
-          _detectedItemJson(
-            name:
-                'An Extremely Long Detected Item Name That Could Wrap '
-                'Awkwardly Across Several Lines Of The Review Card Layout',
-          ),
-        ],
-      );
-      expect(find.byKey(const ValueKey('review')), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('18: large text scale renders the review page without overflow', (
+    tester,
+  ) async {
+    final backend = _FakeBackendService();
+    await _openReview(
+      tester,
+      backend: backend,
+      textScale: 2.0,
+      items: [
+        _detectedItemJson(
+          name:
+              'An Extremely Long Detected Item Name That Could Wrap '
+              'Awkwardly Across Several Lines Of The Review Card Layout',
+        ),
+      ],
+    );
+    expect(find.byKey(const ValueKey('review')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('19: custom occasion can be added and saved', (tester) async {
     final backend = _FakeBackendService();
@@ -750,7 +748,8 @@ void main() {
     final labels = tester
         .widgetList<Text>(
           find.byWidgetPredicate(
-            (widget) => widget is Text && (widget.data ?? '').startsWith('A Tag'),
+            (widget) =>
+                widget is Text && (widget.data ?? '').startsWith('A Tag'),
           ),
         )
         .map((widget) => widget.data!)
@@ -799,7 +798,11 @@ void main() {
     expect(find.text('Travel'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
     await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
-    expect(backend.saveCalls.single.single['occasions'], ['Work', 'Travel', 'Gym']);
+    expect(backend.saveCalls.single.single['occasions'], [
+      'Work',
+      'Travel',
+      'Gym',
+    ]);
   });
 
   testWidgets('23: picker input over six is capped with the standard warning', (
@@ -813,7 +816,9 @@ void main() {
       pickedFiles: _pickedImages(7),
       onAnalyze: (images) {
         analyzedCount = images.length;
-        return {'items': [_detectedItemJson()]};
+        return {
+          'items': [_detectedItemJson()],
+        };
       },
       items: [_detectedItemJson()],
     );
@@ -822,7 +827,9 @@ void main() {
     expect(find.text(wardrobeMaxItemsMessage), findsOneWidget);
   });
 
-  testWidgets('24: selecting a seventh item keeps six selected', (tester) async {
+  testWidgets('24: selecting a seventh item keeps six selected', (
+    tester,
+  ) async {
     final backend = _FakeBackendService();
     final items = List.generate(
       7,
@@ -866,33 +873,37 @@ void main() {
     expect(find.text(wardrobeMaxItemsMessage), findsOneWidget);
   });
 
-  testWidgets('26: repeated max-six rejection replaces one overlay and dismisses', (
+  testWidgets(
+    '26: repeated max-six rejection replaces one overlay and dismisses',
+    (tester) async {
+      final backend = _FakeBackendService();
+      await _openReview(
+        tester,
+        backend: backend,
+        items: List.generate(
+          7,
+          (index) =>
+              _detectedItemJson(id: 'det-$index', selectedByDefault: true),
+        ),
+      );
+
+      final onTap = tester
+          .widget<GestureDetector>(
+            find.byKey(const ValueKey('wardrobe-confirm-cta')),
+          )
+          .onTap!;
+      onTap();
+      onTap();
+      await tester.pump();
+      expect(find.text(wardrobeMaxItemsMessage), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3, milliseconds: 100));
+      expect(find.text(wardrobeMaxItemsMessage), findsNothing);
+    },
+  );
+
+  testWidgets('27: disposing a visible max-six warning is safe', (
     tester,
   ) async {
-    final backend = _FakeBackendService();
-    await _openReview(
-      tester,
-      backend: backend,
-      items: List.generate(
-        7,
-        (index) => _detectedItemJson(id: 'det-$index', selectedByDefault: true),
-      ),
-    );
-
-    final onTap = tester
-        .widget<GestureDetector>(
-          find.byKey(const ValueKey('wardrobe-confirm-cta')),
-        )
-        .onTap!;
-    onTap();
-    onTap();
-    await tester.pump();
-    expect(find.text(wardrobeMaxItemsMessage), findsOneWidget);
-    await tester.pump(const Duration(seconds: 3, milliseconds: 100));
-    expect(find.text(wardrobeMaxItemsMessage), findsNothing);
-  });
-
-  testWidgets('27: disposing a visible max-six warning is safe', (tester) async {
     final backend = _FakeBackendService();
     await _openReview(
       tester,
@@ -928,94 +939,162 @@ void main() {
   // ------------------------------------------------------------------
 
   group('P0.21 shared post-save handler', () {
-    test(
-      'source contract: the FAB routes through _handleItemSaved',
-      () {
-        final source = File('lib/wardrobe.dart').readAsStringSync();
-        // _openAddModal's showDialog must hand the modal the extracted
-        // handler, not an inline closure — required so the FAB keeps its
-        // exact pre-existing optimistic-insert + 3308946 reconciliation
-        // behavior unchanged.
+    test('source contract: the FAB routes through _handleItemSaved', () {
+      final source = File('lib/wardrobe.dart').readAsStringSync();
+      // _openAddModal's showDialog must hand the modal the extracted
+      // handler, not an inline closure — required so the FAB keeps its
+      // exact pre-existing optimistic-insert + 3308946 reconciliation
+      // behavior unchanged.
+      expect(
+        source.contains(
+          'builder: (_) => _AddItemModal(onSave: _handleItemSaved)',
+        ),
+        isTrue,
+        reason:
+            'FAB (_openAddModal) must use the extracted _handleItemSaved handler',
+      );
+    });
+
+    testWidgets(
+      'CASE 1: a single successful item reaches onSaved exactly once automatically',
+      (tester) async {
+        final saved = <Map<String, dynamic>>[];
+        final backend = _FakeBackendService();
+        await _openReviewWithOnSaved(
+          tester,
+          backend: backend,
+          items: [_detectedItemJson(id: 'item-1')],
+          onSaved: saved.add,
+        );
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+        // No manual refresh action taken between save completing and this
+        // assertion — onSaved must already have fired.
+        expect(saved, hasLength(1));
+        expect(saved.single['id'], 'wardrobe-item-1');
+      },
+    );
+
+    testWidgets(
+      'CASE 3: three successful sequential items all reach onSaved, no duplicates',
+      (tester) async {
+        final saved = <Map<String, dynamic>>[];
+        final backend = _FakeBackendService()
+          ..onSave = (_) => const {'saved_count': 3};
+        await _openReviewWithOnSaved(
+          tester,
+          backend: backend,
+          items: [
+            _detectedItemJson(id: 'item-a', name: 'Item A'),
+            _detectedItemJson(id: 'item-b', name: 'Item B'),
+            _detectedItemJson(id: 'item-c', name: 'Item C'),
+          ],
+          onSaved: saved.add,
+        );
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+
+        expect(saved.map((item) => item['id']).toSet(), {
+          'wardrobe-item-a',
+          'wardrobe-item-b',
+          'wardrobe-item-c',
+        });
         expect(
-          source.contains('builder: (_) => _AddItemModal(onSave: _handleItemSaved)'),
-          isTrue,
-          reason: 'FAB (_openAddModal) must use the extracted _handleItemSaved handler',
+          saved,
+          hasLength(3),
+          reason: 'each item must reach onSaved exactly once',
         );
       },
     );
 
-    testWidgets('CASE 1: a single successful item reaches onSaved exactly once automatically', (
-      tester,
-    ) async {
-      final saved = <Map<String, dynamic>>[];
-      final backend = _FakeBackendService();
-      await _openReviewWithOnSaved(
-        tester,
-        backend: backend,
-        items: [_detectedItemJson(id: 'item-1')],
-        onSaved: saved.add,
-      );
-      await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
-      await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+    testWidgets(
+      'CASE 4: mixed batch (2 ADDED + 1 FAILED) reaches onSaved exactly twice',
+      (tester) async {
+        final saved = <Map<String, dynamic>>[];
+        final backend = _FakeBackendService()
+          ..onSave = (_) => const {'saved_count': 2};
+        await _openReviewWithOnSaved(
+          tester,
+          backend: backend,
+          items: [
+            _detectedItemJson(id: 'item-a', name: 'Item A'),
+            _detectedItemJson(id: 'item-b', name: 'Item B'),
+            _detectedItemJson(id: 'item-c', name: 'Item C'),
+          ],
+          onSaved: saved.add,
+        );
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        // 2 of 3 added + 0 reviewable -> results step (not success), matching
+        // _confirmAndSave's step-selection logic.
+        await _pumpUntilKeyFound(tester, const ['wardrobe-upload-results']);
 
-      // No manual refresh action taken between save completing and this
-      // assertion — onSaved must already have fired.
-      expect(saved, hasLength(1));
-      expect(saved.single['id'], 'wardrobe-item-1');
-    });
+        expect(
+          saved,
+          hasLength(2),
+          reason: 'the FAILED item must never reach onSaved',
+        );
+        expect(saved.map((item) => item['id']).toSet(), {
+          'wardrobe-item-a',
+          'wardrobe-item-b',
+        });
+      },
+    );
 
-    testWidgets('CASE 3: three successful sequential items all reach onSaved, no duplicates', (
-      tester,
-    ) async {
-      final saved = <Map<String, dynamic>>[];
-      final backend = _FakeBackendService()..onSave = (_) => const {'saved_count': 3};
-      await _openReviewWithOnSaved(
-        tester,
-        backend: backend,
-        items: [
-          _detectedItemJson(id: 'item-a', name: 'Item A'),
-          _detectedItemJson(id: 'item-b', name: 'Item B'),
-          _detectedItemJson(id: 'item-c', name: 'Item C'),
-        ],
-        onSaved: saved.add,
-      );
-      await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
-      await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+    testWidgets(
+      'CASE 4b: five added plus one failed stays truthful and exposes Add Anyway',
+      (tester) async {
+        final saved = <Map<String, dynamic>>[];
+        final backend = _FakeBackendService()
+          // Simulate a stale batch counter: item responses are still the
+          // authoritative record of the five successful saves.
+          ..batchStatus = {
+            'batch_id': 'stale-batch',
+            'status': 'FAILED',
+            'added_count': 0,
+          }
+          ..onProcessItem = (id, overrideDuplicate) {
+            if (id == 'item-fail' && !overrideDuplicate) {
+              return {
+                'status': 'FAILED',
+                'error_code': 'PERSISTENCE_FAILED',
+                'reason': 'temporary save failure',
+              };
+            }
+            return {
+              'status': 'ADDED_TO_WARDROBE',
+              'wardrobe_item_id': 'wardrobe-$id',
+            };
+          };
 
-      expect(saved.map((item) => item['id']).toSet(), {
-        'wardrobe-item-a',
-        'wardrobe-item-b',
-        'wardrobe-item-c',
-      });
-      expect(saved, hasLength(3), reason: 'each item must reach onSaved exactly once');
-    });
+        await _openReviewWithOnSaved(
+          tester,
+          backend: backend,
+          items: [
+            ...List.generate(
+              5,
+              (index) =>
+                  _detectedItemJson(id: 'item-$index', name: 'Item $index'),
+            ),
+            _detectedItemJson(id: 'item-fail', name: 'Failed item'),
+          ],
+          onSaved: saved.add,
+        );
 
-    testWidgets('CASE 4: mixed batch (2 ADDED + 1 FAILED) reaches onSaved exactly twice', (
-      tester,
-    ) async {
-      final saved = <Map<String, dynamic>>[];
-      final backend = _FakeBackendService()..onSave = (_) => const {'saved_count': 2};
-      await _openReviewWithOnSaved(
-        tester,
-        backend: backend,
-        items: [
-          _detectedItemJson(id: 'item-a', name: 'Item A'),
-          _detectedItemJson(id: 'item-b', name: 'Item B'),
-          _detectedItemJson(id: 'item-c', name: 'Item C'),
-        ],
-        onSaved: saved.add,
-      );
-      await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
-      // 2 of 3 added + 0 reviewable -> results step (not success), matching
-      // _confirmAndSave's step-selection logic.
-      await _pumpUntilKeyFound(tester, const ['wardrobe-upload-results']);
+        await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
+        await _pumpUntilKeyFound(tester, const ['wardrobe-upload-results']);
 
-      expect(saved, hasLength(2), reason: 'the FAILED item must never reach onSaved');
-      expect(saved.map((item) => item['id']).toSet(), {
-        'wardrobe-item-a',
-        'wardrobe-item-b',
-      });
-    });
+        expect(find.text('5 of 6 items are in your wardrobe.'), findsOneWidget);
+        expect(find.text('Add Anyway'), findsOneWidget);
+        expect(saved, hasLength(5));
+
+        final addAnyway = find.text('Add Anyway');
+        await tester.ensureVisible(addAnyway);
+        await tester.tap(addAnyway);
+        await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
+        expect(saved, hasLength(6));
+      },
+    );
 
     testWidgets(
       'CASE 5: duplicate (NEEDS_REVIEW) does not reach onSaved until Add Anyway succeeds, then exactly once',
@@ -1023,7 +1102,10 @@ void main() {
         final saved = <Map<String, dynamic>>[];
         final backend = _FakeBackendService()
           ..onProcessItem = (id, overrideDuplicate) => overrideDuplicate
-              ? {'status': 'ADDED_TO_WARDROBE', 'wardrobe_item_id': 'wardrobe-$id'}
+              ? {
+                  'status': 'ADDED_TO_WARDROBE',
+                  'wardrobe_item_id': 'wardrobe-$id',
+                }
               : {
                   'status': 'NEEDS_REVIEW',
                   'error_code': 'DUPLICATE_WARDROBE_ITEM',
@@ -1038,13 +1120,21 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
         await _pumpUntilKeyFound(tester, const ['wardrobe-upload-results']);
 
-        expect(saved, isEmpty, reason: 'a duplicate must not persist before Add Anyway');
+        expect(
+          saved,
+          isEmpty,
+          reason: 'a duplicate must not persist before Add Anyway',
+        );
         expect(find.text('Add Anyway'), findsOneWidget);
 
         await tester.tap(find.text('Add Anyway'));
         await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
 
-        expect(saved, hasLength(1), reason: 'Add Anyway must persist exactly once');
+        expect(
+          saved,
+          hasLength(1),
+          reason: 'Add Anyway must persist exactly once',
+        );
         expect(saved.single['id'], 'wardrobe-dup-item');
       },
     );
@@ -1067,12 +1157,20 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('wardrobe-confirm-cta')));
       await _pumpUntilKeyFound(tester, const ['wardrobe-error']);
-      expect(saved, isEmpty, reason: 'the initial FAILED attempt must not reach onSaved');
+      expect(
+        saved,
+        isEmpty,
+        reason: 'the initial FAILED attempt must not reach onSaved',
+      );
 
       await tester.tap(find.byKey(const ValueKey('wardrobe-retry-cta')));
       await _pumpUntilKeyFound(tester, const ['wardrobe-success']);
 
-      expect(saved, hasLength(1), reason: 'the retried success must reach onSaved exactly once');
+      expect(
+        saved,
+        hasLength(1),
+        reason: 'the retried success must reach onSaved exactly once',
+      );
       expect(saved.single['id'], 'wardrobe-retry-item');
     });
 
@@ -1105,7 +1203,8 @@ void main() {
         expect(
           body.contains('} else {'),
           isTrue,
-          reason: 'the non-catalog_pending reconciliation branch recovered from 3308946 must exist',
+          reason:
+              'the non-catalog_pending reconciliation branch recovered from 3308946 must exist',
         );
         expect(body.contains('_fetchWardrobeItems();'), isTrue);
       },
@@ -1155,13 +1254,15 @@ void main() {
         expect(
           wiresInvalidation(chatBar),
           isTrue,
-          reason: 'ahvi_chat_prompt_bar.dart (Home chat bar, main Chat, '
+          reason:
+              'ahvi_chat_prompt_bar.dart (Home chat bar, main Chat, '
               'DailyWear chat bar, Diet page) must signal invalidation',
         );
         expect(
           wiresInvalidation(dailyWear),
           isTrue,
-          reason: 'daily_wear.dart empty-state "Add wardrobe" CTA must signal invalidation',
+          reason:
+              'daily_wear.dart empty-state "Add wardrobe" CTA must signal invalidation',
         );
       },
     );
@@ -1188,7 +1289,8 @@ void main() {
       'CASE E (signal fidelity): three successful sequential items bump wardrobeGeneration exactly three times',
       (tester) async {
         final before = AppwriteService().wardrobeGeneration;
-        final backend = _FakeBackendService()..onSave = (_) => const {'saved_count': 3};
+        final backend = _FakeBackendService()
+          ..onSave = (_) => const {'saved_count': 3};
         await _openReviewWithOnSaved(
           tester,
           backend: backend,
@@ -1210,7 +1312,8 @@ void main() {
       'CASE F: a FAILED item in a mixed batch does not bump wardrobeGeneration',
       (tester) async {
         final before = AppwriteService().wardrobeGeneration;
-        final backend = _FakeBackendService()..onSave = (_) => const {'saved_count': 2};
+        final backend = _FakeBackendService()
+          ..onSave = (_) => const {'saved_count': 2};
         await _openReviewWithOnSaved(
           tester,
           backend: backend,
@@ -1227,7 +1330,8 @@ void main() {
         expect(
           AppwriteService().wardrobeGeneration,
           before + 2,
-          reason: 'only the 2 ADDED items may bump the signal, never the FAILED one',
+          reason:
+              'only the 2 ADDED items may bump the signal, never the FAILED one',
         );
       },
     );
@@ -1238,7 +1342,10 @@ void main() {
         final before = AppwriteService().wardrobeGeneration;
         final backend = _FakeBackendService()
           ..onProcessItem = (id, overrideDuplicate) => overrideDuplicate
-              ? {'status': 'ADDED_TO_WARDROBE', 'wardrobe_item_id': 'wardrobe-$id'}
+              ? {
+                  'status': 'ADDED_TO_WARDROBE',
+                  'wardrobe_item_id': 'wardrobe-$id',
+                }
               : {
                   'status': 'NEEDS_REVIEW',
                   'error_code': 'DUPLICATE_WARDROBE_ITEM',
@@ -1255,7 +1362,8 @@ void main() {
         expect(
           AppwriteService().wardrobeGeneration,
           before,
-          reason: 'a duplicate awaiting review must not signal a persisted change',
+          reason:
+              'a duplicate awaiting review must not signal a persisted change',
         );
 
         await tester.tap(find.text('Add Anyway'));
@@ -1302,14 +1410,20 @@ void main() {
         // proof that a mounted screen visually refreshes.
         final source = File('lib/wardrobe.dart').readAsStringSync();
         expect(
-          source.contains('AppwriteService().addListener(_onAppwriteServiceChanged);'),
+          source.contains(
+            'AppwriteService().addListener(_onAppwriteServiceChanged);',
+          ),
           isTrue,
-          reason: 'WardrobeScreen must register for the shared invalidation signal on init',
+          reason:
+              'WardrobeScreen must register for the shared invalidation signal on init',
         );
         expect(
-          source.contains('AppwriteService().removeListener(_onAppwriteServiceChanged);'),
+          source.contains(
+            'AppwriteService().removeListener(_onAppwriteServiceChanged);',
+          ),
           isTrue,
-          reason: 'WardrobeScreen must unregister on dispose to avoid a listener leak',
+          reason:
+              'WardrobeScreen must unregister on dispose to avoid a listener leak',
         );
         final handlerStart = source.indexOf(
           'void _onAppwriteServiceChanged() {',
@@ -1317,14 +1431,18 @@ void main() {
         expect(handlerStart, greaterThan(0));
         final handlerBody = source.substring(handlerStart, handlerStart + 500);
         expect(
-          handlerBody.contains('if (current == _lastSeenWardrobeGeneration) return;'),
+          handlerBody.contains(
+            'if (current == _lastSeenWardrobeGeneration) return;',
+          ),
           isTrue,
-          reason: 'must ignore unrelated AppwriteService notifications (only react to real wardrobe changes)',
+          reason:
+              'must ignore unrelated AppwriteService notifications (only react to real wardrobe changes)',
         );
         expect(
           handlerBody.contains('Timer('),
           isTrue,
-          reason: 'must debounce so a multi-item batch coalesces into one reconciliation fetch, not N',
+          reason:
+              'must debounce so a multi-item batch coalesces into one reconciliation fetch, not N',
         );
       },
     );

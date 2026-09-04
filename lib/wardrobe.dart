@@ -81,9 +81,9 @@ const String wardrobeMaxItemsMessage = 'You can upload a maximum of 6 items.';
 
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ PUBLIC HELPER ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 void showAddToWardrobeModal(
-    BuildContext context, {
-      void Function(Map<String, dynamic> item)? onSaved,
-    }) {
+  BuildContext context, {
+  void Function(Map<String, dynamic> item)? onSaved,
+}) {
   showDialog(
     context: context,
     useRootNavigator: true,
@@ -171,9 +171,9 @@ String _cleanUiText(Object? value, {String fallback = ''}) {
   if (raw.isEmpty) return fallback;
   final looksCorrupt =
       raw.contains('\\u00c3') ||
-          raw.contains('\\u00c2') ||
-          raw.contains('\\u00e2\\u20ac') ||
-          raw.contains('\\ufffd');
+      raw.contains('\\u00c2') ||
+      raw.contains('\\u00e2\\u20ac') ||
+      raw.contains('\\ufffd');
   if (!looksCorrupt) return raw;
   final cleaned = raw
       .replaceAll(RegExp(r'[^\x20-\x7E]+'), ' ')
@@ -403,7 +403,9 @@ Future<void> shareGarmentImage({
 
   try {
     Uint8List? bytes = imageBytes;
-    if ((bytes == null || bytes.isEmpty) && imageUrl != null && imageUrl.isNotEmpty) {
+    if ((bytes == null || bytes.isEmpty) &&
+        imageUrl != null &&
+        imageUrl.isNotEmpty) {
       final resp = await http.get(Uri.parse(imageUrl));
       if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
         bytes = resp.bodyBytes;
@@ -412,7 +414,9 @@ Future<void> shareGarmentImage({
 
     if (bytes != null && bytes.isNotEmpty) {
       final tempDir = await getTemporaryDirectory();
-      final safeName = name.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_').toLowerCase();
+      final safeName = name
+          .replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')
+          .toLowerCase();
       final file = File(
         '${tempDir.path}/garment_${safeName}_${DateTime.now().millisecondsSinceEpoch}.png',
       );
@@ -469,7 +473,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   final Set<String> _pendingCatalogIds = {};
 
   bool _isLoading =
-  true; // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Loader state for initial fetch
+      true; // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Loader state for initial fetch
 
   AppThemeTokens get t => context.themeTokens;
   final FocusNode _keyboardFocusNode = FocusNode();
@@ -519,11 +523,11 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     final appwrite = Provider.of<AppwriteService>(context, listen: false);
     final cachedUser = appwrite.cachedUserProfileData;
     final newUid =
-    (cachedUser != null
-        ? (cachedUser['userId'] ?? cachedUser['\$id'] ?? '')
-        : '')
-        .toString()
-        .trim();
+        (cachedUser != null
+                ? (cachedUser['userId'] ?? cachedUser['\$id'] ?? '')
+                : '')
+            .toString()
+            .trim();
     if (newUid.isEmpty) return;
     if (_currentUserId != null && _currentUserId != newUid) {
       // Different authed user than last build. Hard reset.
@@ -576,9 +580,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       liked: data['liked'] == true,
       imageUrl: data['imageUrl']?.toString() ?? data['image_url']?.toString(),
       maskedUrl:
-      data['maskedUrl']?.toString() ?? data['masked_url']?.toString(),
+          data['maskedUrl']?.toString() ?? data['masked_url']?.toString(),
       normalizedUrl:
-      data['normalizedUrl']?.toString() ??
+          data['normalizedUrl']?.toString() ??
           data['normalized_url']?.toString(),
       raw: data['imageMetadata'] is Map
           ? Map<String, dynamic>.from(data['imageMetadata'] as Map)
@@ -652,9 +656,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   }
 
   Future<void> _updateOutfitDocument(
-      String id,
-      Map<String, dynamic> data,
-      ) async {
+    String id,
+    Map<String, dynamic> data,
+  ) async {
     final client = Client()
         .setEndpoint(Env.appwriteEndpoint)
         .setProject(Env.appwriteProjectId);
@@ -874,188 +878,183 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   Future<void> _handleItemSaved(Map<String, dynamic> item) async {
     // Optimistic local insert + cache, so the UI feels instant.
     final localItem = WardrobeItem(
-            id: item['id'] as String,
-            name: _cleanUiText(item['name'], fallback: 'Item'),
-            cat: _cleanCategory(item['cat']),
-            occasions: _cleanStringList(item['occasions']),
-            notes: _cleanUiText(item['notes']),
-            imageBytes: item['imageBytes'] as Uint8List?,
-            imageUrl: item['imageUrl'] as String?,
-            maskedUrl: item['maskedUrl'] as String?,
-            normalizedUrl: item['normalizedUrl'] as String?,
-            worn: item['worn'] as int? ?? 0,
-            liked: item['liked'] as bool? ?? false,
-            raw: Map<String, dynamic>.from(item),
-          );
-          if (mounted) {
-            setState(() => _wardrobe.insert(0, localItem));
-          }
-          await _saveWardrobeCache();
+      id: item['id'] as String,
+      name: _cleanUiText(item['name'], fallback: 'Item'),
+      cat: _cleanCategory(item['cat']),
+      occasions: _cleanStringList(item['occasions']),
+      notes: _cleanUiText(item['notes']),
+      imageBytes: item['imageBytes'] as Uint8List?,
+      imageUrl: item['imageUrl'] as String?,
+      maskedUrl: item['maskedUrl'] as String?,
+      normalizedUrl: item['normalizedUrl'] as String?,
+      worn: item['worn'] as int? ?? 0,
+      liked: item['liked'] as bool? ?? false,
+      raw: Map<String, dynamic>.from(item),
+    );
+    if (mounted) {
+      setState(() => _wardrobe.insert(0, localItem));
+    }
+    await _saveWardrobeCache();
 
-          final alreadySavedRemotely = item['remoteSaved'] == true;
-          if (alreadySavedRemotely) {
-            if ((item['catalogStatus'] ?? '').toString() == 'catalog_pending') {
-              // Deferred catalog (WARDROBE_ASYNC_CATALOG): the card currently
-              // shows the cutout; schedule a bounded refetch to swap in the
-              // catalog PNG when the background task lands.
-              _pendingCatalogIds.add(localItem.id);
-              _scheduleCatalogRefresh();
-            } else {
-              // Recovered from 3308946: the reviewed-item upload-batch save
-              // path only returns ADDED_TO_WARDROBE after the canonical row
-              // (including normalized_url) is already fully persisted
-              // server-side — nothing is pending, so reconcile the
-              // optimistic placeholder (still showing the preview-time
-              // image) with the real backend row right away instead of
-              // leaving it stale until the user manually pulls to refresh.
-              // Same canonical fetch _runCatalogRefresh already uses;
-              // fire-and-forget so the success toast/modal close isn't
-              // blocked on it.
-              _fetchWardrobeItems();
+    final alreadySavedRemotely = item['remoteSaved'] == true;
+    if (alreadySavedRemotely) {
+      if ((item['catalogStatus'] ?? '').toString() == 'catalog_pending') {
+        // Deferred catalog (WARDROBE_ASYNC_CATALOG): the card currently
+        // shows the cutout; schedule a bounded refetch to swap in the
+        // catalog PNG when the background task lands.
+        _pendingCatalogIds.add(localItem.id);
+        _scheduleCatalogRefresh();
+      } else {
+        // Recovered from 3308946: the reviewed-item upload-batch save
+        // path only returns ADDED_TO_WARDROBE after the canonical row
+        // (including normalized_url) is already fully persisted
+        // server-side — nothing is pending, so reconcile the
+        // optimistic placeholder (still showing the preview-time
+        // image) with the real backend row right away instead of
+        // leaving it stale until the user manually pulls to refresh.
+        // Same canonical fetch _runCatalogRefresh already uses;
+        // fire-and-forget so the success toast/modal close isn't
+        // blocked on it.
+        _fetchWardrobeItems();
+      }
+      if (mounted) {
+        _showToast(AppLocalizations.t(context, 'wardrobe_item_saved'));
+      }
+      return;
+    }
+
+    // Persist to Appwrite. Required schema fields:
+    //   userId, name, category, status, image_url, masked_url,
+    //   image_id, qdrant_point_id (all required strings).
+    // Manual-add items skip server-side Qdrant indexing for now;
+    // we reuse the document id as a placeholder so writes succeed.
+    try {
+      final client = Client()
+          .setEndpoint(Env.appwriteEndpoint)
+          .setProject(Env.appwriteProjectId);
+
+      final databases = Databases(client);
+      final account = Account(client);
+      final user = await account.get();
+
+      final imageUrl = (item['imageUrl'] as String?) ?? '';
+      final maskedUrl = (item['maskedUrl'] as String?) ?? imageUrl;
+
+      final doc = await databases.createDocument(
+        databaseId: Env.appwriteDatabaseId,
+        collectionId: Env.outfitsCollection,
+        documentId: ID.unique(),
+        data: {
+          'image_url': imageUrl,
+          'category': localItem.cat,
+          'userId': user.$id,
+          'status': 'active',
+
+          'masked_url': maskedUrl,
+          'image_id': localItem.id,
+          'masked_id': '${localItem.id}_masked',
+
+          'name': localItem.name,
+          'sub_category': localItem.cat,
+
+          'color_code': '#000000',
+          'occasions': localItem.occasions,
+          'pattern': 'plain',
+
+          'worn': localItem.worn,
+          'liked': localItem.liked,
+          'qdrant_point_id': localItem.id,
+        },
+        permissions: [
+          Permission.read(Role.user(user.$id)),
+          Permission.update(Role.user(user.$id)),
+          Permission.delete(Role.user(user.$id)),
+        ],
+      );
+
+      if (mounted) {
+        final savedItem = WardrobeItem(
+          id: doc.$id,
+          name: _cleanUiText(doc.data['name'], fallback: localItem.name),
+          cat: _cleanCategory(doc.data['category']),
+          occasions: _cleanStringList(doc.data['occasions']),
+          notes: _cleanUiText(doc.data['notes']),
+          imageBytes: localItem.imageBytes,
+          imageUrl: doc.data['image_url']?.toString(),
+          maskedUrl: doc.data['masked_url']?.toString(),
+          normalizedUrl: doc.data['normalized_url']?.toString(),
+          worn: doc.data['worn'] ?? 0,
+          liked: doc.data['liked'] == true,
+          raw: Map<String, dynamic>.from(doc.data),
+        );
+
+        setState(() {
+          // FIXED: Remove the locally-added placeholder and replace with server version
+          // The local item has a client UUID, but the server returns doc.$id
+          _wardrobe.removeWhere((w) => w.id == localItem.id);
+          // Insert the real server item at the top
+          _wardrobe.insert(0, savedItem);
+        });
+
+        // FIXED: Always trigger a silent refresh after 3 seconds to ensure
+        // all images are loaded and any async processing (background removal, etc)
+        // is complete. This happens regardless of whether masked URL is used.
+        final willSilentRefresh = !_silentWardrobeRefreshScheduled;
+        debugPrint(
+          'AHVI_WARDROBE_SAVE itemId=${savedItem.id} '
+          'scheduleRefresh=$willSilentRefresh',
+        );
+        if (willSilentRefresh) {
+          _silentWardrobeRefreshScheduled = true;
+          Future.delayed(const Duration(seconds: 3), () async {
+            // ✅ CRITICAL FIX: Check both mounted AND the flag is still set
+            // This prevents setState() from firing after back-swipe disposes the screen
+            if (!mounted || !_silentWardrobeRefreshScheduled) {
+              _silentWardrobeRefreshScheduled = false;
+              return;
             }
-            if (mounted) {
-              _showToast(AppLocalizations.t(context, 'wardrobe_item_saved'));
+            try {
+              debugPrint('AHVI: Silent wardrobe refresh triggered...');
+              await _fetchWardrobeItems().timeout(const Duration(seconds: 8));
+            } catch (e) {
+              debugPrint('Silent refresh failed (non-critical): $e');
+            } finally {
+              _silentWardrobeRefreshScheduled = false;
             }
-            return;
-          }
+          });
+        }
 
-          // Persist to Appwrite. Required schema fields:
-          //   userId, name, category, status, image_url, masked_url,
-          //   image_id, qdrant_point_id (all required strings).
-          // Manual-add items skip server-side Qdrant indexing for now;
-          // we reuse the document id as a placeholder so writes succeed.
-          try {
-            final client = Client()
-                .setEndpoint(Env.appwriteEndpoint)
-                .setProject(Env.appwriteProjectId);
+        await _saveWardrobeCache(userId: user.$id);
+        if (mounted) {
+          Provider.of<AppwriteService>(
+            context,
+            listen: false,
+          ).invalidateWardrobeCache();
+        }
+        _showToast(AppLocalizations.t(context, 'wardrobe_item_saved'));
+      }
+    } on AppwriteException catch (e, st) {
+      debugPrint('❌ Wardrobe AppwriteException');
+      debugPrint('code: ${e.code}');
+      debugPrint('type: ${e.type}');
+      debugPrint('message: ${e.message}');
+      debugPrint('$st');
 
-            final databases = Databases(client);
-            final account = Account(client);
-            final user = await account.get();
+      if (mounted) {
+        setState(() => _wardrobe.removeWhere((w) => w.id == localItem.id));
+        await _saveWardrobeCache();
+        _showToast('Save failed: ${e.message}');
+      }
+    } catch (e, st) {
+      debugPrint('❌ Wardrobe unknown save failed: $e');
+      debugPrint('$st');
 
-            final imageUrl = (item['imageUrl'] as String?) ?? '';
-            final maskedUrl = (item['maskedUrl'] as String?) ?? imageUrl;
-
-            final doc = await databases.createDocument(
-              databaseId: Env.appwriteDatabaseId,
-              collectionId: Env.outfitsCollection,
-              documentId: ID.unique(),
-              data: {
-                'image_url': imageUrl,
-                'category': localItem.cat,
-                'userId': user.$id,
-                'status': 'active',
-
-                'masked_url': maskedUrl,
-                'image_id': localItem.id,
-                'masked_id': '${localItem.id}_masked',
-
-                'name': localItem.name,
-                'sub_category': localItem.cat,
-
-                'color_code': '#000000',
-                'occasions': localItem.occasions,
-                'pattern': 'plain',
-
-                'worn': localItem.worn,
-                'liked': localItem.liked,
-                'qdrant_point_id': localItem.id,
-              },
-              permissions: [
-                Permission.read(Role.user(user.$id)),
-                Permission.update(Role.user(user.$id)),
-                Permission.delete(Role.user(user.$id)),
-              ],
-            );
-
-            if (mounted) {
-              final savedItem = WardrobeItem(
-                id: doc.$id,
-                name: _cleanUiText(doc.data['name'], fallback: localItem.name),
-                cat: _cleanCategory(doc.data['category']),
-                occasions: _cleanStringList(doc.data['occasions']),
-                notes: _cleanUiText(doc.data['notes']),
-                imageBytes: localItem.imageBytes,
-                imageUrl: doc.data['image_url']?.toString(),
-                maskedUrl: doc.data['masked_url']?.toString(),
-                normalizedUrl: doc.data['normalized_url']?.toString(),
-                worn: doc.data['worn'] ?? 0,
-                liked: doc.data['liked'] == true,
-                raw: Map<String, dynamic>.from(doc.data),
-              );
-
-              setState(() {
-                // FIXED: Remove the locally-added placeholder and replace with server version
-                // The local item has a client UUID, but the server returns doc.$id
-                _wardrobe.removeWhere((w) => w.id == localItem.id);
-                // Insert the real server item at the top
-                _wardrobe.insert(0, savedItem);
-              });
-
-              // FIXED: Always trigger a silent refresh after 3 seconds to ensure
-              // all images are loaded and any async processing (background removal, etc)
-              // is complete. This happens regardless of whether masked URL is used.
-              final willSilentRefresh = !_silentWardrobeRefreshScheduled;
-              debugPrint(
-                'AHVI_WARDROBE_SAVE itemId=${savedItem.id} '
-                    'scheduleRefresh=$willSilentRefresh',
-              );
-              if (willSilentRefresh) {
-                _silentWardrobeRefreshScheduled = true;
-                Future.delayed(const Duration(seconds: 3), () async {
-                  // ✅ CRITICAL FIX: Check both mounted AND the flag is still set
-                  // This prevents setState() from firing after back-swipe disposes the screen
-                  if (!mounted || !_silentWardrobeRefreshScheduled) {
-                    _silentWardrobeRefreshScheduled = false;
-                    return;
-                  }
-                  try {
-                    debugPrint('AHVI: Silent wardrobe refresh triggered...');
-                    await _fetchWardrobeItems()
-                        .timeout(const Duration(seconds: 8));
-                  } catch (e) {
-                    debugPrint('Silent refresh failed (non-critical): $e');
-                  } finally {
-                    _silentWardrobeRefreshScheduled = false;
-                  }
-                });
-              }
-
-              await _saveWardrobeCache(userId: user.$id);
-              if (mounted) {
-                Provider.of<AppwriteService>(
-                  context,
-                  listen: false,
-                ).invalidateWardrobeCache();
-              }
-              _showToast(AppLocalizations.t(context, 'wardrobe_item_saved'));
-            }
-          } on AppwriteException catch (e, st) {
-            debugPrint('❌ Wardrobe AppwriteException');
-            debugPrint('code: ${e.code}');
-            debugPrint('type: ${e.type}');
-            debugPrint('message: ${e.message}');
-            debugPrint('$st');
-
-            if (mounted) {
-              setState(
-                    () => _wardrobe.removeWhere((w) => w.id == localItem.id),
-              );
-              await _saveWardrobeCache();
-              _showToast('Save failed: ${e.message}');
-            }
-          } catch (e, st) {
-            debugPrint('❌ Wardrobe unknown save failed: $e');
-            debugPrint('$st');
-
-            if (mounted) {
-              setState(
-                    () => _wardrobe.removeWhere((w) => w.id == localItem.id),
-              );
-              await _saveWardrobeCache();
-              _showToast('Save failed. Check logs.');
-            }
-          }
+      if (mounted) {
+        setState(() => _wardrobe.removeWhere((w) => w.id == localItem.id));
+        await _saveWardrobeCache();
+        _showToast('Save failed. Check logs.');
+      }
+    }
   }
 
   List<WardrobeItem> get _filtered {
@@ -1064,8 +1063,8 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       final matchCat = _activeCat == 'All' || item.cat == _activeCat;
       final matchQ =
           q.isEmpty ||
-              item.name.toLowerCase().contains(q) ||
-              item.cat.toLowerCase().contains(q);
+          item.name.toLowerCase().contains(q) ||
+          item.cat.toLowerCase().contains(q);
       return matchCat && matchQ;
     }).toList();
   }
@@ -1168,16 +1167,26 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
               children: [
                 TextField(
                   controller: nameCtrl,
-                  decoration: InputDecoration(labelText: AppLocalizations.t(context, 'wardrobe_input_name')),
+                  decoration: InputDecoration(
+                    labelText: AppLocalizations.t(
+                      context,
+                      'wardrobe_input_name',
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   initialValue: selectedCat,
-                  decoration: InputDecoration(labelText: AppLocalizations.t(context, 'wardrobe_input_category')),
+                  decoration: InputDecoration(
+                    labelText: AppLocalizations.t(
+                      context,
+                      'wardrobe_input_category',
+                    ),
+                  ),
                   items: cats
                       .map(
                         (cat) => DropdownMenuItem(value: cat, child: Text(cat)),
-                  )
+                      )
                       .toList(),
                   onChanged: (value) {
                     if (value != null) {
@@ -1188,13 +1197,21 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: notesCtrl,
-                  decoration: InputDecoration(labelText: AppLocalizations.t(context, 'wardrobe_input_notes')),
+                  decoration: InputDecoration(
+                    labelText: AppLocalizations.t(
+                      context,
+                      'wardrobe_input_notes',
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: occCtrl,
                   decoration: InputDecoration(
-                    labelText: AppLocalizations.t(context, 'wardrobe_input_occasions'),
+                    labelText: AppLocalizations.t(
+                      context,
+                      'wardrobe_input_occasions',
+                    ),
                   ),
                 ),
               ],
@@ -1238,7 +1255,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       final backend = Provider.of<BackendService>(context, listen: false);
       debugPrint(
         'AHVI_LABEL_UPDATE item=${item.id} category=$selectedCat '
-            'name="$nextName" occasions=${nextOccasions.join(',')}',
+        'name="$nextName" occasions=${nextOccasions.join(',')}',
       );
       final result = await backend.updateWardrobeLabels(
         itemId: item.id,
@@ -1252,8 +1269,8 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       }
       if (result['success'] != true) {
         final reason =
-        (result['detail'] ?? result['error'] ?? result['message'] ?? '')
-            .toString();
+            (result['detail'] ?? result['error'] ?? result['message'] ?? '')
+                .toString();
         debugPrint('AHVI_LABEL_UPDATE_FAIL reason="$reason" raw=$result');
         _showToast(
           reason.isNotEmpty
@@ -1422,7 +1439,8 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     final t = context.themeTokens;
     return KeyboardListener(
       focusNode: _keyboardFocusNode,
-      autofocus: false, // Prevents stealing focus globally in IndexedStack, which breaks back swipes
+      autofocus:
+          false, // Prevents stealing focus globally in IndexedStack, which breaks back swipes
       onKeyEvent: (KeyEvent event) {
         if (event is KeyDownEvent &&
             event.logicalKey == LogicalKeyboardKey.escape) {
@@ -1453,42 +1471,42 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
             Expanded(
               child: _isLoading
                   ? Center(
-                child: CircularProgressIndicator(color: t.accent.primary),
-              )
+                      child: CircularProgressIndicator(color: t.accent.primary),
+                    )
                   : _activeTab == 0
                   ? _WardrobePanel(
-                items: _filtered,
-                allEmpty: _wardrobe.isEmpty,
-                onAddTap: _openAddModal,
-                wardrobe: _wardrobe,
-                onDelete: (id) => _showDeleteConfirm(id),
-                onToggleLike: (id) {
-                  HapticFeedback.selectionClick();
-                  final i = _wardrobe.firstWhere((e) => e.id == id);
-                  setState(() => i.liked = !i.liked);
-                  _saveWardrobeCache();
-                  _updateOutfitDocument(i.id, {
-                    'liked': i.liked,
-                  }).catchError((_) {});
-                  _showToast(
-                    i.liked
-                        ? 'Added "${i.name}" to favourites'
-                        : 'Removed from favourites',
-                  );
-                },
-                onWore: (id) {
-                  final i = _wardrobe.firstWhere((e) => e.id == id);
-                  _markWoreToday(i);
-                },
-                onShare: (id) {
-                  final i = _wardrobe.firstWhere((e) => e.id == id);
-                  _shareItem(i);
-                },
-                onTapCard: _openItemDetail,
-                onRefresh: () async {
-                  await _fetchWardrobeItems();
-                },
-              )
+                      items: _filtered,
+                      allEmpty: _wardrobe.isEmpty,
+                      onAddTap: _openAddModal,
+                      wardrobe: _wardrobe,
+                      onDelete: (id) => _showDeleteConfirm(id),
+                      onToggleLike: (id) {
+                        HapticFeedback.selectionClick();
+                        final i = _wardrobe.firstWhere((e) => e.id == id);
+                        setState(() => i.liked = !i.liked);
+                        _saveWardrobeCache();
+                        _updateOutfitDocument(i.id, {
+                          'liked': i.liked,
+                        }).catchError((_) {});
+                        _showToast(
+                          i.liked
+                              ? 'Added "${i.name}" to favourites'
+                              : 'Removed from favourites',
+                        );
+                      },
+                      onWore: (id) {
+                        final i = _wardrobe.firstWhere((e) => e.id == id);
+                        _markWoreToday(i);
+                      },
+                      onShare: (id) {
+                        final i = _wardrobe.firstWhere((e) => e.id == id);
+                        _shareItem(i);
+                      },
+                      onTapCard: _openItemDetail,
+                      onRefresh: () async {
+                        await _fetchWardrobeItems();
+                      },
+                    )
                   : _StatsPanel(wardrobe: _wardrobe),
             ),
           ],
@@ -1536,11 +1554,11 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
     );
     _slideAnim = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
         .animate(
-      CurvedAnimation(
-        parent: _slideCtrl,
-        curve: const Cubic(0.2, 0.8, 0.3, 1.0),
-      ),
-    );
+          CurvedAnimation(
+            parent: _slideCtrl,
+            curve: const Cubic(0.2, 0.8, 0.3, 1.0),
+          ),
+        );
     _fadeAnim = Tween<double>(
       begin: 0,
       end: 1,
@@ -1573,7 +1591,7 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
         'Makeup': 'MKP',
         'Skincare': 'SKN',
       }[cat] ??
-          'ITM';
+      'ITM';
 
   @override
   Widget build(BuildContext context) {
@@ -1677,7 +1695,12 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          item.worn == 0 ? AppLocalizations.t(context, 'wardrobe_never_worn') : 'Worn ${item.worn}',
+                          item.worn == 0
+                              ? AppLocalizations.t(
+                                  context,
+                                  'wardrobe_never_worn',
+                                )
+                              : 'Worn ${item.worn}',
                           style: TextStyle(
                             fontFamily: GoogleFonts.inter().fontFamily,
                             fontSize: 13,
@@ -1716,31 +1739,31 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
                                     borderRadius: BorderRadius.circular(16),
                                     image: item.displayUrl != null
                                         ? DecorationImage(
-                                      image: NetworkImage(
-                                        item.displayUrl!,
-                                      ),
-                                      fit: BoxFit.contain,
-                                    )
+                                            image: NetworkImage(
+                                              item.displayUrl!,
+                                            ),
+                                            fit: BoxFit.contain,
+                                          )
                                         : (item.imageBytes != null
-                                        ? DecorationImage(
-                                      image: MemoryImage(
-                                        item.imageBytes!,
-                                      ),
-                                      fit: BoxFit.contain,
-                                    )
-                                        : null),
+                                              ? DecorationImage(
+                                                  image: MemoryImage(
+                                                    item.imageBytes!,
+                                                  ),
+                                                  fit: BoxFit.contain,
+                                                )
+                                              : null),
                                   ),
                                   child:
-                                  (item.displayUrl == null &&
-                                      item.imageBytes == null)
+                                      (item.displayUrl == null &&
+                                          item.imageBytes == null)
                                       ? Center(
-                                    child: Text(
-                                      _catEmoji(item.cat),
-                                      style: const TextStyle(
-                                        fontSize: 56,
-                                      ),
-                                    ),
-                                  )
+                                          child: Text(
+                                            _catEmoji(item.cat),
+                                            style: const TextStyle(
+                                              fontSize: 56,
+                                            ),
+                                          ),
+                                        )
                                       : null,
                                 ),
                               ),
@@ -1754,7 +1777,7 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
                                   ),
                                   child: Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       _DetailInfoRow(
                                         label: AppLocalizations.t(
@@ -1795,26 +1818,26 @@ class _ItemDetailPanelState extends State<_ItemDetailPanel>
                               children: item.occasions
                                   .map(
                                     (o) => Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: t.panel,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: t.cardBorder),
-                                  ),
-                                  child: Text(
-                                    o,
-                                    style: TextStyle(
-                                      fontFamily:
-                                      GoogleFonts.inter().fontFamily,
-                                      fontSize: 12,
-                                      color: t.mutedText,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: t.panel,
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(color: t.cardBorder),
+                                      ),
+                                      child: Text(
+                                        o,
+                                        style: TextStyle(
+                                          fontFamily:
+                                              GoogleFonts.inter().fontFamily,
+                                          fontSize: 12,
+                                          color: t.mutedText,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              )
+                                  )
                                   .toList(),
                             ),
                           ],
@@ -2047,21 +2070,22 @@ class _DetectedItem {
            ? 'ok'
            : validationStatus.trim().toLowerCase(),
        selectedByDefault =
-           (selectedByDefault ?? validationStatus.trim().toLowerCase() == 'ok') &&
+           (selectedByDefault ??
+               validationStatus.trim().toLowerCase() == 'ok') &&
            !_duplicateSignal(raw),
        selected =
            selected ??
-           ((selectedByDefault ?? validationStatus.trim().toLowerCase() == 'ok') &&
+           ((selectedByDefault ??
+                   validationStatus.trim().toLowerCase() == 'ok') &&
                !_duplicateSignal(raw));
 
   bool get isApproved => validationStatus == 'ok';
   bool get isNeedsReview => validationStatus == 'needs_review';
   bool get isRejected => validationStatus == 'rejected';
   bool get isSaveable => isApproved;
-  Map<String, dynamic>? get _duplicateInfo =>
-      raw['duplicate'] is Map
-          ? Map<String, dynamic>.from(raw['duplicate'] as Map)
-          : null;
+  Map<String, dynamic>? get _duplicateInfo => raw['duplicate'] is Map
+      ? Map<String, dynamic>.from(raw['duplicate'] as Map)
+      : null;
   bool get isDuplicate => _duplicateSignal(raw);
   String? get duplicateReason => _duplicateInfo?['reason']?.toString();
   String? get matchedItemId => _duplicateInfo?['matched_item_id']?.toString();
@@ -2069,6 +2093,7 @@ class _DetectedItem {
     final confidence = _duplicateInfo?['confidence'];
     return confidence is num ? confidence.toDouble() : null;
   }
+
   String? get statusLabel {
     if (isDuplicate) return 'Possible duplicate';
     if (isNeedsReview) return 'Needs review';
@@ -2428,7 +2453,15 @@ _DetectedTaxonomy _normalizeDetectedTaxonomy(Map<String, dynamic> data) {
   );
 }
 
-enum _ModalStep { camera, detecting, reviewing, saving, success, results, error }
+enum _ModalStep {
+  camera,
+  detecting,
+  reviewing,
+  saving,
+  success,
+  results,
+  error,
+}
 
 /// Per-item inline-edit controllers for the unified review page. One set is
 /// created per detected item (keyed by item id) so multiple items can be
@@ -2610,7 +2643,9 @@ class _AddItemModalState extends State<_AddItemModal>
                 decoration: BoxDecoration(
                   color: overlayContext.themeTokens.panel,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: overlayContext.themeTokens.cardBorder),
+                  border: Border.all(
+                    color: overlayContext.themeTokens.cardBorder,
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: overlayContext.themeTokens.textPrimary.withValues(
@@ -2698,9 +2733,12 @@ class _AddItemModalState extends State<_AddItemModal>
     final existing = _itemCtrls[item.id];
     if (existing != null) return existing;
     final created = _ItemEditCtrls(item)
-      ..bindTo(item, onPrivacyFieldChanged: () {
-        if (mounted) setState(() {});
-      });
+      ..bindTo(
+        item,
+        onPrivacyFieldChanged: () {
+          if (mounted) setState(() {});
+        },
+      );
     _itemCtrls[item.id] = created;
     return created;
   }
@@ -3172,16 +3210,18 @@ class _AddItemModalState extends State<_AddItemModal>
     final payload = item.toBackendPayload();
     payload['occasions'] = preserveOccasionValues(item.occasions);
     payload['category'] = item.category;
-    payload['sub_category'] =
-        item.subCategory.isNotEmpty ? item.subCategory : item.category;
+    payload['sub_category'] = item.subCategory.isNotEmpty
+        ? item.subCategory
+        : item.category;
     payload['name'] = item.name;
     if (item.notes.trim().isNotEmpty) payload['notes'] = item.notes.trim();
 
     final hasCacheToken =
         (payload['image_cache_token']?.toString().trim().isNotEmpty ?? false);
     final maskedEvidence = payload['masked_image_base64']?.toString().trim();
-    final alternateMaskedEvidence =
-        payload['maskedImageBase64']?.toString().trim();
+    final alternateMaskedEvidence = payload['maskedImageBase64']
+        ?.toString()
+        .trim();
     final rawEvidence = payload['raw_image_base64']?.toString().trim();
     final alternateRawEvidence = payload['rawImageBase64']?.toString().trim();
 
@@ -3192,8 +3232,7 @@ class _AddItemModalState extends State<_AddItemModal>
       payload.remove('masked_image_base64');
     } else if ((maskedEvidence?.isNotEmpty ?? false) ||
         (alternateMaskedEvidence?.isNotEmpty ?? false)) {
-      payload['masked_image_base64'] =
-          (maskedEvidence?.isNotEmpty ?? false)
+      payload['masked_image_base64'] = (maskedEvidence?.isNotEmpty ?? false)
           ? maskedEvidence
           : alternateMaskedEvidence;
       payload.remove('raw_image_base64');
@@ -3215,8 +3254,9 @@ class _AddItemModalState extends State<_AddItemModal>
     return {
       'name': item.name,
       'category': item.category,
-      'sub_category':
-          item.subCategory.isNotEmpty ? item.subCategory : item.category,
+      'sub_category': item.subCategory.isNotEmpty
+          ? item.subCategory
+          : item.category,
       'color_name': item.color,
       'color_code': item.colorCode,
       'pattern': item.pattern,
@@ -3289,9 +3329,10 @@ class _AddItemModalState extends State<_AddItemModal>
       'name': _cleanUiText(item.name, fallback: 'Item'),
       'cat': item.category,
       'occasions': preserveOccasionValues(item.occasions),
-      'notes': [item.color, item.pattern]
-          .where((v) => v != null && v.isNotEmpty && v != 'null')
-          .join(', '),
+      'notes': [
+        item.color,
+        item.pattern,
+      ].where((v) => v != null && v.isNotEmpty && v != 'null').join(', '),
       'imageBytes': displayBytes,
       'imageUrl': imageUrl,
       'maskedUrl': maskedUrl,
@@ -3299,8 +3340,8 @@ class _AddItemModalState extends State<_AddItemModal>
       'worn': 0,
       'liked': false,
       'remoteSaved': true,
-      'catalogStatus':
-          (item.raw['catalogStatus'] ?? item.raw['catalog_status'])?.toString(),
+      'catalogStatus': (item.raw['catalogStatus'] ?? item.raw['catalog_status'])
+          ?.toString(),
     });
   }
 
@@ -3323,7 +3364,9 @@ class _AddItemModalState extends State<_AddItemModal>
       return;
     }
     for (final item in selected) {
-      if (isPrivateWearText('${item.name} ${item.category} ${item.subCategory}')) {
+      if (isPrivateWearText(
+        '${item.name} ${item.category} ${item.subCategory}',
+      )) {
         item.category = 'Innerwear';
         item.subCategory = 'Private Wear';
         item.occasions = const ['Home', 'Private', 'Lounge'];
@@ -3344,7 +3387,8 @@ class _AddItemModalState extends State<_AddItemModal>
     for (final item in selected) {
       final reviewed = _reviewedItemPayload(item);
       final index = item.sourceImageIndex;
-      final imageBytes = item.previewBytes ??
+      final imageBytes =
+          item.previewBytes ??
           (_isGalleryPick &&
                   index != null &&
                   index >= 0 &&
@@ -3373,7 +3417,8 @@ class _AddItemModalState extends State<_AddItemModal>
 
     _uploadTotalCount = units.length;
     _uploadCompletedCount = 0;
-    _uploadBatchRequestId ??= 'wardrobe-${DateTime.now().microsecondsSinceEpoch}';
+    _uploadBatchRequestId ??=
+        'wardrobe-${DateTime.now().microsecondsSinceEpoch}';
     _uploadController ??= SequentialUploadController(
       createOrResumeBatch: backendService.createOrResumeUploadBatch,
       processItem: backendService.processUploadBatchItem,
@@ -3392,18 +3437,15 @@ class _AddItemModalState extends State<_AddItemModal>
       },
     );
     if (!mounted) return;
-    final finalStatus = await _uploadController!.fetchFinalStatus();
-    if (!mounted) return;
-
     final itemById = {for (final item in selected) item.id: item};
     for (final result in results.where((result) => result.isAdded)) {
       final item = itemById[result.clientUploadItemId];
       if (item != null) await _emitSavedUploadItem(item, result);
     }
-    final statusAddedCount = finalStatus?['added_count'];
-    final addedCount = statusAddedCount is num
-        ? statusAddedCount.toInt()
-        : results.where((result) => result.isAdded).length;
+    // Each item response is the authority for what this client actually
+    // persisted. The batch counter can lag or be stale during partial saves;
+    // using it here can show an error after successful items were emitted.
+    final addedCount = results.where((result) => result.isAdded).length;
     final savedItems = _lastSaveAttemptItems
         .where((item) => _uploadResults[item.id]?.isAdded == true)
         .toList();
@@ -3419,9 +3461,12 @@ class _AddItemModalState extends State<_AddItemModal>
       _savedCount = addedCount;
       _savedRequestedCount = _lastSaveAttemptItems.length;
       _savedSingleName = savedItems.length == 1 ? savedItems.first.name : null;
-      _savedSingleColor = savedItems.length == 1 ? savedItems.first.color : null;
-      _savedSinglePattern =
-          savedItems.length == 1 ? savedItems.first.pattern : null;
+      _savedSingleColor = savedItems.length == 1
+          ? savedItems.first.color
+          : null;
+      _savedSinglePattern = savedItems.length == 1
+          ? savedItems.first.pattern
+          : null;
       _step = addedCount > 0 && !hasFailures
           ? _ModalStep.success
           : hasReviewable || addedCount > 0
@@ -3432,7 +3477,9 @@ class _AddItemModalState extends State<_AddItemModal>
           : null;
     });
     if (_step == _ModalStep.success) {
-      _toast('Saved $addedCount item${addedCount == 1 ? '' : 's'} to wardrobe.');
+      _toast(
+        'Saved $addedCount item${addedCount == 1 ? '' : 's'} to wardrobe.',
+      );
     }
   }
 
@@ -3465,30 +3512,25 @@ class _AddItemModalState extends State<_AddItemModal>
       if (result.isAdded) {
         await _emitSavedUploadItem(item, result);
         if (!mounted) return;
-        final finalStatus = await controller.fetchFinalStatus();
-        if (!mounted) return;
-        final addedCount =
-            _uploadResults.values.where((entry) => entry.isAdded).length;
-        final statusAddedCount = finalStatus?['added_count'];
-        final authoritativeAddedCount = statusAddedCount is num
-            ? statusAddedCount.toInt()
-            : addedCount;
+        final addedCount = _uploadResults.values
+            .where((entry) => entry.isAdded)
+            .length;
         final savedItems = _lastSaveAttemptItems
             .where((entry) => _uploadResults[entry.id]?.isAdded == true)
             .toList();
         setState(() {
-          _savedCount = authoritativeAddedCount;
-          _savedSingleName =
-              savedItems.length == 1 ? savedItems.first.name : null;
-          _savedSingleColor =
-              savedItems.length == 1 ? savedItems.first.color : null;
-          _savedSinglePattern =
-              savedItems.length == 1 ? savedItems.first.pattern : null;
-          _step = _uploadResults.values.any(
-                    (entry) =>
-                        entry.outcome == UploadItemOutcome.duplicate ||
-                        entry.outcome == UploadItemOutcome.needsReview,
-                  )
+          _savedCount = addedCount;
+          _savedRequestedCount = _lastSaveAttemptItems.length;
+          _savedSingleName = savedItems.length == 1
+              ? savedItems.first.name
+              : null;
+          _savedSingleColor = savedItems.length == 1
+              ? savedItems.first.color
+              : null;
+          _savedSinglePattern = savedItems.length == 1
+              ? savedItems.first.pattern
+              : null;
+          _step = _uploadResults.values.any((entry) => !entry.isAdded)
               ? _ModalStep.results
               : _ModalStep.success;
         });
@@ -3568,93 +3610,93 @@ class _AddItemModalState extends State<_AddItemModal>
         child: FadeTransition(
           opacity: _fadeAnim,
           child: Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: isFullScreen
-              ? EdgeInsets.zero
-              : const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
-          child: isFullScreen
-              // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Full-screen camera / detecting ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-              ? AnnotatedRegion<SystemUiOverlayStyle>(
-                  value: SystemUiOverlayStyle.light,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.zero,
-                    child: Material(
-                      color: Colors.black,
-                      child: SafeArea(
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            _buildBody(),
-                            // Close button top-right
-                            Positioned(
-                              top: 12,
-                              right: 16,
-                              child: GestureDetector(
-                                onTap: () => Navigator.of(context).pop(),
-                                child: Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.45),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.white.withOpacity(0.20),
+            backgroundColor: Colors.transparent,
+            insetPadding: isFullScreen
+                ? EdgeInsets.zero
+                : const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+            child: isFullScreen
+                // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Full-screen camera / detecting ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+                ? AnnotatedRegion<SystemUiOverlayStyle>(
+                    value: SystemUiOverlayStyle.light,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.zero,
+                      child: Material(
+                        color: Colors.black,
+                        child: SafeArea(
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              _buildBody(),
+                              // Close button top-right
+                              Positioned(
+                                top: 12,
+                                right: 16,
+                                child: GestureDetector(
+                                  onTap: () => Navigator.of(context).pop(),
+                                  child: Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.45),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.20),
+                                      ),
                                     ),
-                                  ),
-                                  child: const Icon(
-                                    Icons.close,
-                                    color: Colors.white,
-                                    size: 18,
+                                    child: const Icon(
+                                      Icons.close,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
                                   ),
                                 ),
                               ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Card modal for results / editing ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+                : SlideTransition(
+                    position: _slideAnim,
+                    child: ScaleTransition(
+                      scale: _scaleAnim,
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.of(context).size.height * 0.92,
+                        ),
+                        decoration: BoxDecoration(
+                          color: t.backgroundSecondary.withValues(alpha: 0.97),
+                          borderRadius: BorderRadius.circular(32),
+                          border: Border.all(color: t.cardBorder),
+                          boxShadow: [
+                            BoxShadow(
+                              color: t.backgroundPrimary.withValues(alpha: 0.5),
+                              blurRadius: 80,
+                              offset: const Offset(0, 40),
+                            ),
+                            BoxShadow(
+                              color: t.accent.primary.withValues(alpha: 0.15),
+                              blurRadius: 24,
+                              offset: const Offset(0, 8),
                             ),
                           ],
                         ),
-                      ),
-                    ),
-                  ),
-                )
-              // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Card modal for results / editing ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-              : SlideTransition(
-                  position: _slideAnim,
-                  child: ScaleTransition(
-                    scale: _scaleAnim,
-                    child: Container(
-                      constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(context).size.height * 0.92,
-                      ),
-                      decoration: BoxDecoration(
-                        color: t.backgroundSecondary.withValues(alpha: 0.97),
-                        borderRadius: BorderRadius.circular(32),
-                        border: Border.all(color: t.cardBorder),
-                        boxShadow: [
-                          BoxShadow(
-                            color: t.backgroundPrimary.withValues(alpha: 0.5),
-                            blurRadius: 80,
-                            offset: const Offset(0, 40),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildHeader(),
+                              Flexible(child: _buildBody()),
+                              _buildFooter(),
+                            ],
                           ),
-                          BoxShadow(
-                            color: t.accent.primary.withValues(alpha: 0.15),
-                            blurRadius: 24,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildHeader(),
-                            Flexible(child: _buildBody()),
-                            _buildFooter(),
-                          ],
                         ),
                       ),
                     ),
                   ),
-                ),
           ),
         ),
       ),
@@ -3784,9 +3826,7 @@ class _AddItemModalState extends State<_AddItemModal>
   }
 
   Widget _buildUploadResultsBody() {
-    final itemsById = {
-      for (final item in _lastSaveAttemptItems) item.id: item,
-    };
+    final itemsById = {for (final item in _lastSaveAttemptItems) item.id: item};
     final results = _uploadResults.values.toList();
     final added = results.where((result) => result.isAdded).length;
     return SingleChildScrollView(
@@ -3860,13 +3900,15 @@ class _AddItemModalState extends State<_AddItemModal>
                           style: TextStyle(
                             fontFamily: GoogleFonts.inter().fontFamily,
                             fontSize: 11,
-                            color: duplicate ? Colors.orangeAccent : t.mutedText,
+                            color: duplicate
+                                ? Colors.orangeAccent
+                                : t.mutedText,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  if (duplicate)
+                  if (result.canAddAnyway)
                     TextButton(
                       onPressed: _addAnywayInFlight.contains(item.id)
                           ? null
@@ -4199,168 +4241,184 @@ class _AddItemModalState extends State<_AddItemModal>
       key: const ValueKey('wardrobe-error'),
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(24, 36, 24, 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: t.accent.primary.withValues(alpha: 0.14),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.priority_high_rounded,
-              color: t.accent.primary,
-              size: 32,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            "Couldn't add this item",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: GoogleFonts.inter().fontFamily,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: t.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _saveError ??
-                "Something went wrong while saving. Your changes haven't been lost.",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: GoogleFonts.inter().fontFamily,
-              fontSize: 13,
-              height: 1.4,
-              color: t.mutedText,
-            ),
-          ),
-          if (single != null) ...[
-            const SizedBox(height: 20),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              width: 64,
+              height: 64,
               decoration: BoxDecoration(
-                color: t.panel,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: t.cardBorder),
+                color: t.accent.primary.withValues(alpha: 0.14),
+                shape: BoxShape.circle,
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      color: t.backgroundSecondary,
-                      borderRadius: BorderRadius.circular(10),
+              child: Icon(
+                Icons.priority_high_rounded,
+                color: t.accent.primary,
+                size: 32,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              "Couldn't add this item",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: GoogleFonts.inter().fontFamily,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: t.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _saveError ??
+                  "Something went wrong while saving. Your changes haven't been lost.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: GoogleFonts.inter().fontFamily,
+                fontSize: 13,
+                height: 1.4,
+                color: t.mutedText,
+              ),
+            ),
+            if (single != null) ...[
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: t.panel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: t.cardBorder),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: t.backgroundSecondary,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: single.previewBytes != null
+                          ? Image.memory(
+                              single.previewBytes!,
+                              fit: BoxFit.contain,
+                            )
+                          : Center(
+                              child: Text(
+                                _DetectedItem.catEmoji(single.category),
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ),
                     ),
-                    child: single.previewBytes != null
-                        ? Image.memory(
-                            single.previewBytes!,
-                            fit: BoxFit.contain,
-                          )
-                        : Center(
-                            child: Text(
-                              _DetectedItem.catEmoji(single.category),
-                              style: const TextStyle(fontSize: 16),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            single.name,
+                            style: TextStyle(
+                              fontFamily: GoogleFonts.inter().fontFamily,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: t.textPrimary,
                             ),
                           ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          single.name,
-                          style: TextStyle(
-                            fontFamily: GoogleFonts.inter().fontFamily,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: t.textPrimary,
+                          Text(
+                            [single.color, single.pattern]
+                                .where((s) => (s ?? '').trim().isNotEmpty)
+                                .join(' • '),
+                            style: TextStyle(
+                              fontFamily: GoogleFonts.inter().fontFamily,
+                              fontSize: 11,
+                              color: t.mutedText,
+                            ),
                           ),
-                        ),
-                        Text(
-                          [single.color, single.pattern]
-                              .where((s) => (s ?? '').trim().isNotEmpty)
-                              .join(' • '),
-                          style: TextStyle(
-                            fontFamily: GoogleFonts.inter().fontFamily,
-                            fontSize: 11,
-                            color: t.mutedText,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: Semantics(
+                button: true,
+                label: 'Retry',
+                child: GestureDetector(
+                  key: const ValueKey('wardrobe-retry-cta'),
+                  onTap: _isSavingWardrobe ? null : _retrySave,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [t.accent.primary, t.accent.tertiary],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Retry',
+                      style: TextStyle(
+                        fontFamily: GoogleFonts.inter().fontFamily,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: t.textPrimary,
+                      ),
                     ),
                   ),
-                ],
+                ),
+              ),
+            ),
+            if (single != null &&
+                _uploadResults[single.id]?.canAddAnyway == true) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  key: const ValueKey('wardrobe-add-anyway-cta'),
+                  onPressed: _addAnywayInFlight.contains(single.id)
+                      ? null
+                      : () => _addAnyway(single),
+                  child: const Text('Add Anyway'),
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: Semantics(
+                button: true,
+                label: 'Cancel',
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: t.panel,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: t.cardBorder, width: 1.5),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Cancel',
+                      style: TextStyle(
+                        fontFamily: GoogleFonts.inter().fontFamily,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: t.mutedText,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: Semantics(
-              button: true,
-              label: 'Retry',
-              child: GestureDetector(
-                key: const ValueKey('wardrobe-retry-cta'),
-                onTap: _isSavingWardrobe ? null : _retrySave,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [t.accent.primary, t.accent.tertiary],
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    'Retry',
-                    style: TextStyle(
-                      fontFamily: GoogleFonts.inter().fontFamily,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: t.textPrimary,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: Semantics(
-              button: true,
-              label: 'Cancel',
-              child: GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  decoration: BoxDecoration(
-                    color: t.panel,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: t.cardBorder, width: 1.5),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    'Cancel',
-                    style: TextStyle(
-                      fontFamily: GoogleFonts.inter().fontFamily,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: t.mutedText,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -4604,7 +4662,9 @@ class _AddItemModalState extends State<_AddItemModal>
             decoration: BoxDecoration(
               color: t.accent.primary.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: t.accent.primary.withValues(alpha: 0.2)),
+              border: Border.all(
+                color: t.accent.primary.withValues(alpha: 0.2),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4696,7 +4756,8 @@ class _AddItemModalState extends State<_AddItemModal>
             ?errorBanner,
             countRow,
             const SizedBox(height: 10),
-            if (_detected.isNotEmpty) _buildItemCard(_detected.first, large: true),
+            if (_detected.isNotEmpty)
+              _buildItemCard(_detected.first, large: true),
           ],
         ),
       );
@@ -4712,10 +4773,7 @@ class _AddItemModalState extends State<_AddItemModal>
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ?errorBanner,
-              countRow,
-            ],
+            children: [?errorBanner, countRow],
           ),
         ),
         const SizedBox(height: 10),
@@ -4755,7 +4813,8 @@ class _AddItemModalState extends State<_AddItemModal>
 
   void _toggleSelectAll(bool select) {
     final tooMany =
-        select && _detected.where((i) => i.isSaveable).length > wardrobeMaxItems;
+        select &&
+        _detected.where((i) => i.isSaveable).length > wardrobeMaxItems;
     setState(() {
       var count = 0;
       for (final i in _detected) {
@@ -4800,9 +4859,8 @@ class _AddItemModalState extends State<_AddItemModal>
     }
     final result = await showDialog<String>(
       context: context,
-      builder: (_) => const _AddOccasionDialog(
-        maxLength: _maxOccasionTagLength,
-      ),
+      builder: (_) =>
+          const _AddOccasionDialog(maxLength: _maxOccasionTagLength),
     );
     final tag = result?.trim() ?? '';
     if (tag.isEmpty || !mounted) return;
@@ -4889,7 +4947,8 @@ class _AddItemModalState extends State<_AddItemModal>
                             final selCount = _detected
                                 .where((d) => d.selected && d.isSaveable)
                                 .length;
-                            if (!item.selected && selCount >= wardrobeMaxItems) {
+                            if (!item.selected &&
+                                selCount >= wardrobeMaxItems) {
                               _showMaxItemsWarning();
                               return;
                             }
@@ -4950,8 +5009,8 @@ class _AddItemModalState extends State<_AddItemModal>
                 fontFamily: GoogleFonts.inter().fontFamily,
                 fontSize: 12,
                 color: t.mutedText,
-               ),
-             ),
+              ),
+            ),
           if (item.isDuplicate) ...[
             const SizedBox(height: 10),
             Container(
@@ -4960,7 +5019,9 @@ class _AddItemModalState extends State<_AddItemModal>
               decoration: BoxDecoration(
                 color: Colors.orange.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange.withValues(alpha: 0.35)),
+                border: Border.all(
+                  color: Colors.orange.withValues(alpha: 0.35),
+                ),
               ),
               child: Text(
                 'Possible duplicate${item.matchedItemId == null ? '' : ' of an existing wardrobe item'}${item.duplicateConfidence == null ? '' : ' (${(item.duplicateConfidence! * 100).round()}% match)'}. You can review it, then choose Add Anyway if it is a different item.',
@@ -5053,61 +5114,64 @@ class _AddItemModalState extends State<_AddItemModal>
               runSpacing: 7,
               children: [
                 ..._displayOccasions(item).map((occ) {
-                final active = item.occasions.any(
-                  (o) => occasionMatches(o, occ),
-                );
-                final disabled =
-                    privateWear &&
-                    {
-                      'Work',
-                      'Dinner',
-                      'Travel',
-                      'Party',
-                      'Festive',
-                      'Wedding',
-                    }.contains(occ);
-                return GestureDetector(
-                  onTap: disabled
-                      ? null
-                      : () => setState(() {
-                          item.occasions = toggleOccasion(item.occasions, occ);
-                        }),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: active
-                          ? LinearGradient(
-                              colors: [t.accent.primary, t.accent.tertiary],
-                            )
-                          : null,
-                      color: active
-                          ? null
-                          : t.backgroundSecondary.withValues(
-                              alpha: disabled ? 0.45 : 1,
-                            ),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: active ? t.accent.primary : t.cardBorder,
-                        width: 1.5,
+                  final active = item.occasions.any(
+                    (o) => occasionMatches(o, occ),
+                  );
+                  final disabled =
+                      privateWear &&
+                      {
+                        'Work',
+                        'Dinner',
+                        'Travel',
+                        'Party',
+                        'Festive',
+                        'Wedding',
+                      }.contains(occ);
+                  return GestureDetector(
+                    onTap: disabled
+                        ? null
+                        : () => setState(() {
+                            item.occasions = toggleOccasion(
+                              item.occasions,
+                              occ,
+                            );
+                          }),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: active
+                            ? LinearGradient(
+                                colors: [t.accent.primary, t.accent.tertiary],
+                              )
+                            : null,
+                        color: active
+                            ? null
+                            : t.backgroundSecondary.withValues(
+                                alpha: disabled ? 0.45 : 1,
+                              ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: active ? t.accent.primary : t.cardBorder,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        occ,
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.inter().fontFamily,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: disabled
+                              ? t.mutedText.withValues(alpha: 0.45)
+                              : (active ? t.textPrimary : t.mutedText),
+                        ),
                       ),
                     ),
-                    child: Text(
-                      occ,
-                      style: TextStyle(
-                        fontFamily: GoogleFonts.inter().fontFamily,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: disabled
-                            ? t.mutedText.withValues(alpha: 0.45)
-                            : (active ? t.textPrimary : t.mutedText),
-                      ),
-                    ),
-                  ),
-                );
+                  );
                 }),
                 GestureDetector(
                   key: const ValueKey('wardrobe-add-occasion'),
@@ -6141,11 +6205,11 @@ class _FilterChipState extends State<_FilterChip> {
             gradient: widget.isActive ? widget.chip.activeGradient : null,
             color: widget.isActive
                 ? (widget.chip.activeGradient == null
-                ? widget.chip.activeBg
-                : null)
+                      ? widget.chip.activeBg
+                      : null)
                 : (_hovered
-                ? widget.chip.inactiveBg.withValues(alpha: 0.28)
-                : widget.chip.inactiveBg),
+                      ? widget.chip.inactiveBg.withValues(alpha: 0.28)
+                      : widget.chip.inactiveBg),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: widget.isActive
@@ -6155,21 +6219,21 @@ class _FilterChipState extends State<_FilterChip> {
             ),
             boxShadow: widget.isActive
                 ? [
-              BoxShadow(
-                color: widget.chip.activeShadow,
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ]
+                    BoxShadow(
+                      color: widget.chip.activeShadow,
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
                 : (_hovered
-                ? [
-              BoxShadow(
-                color: t.backgroundPrimary.withValues(alpha: 0.10),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ]
-                : null),
+                      ? [
+                          BoxShadow(
+                            color: t.backgroundPrimary.withValues(alpha: 0.10),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : null),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
           child: Row(
@@ -6661,7 +6725,7 @@ class _ItemCardState extends State<_ItemCard>
         'Makeup': 'MKP',
         'Skincare': 'SKN',
       }[cat] ??
-          'ITM';
+      'ITM';
 
   void _handleLike() {
     widget.onToggleLike();
@@ -6697,12 +6761,12 @@ class _ItemCardState extends State<_ItemCard>
             border: Border.all(color: t.cardBorder, width: 1),
             boxShadow: _hovered
                 ? [
-              BoxShadow(
-                color: t.backgroundPrimary.withValues(alpha: 0.4),
-                blurRadius: 40,
-                offset: const Offset(0, 12),
-              ),
-            ]
+                    BoxShadow(
+                      color: t.backgroundPrimary.withValues(alpha: 0.4),
+                      blurRadius: 40,
+                      offset: const Offset(0, 12),
+                    ),
+                  ]
                 : [],
           ),
           clipBehavior: Clip.hardEdge,
@@ -6727,24 +6791,24 @@ class _ItemCardState extends State<_ItemCard>
                         // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Prioritize Masked URL over Raw URL
                         image: resolvedImage.url != null
                             ? DecorationImage(
-                          image: NetworkImage(resolvedImage.url!),
-                          fit: BoxFit.contain,
-                        )
+                                image: NetworkImage(resolvedImage.url!),
+                                fit: BoxFit.contain,
+                              )
                             : (item.imageBytes != null
-                            ? DecorationImage(
-                          image: MemoryImage(item.imageBytes!),
-                          fit: BoxFit.contain,
-                        )
-                            : null),
+                                  ? DecorationImage(
+                                      image: MemoryImage(item.imageBytes!),
+                                      fit: BoxFit.contain,
+                                    )
+                                  : null),
                       ),
                       child:
-                      (resolvedImage.url == null && item.imageBytes == null)
+                          (resolvedImage.url == null && item.imageBytes == null)
                           ? Center(
-                        child: Text(
-                          _catEmoji(item.cat),
-                          style: const TextStyle(fontSize: 40),
-                        ),
-                      )
+                              child: Text(
+                                _catEmoji(item.cat),
+                                style: const TextStyle(fontSize: 40),
+                              ),
+                            )
                           : null,
                     ),
                   ),
@@ -6861,12 +6925,12 @@ class _ItemCardState extends State<_ItemCard>
                           color: item.liked
                               ? accent4.withValues(alpha: 0.2)
                               : (_likeHovered
-                              ? t.backgroundSecondary.withValues(
-                            alpha: 0.98,
-                          )
-                              : t.backgroundPrimary.withValues(
-                            alpha: 0.7,
-                          )),
+                                    ? t.backgroundSecondary.withValues(
+                                        alpha: 0.98,
+                                      )
+                                    : t.backgroundPrimary.withValues(
+                                        alpha: 0.7,
+                                      )),
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: t.textPrimary.withValues(alpha: 0.15),
@@ -6874,12 +6938,12 @@ class _ItemCardState extends State<_ItemCard>
                           ),
                           boxShadow: _likeHovered && !_likePressed
                               ? [
-                            BoxShadow(
-                              color: accent4.withValues(alpha: 0.18),
-                              blurRadius: 14,
-                              offset: const Offset(0, 4),
-                            ),
-                          ]
+                                  BoxShadow(
+                                    color: accent4.withValues(alpha: 0.18),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
                               : null,
                         ),
                         child: Icon(
@@ -7008,12 +7072,12 @@ class _DeleteHoverButtonState extends State<_DeleteHoverButton> {
           ),
           boxShadow: _hovered
               ? [
-            BoxShadow(
-              color: accent4.withValues(alpha: 0.14),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ]
+                  BoxShadow(
+                    color: accent4.withValues(alpha: 0.14),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
               : null,
         ),
         child: Icon(
@@ -7302,93 +7366,93 @@ class _StatsPanel extends StatelessWidget {
       children: neverWorn
           .map(
             (item) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: t.panel,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: t.cardBorder),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        t.accent.secondary.withValues(alpha: 0.12),
-                        t.accent.primary.withValues(alpha: 0.10),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Center(
-                    child: Text(
-                      _catEmoji(item.cat),
-                      style: const TextStyle(fontSize: 18),
-                    ),
-                  ),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: t.panel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: t.cardBorder),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.name,
-                        style: TextStyle(
-                          fontFamily: GoogleFonts.inter().fontFamily,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: t.textPrimary,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            t.accent.secondary.withValues(alpha: 0.12),
+                            t.accent.primary.withValues(alpha: 0.10),
+                          ],
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item.cat,
-                        style: TextStyle(
-                          fontFamily: GoogleFonts.inter().fontFamily,
-                          fontSize: 11,
-                          color: t.mutedText,
+                      child: Center(
+                        child: Text(
+                          _catEmoji(item.cat),
+                          style: const TextStyle(fontSize: 18),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: accent4.withValues(alpha: 0.07),
-                    border: Border.all(
-                      color: accent4.withValues(alpha: 0.28),
                     ),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'Unworn',
-                    style: TextStyle(
-                      fontFamily: GoogleFonts.inter().fontFamily,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: accent4,
-                      letterSpacing: 0.5,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.name,
+                            style: TextStyle(
+                              fontFamily: GoogleFonts.inter().fontFamily,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: t.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            item.cat,
+                            style: TextStyle(
+                              fontFamily: GoogleFonts.inter().fontFamily,
+                              fontSize: 11,
+                              color: t.mutedText,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accent4.withValues(alpha: 0.07),
+                        border: Border.all(
+                          color: accent4.withValues(alpha: 0.28),
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'Unworn',
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.inter().fontFamily,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: accent4,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-      )
+          )
           .toList(),
     );
   }
@@ -7406,7 +7470,7 @@ class _StatsPanel extends StatelessWidget {
         'Makeup': 'MKP',
         'Skincare': 'SKN',
       }[cat] ??
-          'ITM';
+      'ITM';
 
   Widget _buildDivider(BuildContext context, String label) => Row(
     children: [
@@ -7467,7 +7531,7 @@ class _StatsPanel extends StatelessWidget {
     return _BarSection(
       bars: List.generate(
         cats.length,
-            (i) => _BarItem(
+        (i) => _BarItem(
           label: cats[i],
           color: colors[i],
           value: max > 0 ? counts[i] / max : 0,
@@ -7501,7 +7565,7 @@ class _MostWornHoverCardState extends State<_MostWornHoverCard> {
         'Makeup': 'MKP',
         'Skincare': 'SKN',
       }[cat] ??
-          'ITM';
+      'ITM';
 
   @override
   Widget build(BuildContext context) {
@@ -7591,7 +7655,7 @@ class _HoverStatCardState extends State<_HoverStatCard> {
         curve: Curves.easeOut,
         transform: _hovered
             ? (Matrix4.translationValues(0.0, -2.0, 0.0)
-          ..multiply(Matrix4.diagonal3Values(1.01, 1.01, 1.0)))
+                ..multiply(Matrix4.diagonal3Values(1.01, 1.01, 1.0)))
             : Matrix4.identity(),
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
@@ -7599,19 +7663,19 @@ class _HoverStatCardState extends State<_HoverStatCard> {
           borderRadius: BorderRadius.circular(20),
           boxShadow: _hovered
               ? [
-            BoxShadow(
-              color: t.backgroundPrimary.withValues(alpha: 0.4),
-              blurRadius: 28,
-              offset: const Offset(0, 8),
-            ),
-          ]
+                  BoxShadow(
+                    color: t.backgroundPrimary.withValues(alpha: 0.4),
+                    blurRadius: 28,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
               : [
-            BoxShadow(
-              color: t.backgroundPrimary.withValues(alpha: 0.3),
-              blurRadius: 16,
-              offset: const Offset(0, 2),
-            ),
-          ],
+                  BoxShadow(
+                    color: t.backgroundPrimary.withValues(alpha: 0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -7720,63 +7784,63 @@ class _BarSectionState extends State<_BarSection>
         children: widget.bars
             .map(
               (bar) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 100,
-                  child: Text(
-                    bar.label,
-                    style: TextStyle(
-                      fontFamily: GoogleFonts.inter().fontFamily,
-                      fontSize: 13,
-                      color: t.mutedText,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Container(
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: t.panel,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: bar.value.clamp(0.0, 1.0) * _anim.value,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              bar.color.withValues(alpha: 0.7),
-                              bar.color,
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(4),
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 100,
+                      child: Text(
+                        bar.label,
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.inter().fontFamily,
+                          fontSize: 13,
+                          color: t.mutedText,
+                          fontWeight: FontWeight.w400,
                         ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 28,
-                  child: Text(
-                    '${(bar.value * 100).round()}',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontFamily: GoogleFonts.inter().fontFamily,
-                      fontSize: 12,
-                      color: t.mutedText,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Container(
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: t.panel,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: bar.value.clamp(0.0, 1.0) * _anim.value,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  bar.color.withValues(alpha: 0.7),
+                                  bar.color,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 28,
+                      child: Text(
+                        '${(bar.value * 100).round()}',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.inter().fontFamily,
+                          fontSize: 12,
+                          color: t.mutedText,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        )
+              ),
+            )
             .toList(),
       ),
     );
