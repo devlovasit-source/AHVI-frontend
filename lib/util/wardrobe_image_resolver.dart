@@ -389,6 +389,26 @@ ResolvedWardrobeImage resolveWardrobeImage(
         wardrobe['normalized_url'] ??
         wardrobe['normalizedUrl'],
   );
+  // The two unconditional "trust the field name" normalized_url fallbacks
+  // below are labeled catalog_fallback (a board-safe source kind) without
+  // verifying the URL is actually a distinct processed asset. When a wardrobe
+  // item hasn't been through catalog/cutout processing, the backend can
+  // alias normalized_url to the same raw upload as image_url -- admitting
+  // that unfiltered would put a raw photo (cropped mirror/selfie shot) on a
+  // Style board labeled as a safe catalog image. Reject the alias case here.
+  final wardrobeNormalizedFallback = _clean(
+    wardrobe['normalized_url'] ??
+        wardrobe['normalizedUrl'] ??
+        wardrobe['normalized_image_url'] ??
+        wardrobe['normalizedImageUrl'],
+  );
+  final rawNormalizedFallback = _clean(
+    normalizedUrl ??
+        raw['normalized_url'] ??
+        raw['normalizedUrl'] ??
+        raw['normalized_image_url'] ??
+        raw['normalizedImageUrl'],
+  );
   final candidates = <_Candidate>[
     if (!isStyleAsset && _isCatalogObject(catalogFirstUrl))
       _Candidate(
@@ -634,30 +654,19 @@ ResolvedWardrobeImage resolveWardrobeImage(
         true,
         true,
       ),
-    if (!isStyleAsset)
+    if (!isStyleAsset && !isOriginalAlias(wardrobeNormalizedFallback))
       _Candidate(
         'normalized_url',
-        _clean(
-          wardrobe['normalized_url'] ??
-              wardrobe['normalizedUrl'] ??
-              wardrobe['normalized_image_url'] ??
-              wardrobe['normalizedImageUrl'],
-        ),
+        wardrobeNormalizedFallback,
         'catalog_fallback',
         3,
         false,
         false,
       ),
-    if (!isStyleAsset)
+    if (!isStyleAsset && !isOriginalAlias(rawNormalizedFallback))
       _Candidate(
         'normalized_url',
-        _clean(
-          normalizedUrl ??
-              raw['normalized_url'] ??
-              raw['normalizedUrl'] ??
-              raw['normalized_image_url'] ??
-              raw['normalizedImageUrl'],
-        ),
+        rawNormalizedFallback,
         'catalog_fallback',
         3,
         false,

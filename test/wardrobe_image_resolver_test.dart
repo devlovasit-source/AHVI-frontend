@@ -305,11 +305,21 @@ void main() {
       },
     );
 
-    for (final result in [rawAlias, wardrobeAlias, frozenAlias]) {
+    for (final result in [rawAlias, wardrobeAlias]) {
       expect(result.sourceKind, 'catalog_fallback');
       expect(result.expectedTransparent, isFalse);
       expect(result.shouldFrame, isTrue);
     }
+
+    // frozenAlias's wardrobeRecord normalized_url is byte-identical to the
+    // raw record's image_url -- the backend never produced a distinct
+    // processed asset for this item. The resolver must not admit that as
+    // catalog_fallback (see the isOriginalAlias guard on the two
+    // unconditional normalized_url fallback candidates); it degrades to the
+    // raw original instead, exactly like any other real alias case.
+    expect(frozenAlias.sourceKind, 'original');
+    expect(frozenAlias.field, 'image_url');
+    expect(frozenAlias.expectedTransparent, isFalse);
   });
 
   test('cross-record original aliases remain framed across signed URLs', () {
@@ -380,6 +390,43 @@ void main() {
     expect(result.sourceKind, 'catalog_fallback');
     expect(result.expectedTransparent, isFalse);
     expect(result.shouldFrame, isTrue);
+  });
+
+  // Regression: a footwear wardrobe item whose backend record never got a
+  // distinct catalog/cutout asset -- normalized_url was aliased to the same
+  // raw upload as image_url (a cropped mirror/floor photo). Live-reproduced
+  // on the "Refined Ease" style board: the raw photo was labeled
+  // catalog_fallback and rendered directly on the board.
+  test('a normalized_url aliasing the raw upload is never admitted on a board surface', () {
+    final result = resolveWardrobeImage(
+      {
+        'item_id': 'footwear-bad-data',
+        'image_url': 'https://test/raw-shoe-photo.jpg',
+        'normalized_url': 'https://test/raw-shoe-photo.jpg',
+      },
+      surface: 'style_board_active_unified_grid',
+    );
+
+    // Board surfaces drop raw/original candidates entirely -- with no other
+    // safe source, the item must resolve to no image (renderer omits it),
+    // never the raw photo mislabeled as a safe catalog fallback.
+    expect(result.url, isNull);
+    expect(result.sourceKind, isNot('catalog_fallback'));
+  });
+
+  test('a genuinely distinct normalized_url is still admitted on a board surface', () {
+    final result = resolveWardrobeImage(
+      {
+        'item_id': 'footwear-good-data',
+        'image_url': 'https://test/raw-shoe-photo.jpg',
+        'normalized_url': 'https://test/processed-shoe-cutout.jpg',
+      },
+      surface: 'style_board_active_unified_grid',
+    );
+
+    expect(result.field, 'normalized_url');
+    expect(result.url, 'https://test/processed-shoe-cutout.jpg');
+    expect(result.sourceKind, 'catalog_fallback');
   });
 
   test('share reparse preserves resolution, stable id, and layout', () {
