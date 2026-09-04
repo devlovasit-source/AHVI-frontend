@@ -1013,8 +1013,6 @@ class OutfitReasoningStrip extends StatelessWidget {
             Text(
               tip,
               key: const ValueKey('style-styling-tip'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colors.onSurfaceVariant,
                 fontStyle: FontStyle.italic,

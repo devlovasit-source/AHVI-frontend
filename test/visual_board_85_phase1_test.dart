@@ -431,7 +431,7 @@ void main() {
     expect(find.textContaining('Marigold Yellow Cotton Kurta'), findsOneWidget);
   });
 
-  testWidgets('reasoning keeps useful bounded lines below the canvas', (
+  testWidgets('reasoning keeps WHY IT WORKS bounded; Styling Tip renders in full', (
     tester,
   ) async {
     await _pumpBoard(tester, use85Layout: true, width: 320);
@@ -443,10 +443,12 @@ void main() {
       tester.getTopLeft(why).dy,
       greaterThan(tester.getTopLeft(canvas).dy),
     );
+    // WHY IT WORKS is untouched by this fix.
     expect(tester.widget<Text>(why).maxLines, 2);
-    expect(tester.widget<Text>(tip).maxLines, 2);
     expect(tester.widget<Text>(why).overflow, TextOverflow.ellipsis);
-    expect(tester.widget<Text>(tip).overflow, TextOverflow.ellipsis);
+    // Styling Tip is no longer line-limited or ellipsized.
+    expect(tester.widget<Text>(tip).maxLines, isNull);
+    expect(tester.widget<Text>(tip).overflow, isNot(TextOverflow.ellipsis));
   });
 
   testWidgets('recommendation cards reserve equal outer and canvas heights', (
@@ -488,9 +490,11 @@ void main() {
     );
   });
 
-  testWidgets('long copy cannot shrink the canvas or use fading overflow', (
-    tester,
-  ) async {
+  testWidgets(
+      'long WHY copy stays bounded; long Styling Tip renders in full without shrinking the canvas',
+      (tester) async {
+    const fullTip =
+        'Keep the supporting accents deliberate and let the main garment lead the composition through the evening.';
     await _pumpBoard(
       tester,
       use85Layout: true,
@@ -503,8 +507,7 @@ void main() {
             'A very long editorial title that remains readable and bounded',
         'why_it_works':
             'The warm silhouette balances the occasion with an easy proportion that should end at a clean boundary.',
-        'styling_tip':
-            'Keep the supporting accents deliberate and let the main garment lead the composition through the evening.',
+        'styling_tip': fullTip,
       },
     );
 
@@ -515,16 +518,18 @@ void main() {
     final tip = tester.widget<Text>(
       find.byKey(const ValueKey('style-styling-tip')),
     );
+    // The canvas (board grid/images) never grows or shrinks from copy length.
     expect(
       tester.getSize(canvas).height,
       closeTo(editorialBoardCanvasHeightForWidth(320), 0.01),
     );
     expect(why.maxLines, 2);
-    expect(tip.maxLines, 2);
     expect(why.overflow, TextOverflow.ellipsis);
-    expect(tip.overflow, TextOverflow.ellipsis);
     expect(why.data, contains('clean boundary'));
-    expect(tip.data, contains('main garment lead'));
+    // Styling Tip: no truncation, complete sentence rendered.
+    expect(tip.maxLines, isNull);
+    expect(tip.overflow, isNot(TextOverflow.ellipsis));
+    expect(tip.data, fullTip);
     expect(tester.takeException(), isNull);
   });
 
@@ -575,9 +580,73 @@ void main() {
         tester
             .widget<Text>(find.byKey(const ValueKey('style-styling-tip')))
             .overflow,
-        TextOverflow.ellipsis,
+        isNot(TextOverflow.ellipsis),
+      );
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('style-styling-tip')))
+            .maxLines,
+        isNull,
       );
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  testWidgets(
+      'Styling Tip: deliberately long copy renders past 2 lines at width 360 and textScale 1.3, no overflow',
+      (tester) async {
+    const longTip =
+        'Layer a lightweight overshirt for the early evening chill, keep the '
+        'footwear polished but low-key, and let the accessories stay minimal '
+        'so the tailoring does the talking from arrival through to the last '
+        'toast of the night.';
+    await _withFixtureImages(() async {
+      await tester.binding.setSurfaceSize(const Size(360, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpWidget(
+        _testApp(
+          textScaler: const TextScaler.linear(1.3),
+          child: Scaffold(
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(8),
+              child: VisualDirectionCarousel(
+                directions: [
+                  {..._direction, 'styling_tip': longTip},
+                ],
+                cardWidth: 360,
+                curationReveal: false,
+                use85Layout: true,
+                onSendMessage: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final tipFinder = find.byKey(const ValueKey('style-styling-tip'));
+      // A. key exists
+      expect(tipFinder, findsOneWidget);
+      final tip = tester.widget<Text>(tipFinder);
+      // B. no longer line-limited
+      expect(tip.maxLines, isNull);
+      // C. not configured with ellipsis
+      expect(tip.overflow, isNot(TextOverflow.ellipsis));
+      // D. full sentence present, unabridged
+      expect(tip.data, longTip);
+      // F. renders past 2 lines with no RenderFlex overflow / exception
+      final renderedHeight = tester.getSize(tipFinder).height;
+      final singleLineHeight = (tip.style?.fontSize ?? 14) * (tip.style?.height ?? 1.2);
+      expect(renderedHeight, greaterThan(singleLineHeight * 2));
+      expect(tester.takeException(), isNull);
+      // G. WHY IT WORKS unaffected by this fix.
+      final why = tester.widget<Text>(
+        find.byKey(const ValueKey('style-why-it-works')),
+      );
+      expect(why.maxLines, 2);
+      expect(why.overflow, TextOverflow.ellipsis);
     });
   });
 
