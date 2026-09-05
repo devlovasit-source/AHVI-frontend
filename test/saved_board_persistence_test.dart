@@ -83,60 +83,70 @@ void main() {
     expect(master['revision'], 3);
   });
 
-  test('Daily Wear v2 content reopens with canonical bucket and item identity', () {
-    final items = [
-      {
-        'id': 'daily-top-1',
-        'item_id': 'daily-top-1',
-        'role': 'top',
-        'source': 'wardrobe',
-        'name': 'White shirt',
-        'image_url': 'https://test/daily-top-cutout.png',
-        'masked_url': 'https://test/daily-top-cutout.png',
-        'original_image_url': 'https://test/daily-top.png',
-        'selected_field': 'masked_url',
-        'source_kind': 'legacy_masked_cutout',
-        'expected_transparent': true,
-      },
-      {
-        'id': 'daily-shoe-1',
-        'item_id': 'daily-shoe-1',
-        'role': 'footwear',
-        'source': 'wardrobe',
-        'name': 'Loafers',
-        'image_url': 'https://test/daily-shoe-cutout.png',
-        'masked_url': 'https://test/daily-shoe-cutout.png',
-        'original_image_url': 'https://test/daily-shoe.png',
-        'selected_field': 'masked_url',
-        'source_kind': 'legacy_masked_cutout',
-        'expected_transparent': true,
-      },
-    ];
-    final content = buildSavedBoardContent(
-      board: {'board_id': 'daily-board-1', 'revision': 1, 'source_policy': 'wardrobe'},
-      items: items,
-      selection: const SavedBoardSelection(bucket: 'everything_else'),
-      title: 'Daily Look',
-      originalOccasion: 'daily',
-    );
-    final payload = buildSavedBoardPayload(
-      userId: 'user-1',
-      imageUrl: 'https://test/daily-top-cutout.png',
-      content: content,
-    );
+  test(
+    'Daily Wear v2 content reopens with canonical bucket and item identity',
+    () {
+      final items = [
+        {
+          'id': 'daily-top-1',
+          'item_id': 'daily-top-1',
+          'role': 'top',
+          'source': 'wardrobe',
+          'name': 'White shirt',
+          'image_url': 'https://test/daily-top-cutout.png',
+          'masked_url': 'https://test/daily-top-cutout.png',
+          'original_image_url': 'https://test/daily-top.png',
+          'selected_field': 'masked_url',
+          'source_kind': 'legacy_masked_cutout',
+          'expected_transparent': true,
+        },
+        {
+          'id': 'daily-shoe-1',
+          'item_id': 'daily-shoe-1',
+          'role': 'footwear',
+          'source': 'wardrobe',
+          'name': 'Loafers',
+          'image_url': 'https://test/daily-shoe-cutout.png',
+          'masked_url': 'https://test/daily-shoe-cutout.png',
+          'original_image_url': 'https://test/daily-shoe.png',
+          'selected_field': 'masked_url',
+          'source_kind': 'legacy_masked_cutout',
+          'expected_transparent': true,
+        },
+      ];
+      final content = buildSavedBoardContent(
+        board: {
+          'board_id': 'daily-board-1',
+          'revision': 1,
+          'source_policy': 'wardrobe',
+        },
+        items: items,
+        selection: const SavedBoardSelection(bucket: 'everything_else'),
+        title: 'Daily Look',
+        originalOccasion: 'daily',
+      );
+      final payload = buildSavedBoardPayload(
+        userId: 'user-1',
+        imageUrl: 'https://test/daily-top-cutout.png',
+        content: content,
+      );
 
-    expect(payload.keys.toSet(), savedBoardAcceptedFields);
-    expect(payload['occasion'], 'everything_else');
-    expect(payload['itemIds'], ['daily-top-1', 'daily-shoe-1']);
-    expect(jsonDecode(content.masterGarment)['original_occasion'], 'daily');
-    expect(jsonDecode(content.outfitItems), hasLength(2));
+      expect(payload.keys.toSet(), savedBoardAcceptedFields);
+      expect(payload['occasion'], 'everything_else');
+      expect(payload['itemIds'], ['daily-top-1', 'daily-shoe-1']);
+      expect(jsonDecode(content.masterGarment)['original_occasion'], 'daily');
+      expect(jsonDecode(content.outfitItems), hasLength(2));
 
-    final reopened = expandSavedBoardData(payload);
-    expect(reopened['bucket'], 'everything_else');
-    expect(reopened['itemIds'], ['daily-top-1', 'daily-shoe-1']);
-    expect((reopened['items'] as List).first['image_url'], 'https://test/daily-top-cutout.png');
-    expect(savedBoardReopenParity(payload)['image_provenance_match'], isTrue);
-  });
+      final reopened = expandSavedBoardData(payload);
+      expect(reopened['bucket'], 'everything_else');
+      expect(reopened['itemIds'], ['daily-top-1', 'daily-shoe-1']);
+      expect(
+        (reopened['items'] as List).first['image_url'],
+        'https://test/daily-top-cutout.png',
+      );
+      expect(savedBoardReopenParity(payload)['image_provenance_match'], isTrue);
+    },
+  );
 
   test('Daily Wear content fails safely for missing stable IDs', () {
     expect(
@@ -294,6 +304,28 @@ void main() {
   });
 
   group('canonical persistence and reopen', () {
+    test('visible reasoning and tip survive canonical save readback', () {
+      final saved = buildSavedBoardContent(
+        board: {
+          ...liveBoard(),
+          'why_it_works': 'Visible reasoning.',
+          'styling_tip': 'Visible tip.',
+        },
+        items: shuffledItems,
+        selection: const SavedBoardSelection(bucket: 'office_fits'),
+        title: 'Look',
+        originalOccasion: 'office',
+      );
+      final reopened = expandSavedBoardData(
+        buildSavedBoardPayload(
+          userId: 'user-test',
+          imageUrl: 'https://test/cover.png',
+          content: saved,
+        ),
+      );
+      expect(reopened['why_it_works'], 'Visible reasoning.');
+      expect(reopened['styling_tip'], 'Visible tip.');
+    });
     test('current order, metadata, provenance and layout survive', () {
       final saved = payload(favourite: true);
       final reopened = expandSavedBoardData(saved);

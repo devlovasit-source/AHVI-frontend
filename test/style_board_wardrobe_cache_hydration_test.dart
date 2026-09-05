@@ -139,6 +139,24 @@ void main() {
     });
   });
 
+  group('wardrobe fetch retry policy', () {
+    test('empty and partial successful results remain retryable', () {
+      const required = {'top-1', 'bottom-1'};
+      expect(
+        wardrobeFetchNeedsRetryForTesting(required, const {}),
+        isTrue,
+      );
+      expect(
+        wardrobeFetchNeedsRetryForTesting(required, {'top-1'}),
+        isTrue,
+      );
+      expect(
+        wardrobeFetchNeedsRetryForTesting(required, required),
+        isFalse,
+      );
+    });
+  });
+
   test(
     'D: Style This -- partial initial map (anchor only) merged with a full '
     'cache renders all 3 items, with exactly 1 (the anchor) locked',

@@ -186,6 +186,10 @@ SavedBoardContent buildSavedBoardContent({
     'original_occasion': originalOccasion.trim(),
     'is_favourite': selection.isFavourite,
     'layout_mode': layoutMode,
+    if (_text(board['why_it_works']).isNotEmpty)
+      'why_it_works': _text(board['why_it_works']),
+    if (_text(board['styling_tip']).isNotEmpty)
+      'styling_tip': _text(board['styling_tip']),
     if (interactionMode == 'style_this') ...{
       'scenario': 'style_this',
       'interaction_mode': 'style_this',

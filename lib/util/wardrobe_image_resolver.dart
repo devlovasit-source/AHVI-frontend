@@ -58,6 +58,20 @@ String? _clean(Object? value) {
   return text.isEmpty || text.toLowerCase() == 'null' ? null : text;
 }
 
+/// First value that survives [_clean]. Fallback chains MUST use this instead
+/// of `_clean(a ?? b ?? c)`: `??` only short-circuits on null, so an
+/// empty-string candidate (StyleBoardItem defaults maskedUrl/normalizedUrl to
+/// '' when the board payload omits them) wins the chain and blanks out the
+/// real URL sitting in the next position -- the item then yields zero
+/// candidates and is silently dropped from the board.
+String? _firstClean(List<Object?> values) {
+  for (final value in values) {
+    final cleaned = _clean(value);
+    if (cleaned != null) return cleaned;
+  }
+  return null;
+}
+
 String _status(Map<String, dynamic> raw, String snake, String camel) =>
     _clean(raw[snake] ?? raw[camel])?.toLowerCase() ?? '';
 
@@ -206,14 +220,18 @@ ResolvedWardrobeImage resolveWardrobeImage(
       raw['rawUrl'],
       raw['preview_url'],
       raw['previewUrl'],
+      raw['url'],
+      raw['thumbnailUrl'],
     ].map(_clean).whereType<String>(),
   };
 
   final boardImage = _clean(raw['board_image_url'] ?? raw['boardImageUrl']);
   final cutoutImage = _clean(raw['cutout_url'] ?? raw['cutoutUrl']);
-  final resolvedMasked = _clean(
-    maskedUrl ?? raw['masked_url'] ?? raw['maskedUrl'],
-  );
+  final resolvedMasked = _firstClean([
+    maskedUrl,
+    raw['masked_url'],
+    raw['maskedUrl'],
+  ]);
   final maskedImage = _clean(raw['masked_image_url'] ?? raw['maskedImageUrl']);
   final wardrobeBoardImage = _clean(
     wardrobe['board_image_url'] ?? wardrobe['boardImageUrl'],
@@ -262,6 +280,8 @@ ResolvedWardrobeImage resolveWardrobeImage(
       wardrobe['rawUrl'],
       wardrobe['preview_url'],
       wardrobe['previewUrl'],
+      wardrobe['url'],
+      wardrobe['thumbnailUrl'],
     ].map(_clean).whereType<String>(),
   };
   final catalogUrls = <String>{
@@ -303,6 +323,8 @@ ResolvedWardrobeImage resolveWardrobeImage(
       raw['rawUrl'],
       raw['preview_url'],
       raw['previewUrl'],
+      raw['url'],
+      raw['thumbnailUrl'],
     ].map(_clean).whereType<String>(),
   }.map(_urlIdentity).whereType<String>().toSet();
   final allCatalogUrlIds = {
@@ -388,15 +410,15 @@ ResolvedWardrobeImage resolveWardrobeImage(
   // wardrobe grid AND Style This boards (the anchor's raw/bad cutout otherwise
   // shows on the board). The winner is first-non-null in list order, so prepend
   // the catalog candidate. Style assets keep their own cutout-first pipeline.
-  final catalogFirstUrl = _clean(
-    normalizedUrl ??
-        raw['normalized_url'] ??
-        raw['normalizedUrl'] ??
-        raw['catalog_image_url'] ??
-        raw['catalogImageUrl'] ??
-        wardrobe['normalized_url'] ??
-        wardrobe['normalizedUrl'],
-  );
+  final catalogFirstUrl = _firstClean([
+    normalizedUrl,
+    raw['normalized_url'],
+    raw['normalizedUrl'],
+    raw['catalog_image_url'],
+    raw['catalogImageUrl'],
+    wardrobe['normalized_url'],
+    wardrobe['normalizedUrl'],
+  ]);
   // The two unconditional "trust the field name" normalized_url fallbacks
   // below are labeled catalog_fallback (a board-safe source kind) without
   // verifying the URL is actually a distinct processed asset. When a wardrobe
@@ -410,13 +432,26 @@ ResolvedWardrobeImage resolveWardrobeImage(
         wardrobe['normalized_image_url'] ??
         wardrobe['normalizedImageUrl'],
   );
-  final rawNormalizedFallback = _clean(
-    normalizedUrl ??
-        raw['normalized_url'] ??
-        raw['normalizedUrl'] ??
-        raw['normalized_image_url'] ??
-        raw['normalizedImageUrl'],
-  );
+  final rawNormalizedFallback = _firstClean([
+    normalizedUrl,
+    raw['normalized_url'],
+    raw['normalizedUrl'],
+    raw['normalized_image_url'],
+    raw['normalizedImageUrl'],
+  ]);
+  final frozenCandidate =
+      frozenUrl != null &&
+          (!frozenValidated ||
+              (!isCatalogAlias(frozenUrl) && !isFrozenOriginalAlias(frozenUrl)))
+      ? _Candidate(
+          frozenField!,
+          frozenUrl,
+          frozenIsCatalog ? 'catalog_fallback' : frozenSource!,
+          frozenIsCatalog ? 3 : frozenTier(frozenSource!),
+          frozenIsCatalog ? false : frozenExpected,
+          frozenIsCatalog ? false : frozenValidated,
+        )
+      : null;
   final candidates = <_Candidate>[
     if (!isStyleAsset && _isCatalogObject(catalogFirstUrl))
       _Candidate(
@@ -436,17 +471,7 @@ ResolvedWardrobeImage resolveWardrobeImage(
         safeExpected,
         safeExpected,
       ),
-    if (frozenUrl != null &&
-        (!frozenValidated ||
-            (!isCatalogAlias(frozenUrl) && !isFrozenOriginalAlias(frozenUrl))))
-      _Candidate(
-        frozenField!,
-        frozenUrl,
-        frozenIsCatalog ? 'catalog_fallback' : frozenSource!,
-        frozenIsCatalog ? 3 : frozenTier(frozenSource!),
-        frozenIsCatalog ? false : frozenExpected,
-        frozenIsCatalog ? false : frozenValidated,
-      ),
+    ?frozenCandidate,
     if (isStyleAsset && rawCutoutIsSafe(assetCutoutImage))
       _Candidate(
         raw['asset_cutout_url'] != null ? 'asset_cutout_url' : 'cutout_url',
@@ -479,13 +504,7 @@ ResolvedWardrobeImage resolveWardrobeImage(
     if (isStyleAsset)
       _Candidate(
         'normalized_url',
-        _clean(
-          normalizedUrl ??
-              raw['normalized_url'] ??
-              raw['normalizedUrl'] ??
-              raw['normalized_image_url'] ??
-              raw['normalizedImageUrl'],
-        ),
+        rawNormalizedFallback,
         'catalog_fallback',
         3,
         false,
@@ -494,7 +513,12 @@ ResolvedWardrobeImage resolveWardrobeImage(
     if (isStyleAsset)
       _Candidate(
         'image_url',
-        _clean(imageUrl ?? raw['image_url'] ?? raw['imageUrl'] ?? raw['url']),
+        _firstClean([
+          imageUrl,
+          raw['image_url'],
+          raw['imageUrl'],
+          raw['url'],
+        ]),
         'style_asset_original',
         4,
         false,
@@ -786,7 +810,7 @@ ResolvedWardrobeImage resolveWardrobeImage(
       ),
     _Candidate(
       'image_url',
-      _clean(imageUrl ?? raw['image_url'] ?? raw['imageUrl']),
+      _firstClean([imageUrl, raw['image_url'], raw['imageUrl']]),
       'original',
       4,
       false,
@@ -825,7 +849,15 @@ ResolvedWardrobeImage resolveWardrobeImage(
   // omits it (never a raw upload). The wardrobe grid keeps every candidate.
   final boardPool = isBoardSurface
       ? available
-            .where((c) => _boardSafeSourceKinds.contains(c.sourceKind))
+            .where(
+              (c) =>
+                  _boardSafeSourceKinds.contains(c.sourceKind) &&
+                  // Saved snapshots repurpose image_url as the selected asset;
+                  // only that candidate may ignore it, never explicit raw data.
+                  (identical(c, frozenCandidate)
+                      ? !isFrozenOriginalAlias(c.url)
+                      : !isOriginalAlias(c.url)),
+            )
             .toList()
       : available;
   final rejectedUnsafe = isBoardSurface
@@ -850,12 +882,13 @@ ResolvedWardrobeImage resolveWardrobeImage(
       ? boardPool.reduce((a, b) => b.tier < a.tier ? b : a)
       // Wardrobe grid etc: keep catalog-first (first non-null in order).
       : boardPool.first;
-  // Ordered fallback candidates — board surfaces only. Rank order (lower tier
-  // first, stable within a tier), deduped by URL identity. The renderer walks
+  // Ordered fallback candidates — board surfaces only. Selected image first,
+  // then stable tier order, deduped by URL identity. The renderer walks
   // this list when the preferred image fails at runtime.
   List<ResolvedWardrobeImage> boardCandidates() {
     if (!isBoardSurface || boardPool.isEmpty) return const [];
     final ordered = [
+      selected,
       for (var t = 0; t <= 5; t++) ...boardPool.where((c) => c.tier == t),
     ];
     final strongestByUrl = <String, _Candidate>{};
@@ -863,7 +896,7 @@ ResolvedWardrobeImage resolveWardrobeImage(
       final id = _urlIdentity(c.url) ?? c.url;
       if (id == null) continue;
       final existing = strongestByUrl[id];
-      if (existing == null || c.tier < existing.tier) {
+      if (existing == null) {
         strongestByUrl[id] = c;
       }
     }

@@ -16,6 +16,126 @@ const _accent = AccentPalette(
 );
 
 void main() {
+  test(
+    'safe parsed and saved frozen images retain their selected provenance',
+    () {
+      for (final frozen in [false, true]) {
+        final item = AhviUnifiedOutfitGridItem.fromStyleBoardItem(
+          StyleBoardItem.fromJson({
+            'item_id': 'safe',
+            'name': 'Top',
+            'slot': 'top',
+            'image_url': frozen
+                ? 'https://test/safe.png'
+                : 'https://test/raw.png',
+            'original_image_url': 'https://test/raw.png',
+            if (frozen) ...{
+              'selected_field': 'normalized_url',
+              'source_kind': 'catalog_fallback',
+              'expected_transparent': false,
+            } else
+              'normalized_url': 'https://test/safe.png',
+          }),
+          surface: 'style_board_saved',
+        );
+        expect(item.resolvedImageUrl, 'https://test/safe.png');
+        expect(item.sourceKind, 'catalog_fallback');
+        expect(item.isTransparent, isFalse);
+        expect(item.imageCandidates.single.url, item.resolvedImageUrl);
+      }
+    },
+  );
+  for (final surface in [
+    'style_board_active_unified_grid',
+    'style_this_unified_grid',
+  ]) {
+    testWidgets(
+      'P0 $surface tries safe alternative after preferred image fails',
+      (tester) async {
+        final item = AhviUnifiedOutfitGridItem.fromStyleBoardItem(
+          StyleBoardItem.fromJson({
+            'item_id': 'fallback',
+            'name': 'Top',
+            'slot': 'top',
+            'image_url': 'https://test/raw.png',
+            'normalized_url': 'https://test/normalized.png',
+            'masked_url': 'https://test/masked.png',
+            'display_image_url': 'https://test/raw.png?alias=true',
+          }),
+          surface: surface,
+        );
+        final attempted = <String>[];
+        final preferred = surface == 'style_this_unified_grid'
+            ? 'https://test/normalized.png'
+            : 'https://test/masked.png';
+        final fallback = surface == 'style_this_unified_grid'
+            ? 'https://test/masked.png'
+            : 'https://test/normalized.png';
+        final pending = Completer<ImageInfo>();
+        await _pumpGrid(
+          tester,
+          width: 390,
+          items: [item],
+          imageProviderBuilder: (url) {
+            if (attempted.isEmpty || attempted.last != url) attempted.add(url);
+            return _ControlledImageProvider(pending.future);
+          },
+        );
+        expect(attempted, [preferred]);
+        var image = tester.widget<Image>(find.byType(Image));
+        image.errorBuilder!(
+          tester.element(find.byType(Image)),
+          Exception('403'),
+          null,
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(attempted, [preferred, fallback]);
+        pending.complete(ImageInfo(image: await _testImage()));
+        await tester.pump();
+        expect(find.byIcon(Icons.checkroom), findsNothing);
+        image = tester.widget<Image>(find.byType(Image));
+        image.errorBuilder!(
+          tester.element(find.byType(Image)),
+          Exception('decode'),
+          null,
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.byIcon(Icons.checkroom), findsOneWidget);
+        expect(attempted, [preferred, fallback]);
+      },
+    );
+  }
+
+  for (final labels in [false, true]) {
+    testWidgets('P0 ninth locked garment is not truncated (labels=$labels)', (
+      tester,
+    ) async {
+      final toggled = <String>[];
+      await _pumpGrid(
+        tester,
+        width: 390,
+        height: 1100,
+        showItemLabels: labels,
+        items: [
+          ..._items(8),
+          const AhviUnifiedOutfitGridItem(
+            id: 'ninth',
+            name: 'Ninth',
+            category: 'accessory',
+            resolvedImageUrl: '',
+            isLocked: true,
+          ),
+        ],
+        onToggleLock: toggled.add,
+      );
+      expect(find.byKey(const ValueKey('ninth')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('lock-ninth')));
+      expect(toggled, ['ninth']);
+      expect(tester.takeException(), isNull);
+    });
+  }
   testWidgets('same five-item fixture always has identical grid geometry', (
     tester,
   ) async {
@@ -111,11 +231,7 @@ void main() {
       expect(find.text('wardrobe_item_9f2c1'), findsNothing);
     });
 
-    for (final size in [
-      Size(360, 640),
-      Size(360, 800),
-      Size(412, 915),
-    ]) {
+    for (final size in [Size(360, 640), Size(360, 800), Size(412, 915)]) {
       for (final scale in [1.0, 1.3]) {
         testWidgets(
           'no overflow at ${size.width.toInt()}x${size.height.toInt()} '
@@ -232,41 +348,38 @@ void main() {
     },
   );
 
-  test(
-    'surface-name change (board-surface classification fix) leaves locked '
-    'anchor identity unaffected',
-    () {
-      final anchor = StyleBoardItem.fromJson({
-        'item_id': 'anchor-1',
-        'name': 'Blazer',
-        'slot': 'top',
-        'role': 'top',
-        'source': 'wardrobe',
-        'image_url': 'https://example.test/anchor.png',
-        'board_status': 'cutout_ready',
-        'board_image_url': 'https://example.test/anchor-board.png',
-      });
-      final before = AhviUnifiedOutfitGridItem.fromStyleBoardItem(
-        anchor,
-        isAnchor: true,
-        isLocked: true,
-        surface: 'active_style_unified_grid', // pre-fix surface name
-      );
-      final after = AhviUnifiedOutfitGridItem.fromStyleBoardItem(
-        anchor,
-        isAnchor: true,
-        isLocked: true,
-        surface: 'style_board_active_unified_grid', // post-fix surface name
-      );
-      expect(after.id, before.id);
-      expect(after.id, 'anchor-1');
-      expect(after.isAnchor, isTrue);
-      expect(after.isLocked, isTrue);
-      expect(after.category, before.category);
-    },
-  );
+  test('surface-name change (board-surface classification fix) leaves locked '
+      'anchor identity unaffected', () {
+    final anchor = StyleBoardItem.fromJson({
+      'item_id': 'anchor-1',
+      'name': 'Blazer',
+      'slot': 'top',
+      'role': 'top',
+      'source': 'wardrobe',
+      'image_url': 'https://example.test/anchor.png',
+      'board_status': 'cutout_ready',
+      'board_image_url': 'https://example.test/anchor-board.png',
+    });
+    final before = AhviUnifiedOutfitGridItem.fromStyleBoardItem(
+      anchor,
+      isAnchor: true,
+      isLocked: true,
+      surface: 'active_style_unified_grid', // pre-fix surface name
+    );
+    final after = AhviUnifiedOutfitGridItem.fromStyleBoardItem(
+      anchor,
+      isAnchor: true,
+      isLocked: true,
+      surface: 'style_board_active_unified_grid', // post-fix surface name
+    );
+    expect(after.id, before.id);
+    expect(after.id, 'anchor-1');
+    expect(after.isAnchor, isTrue);
+    expect(after.isLocked, isTrue);
+    expect(after.category, before.category);
+  });
 
-  test('grid retains a previously validated parsed board image', () {
+  test('P0 parsed metadata cannot resurrect an explicitly raw image', () {
     const url = 'https://example.test/parsed-catalog.png';
     const item = StyleBoardItem(
       id: 'parsed-1',
@@ -288,7 +401,7 @@ void main() {
       surface: 'style_board_daily_wear_unified_grid',
     );
 
-    expect(gridItem.resolvedImageUrl, url);
+    expect(gridItem.resolvedImageUrl, isEmpty);
   });
 
   test('grid does not retain an unvalidated raw image', () {
@@ -332,6 +445,7 @@ Future<void> _pumpGrid(
   required List<AhviUnifiedOutfitGridItem> items,
   ValueChanged<String>? onToggleLock,
   ImageProvider? imageProvider,
+  ImageProvider<Object> Function(String)? imageProviderBuilder,
   bool showItemLabels = false,
   double height = 700,
   double textScale = 1.0,
@@ -355,9 +469,9 @@ Future<void> _pumpGrid(
                 child: AhviUnifiedOutfitGrid(
                   items: items,
                   onToggleLock: onToggleLock,
-                  imageProviderBuilder: imageProvider == null
-                      ? null
-                      : (_) => imageProvider,
+                  imageProviderBuilder:
+                      imageProviderBuilder ??
+                      (imageProvider == null ? null : (_) => imageProvider),
                   showItemLabels: showItemLabels,
                 ),
               ),

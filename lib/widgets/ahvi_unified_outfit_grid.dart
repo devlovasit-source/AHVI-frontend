@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/style_board/board_models.dart';
+import 'package:myapp/style_board/style_board_network_image.dart';
 import 'package:myapp/theme/theme_tokens.dart';
+import 'package:myapp/util/wardrobe_image_resolver.dart';
 
 @immutable
 class AhviUnifiedOutfitGridItem {
@@ -9,6 +11,7 @@ class AhviUnifiedOutfitGridItem {
   final String category;
   final String resolvedImageUrl;
   final String sourceKind;
+  final List<ResolvedWardrobeImage> imageCandidates;
   final bool isTransparent;
   final bool isAnchor;
   final bool isLocked;
@@ -21,6 +24,7 @@ class AhviUnifiedOutfitGridItem {
     required this.category,
     required this.resolvedImageUrl,
     this.sourceKind = '',
+    this.imageCandidates = const [],
     this.isTransparent = false,
     this.isAnchor = false,
     this.isLocked = false,
@@ -35,23 +39,14 @@ class AhviUnifiedOutfitGridItem {
     String surface = 'unified_outfit_grid',
   }) {
     final resolved = item.resolveImage(surface: surface);
-    final parsedField = item.raw['_image_field']?.toString().trim() ?? '';
-    final useParsedImage =
-        resolved.url == null &&
-        parsedField.isNotEmpty &&
-        parsedField != 'none' &&
-        item.imageUrl.isNotEmpty;
     return AhviUnifiedOutfitGridItem(
       id: item.itemId,
       name: item.name,
       category: item.category.isNotEmpty ? item.category : item.slot,
-      resolvedImageUrl: resolved.url ?? (useParsedImage ? item.imageUrl : ''),
-      sourceKind: useParsedImage
-          ? (item.raw['_image_source_kind']?.toString() ?? '')
-          : resolved.sourceKind,
-      isTransparent: useParsedImage
-          ? item.raw['_image_expected_transparent'] == true
-          : resolved.expectedTransparent,
+      resolvedImageUrl: resolved.url ?? '',
+      imageCandidates: resolved.candidates,
+      sourceKind: resolved.sourceKind,
+      isTransparent: resolved.expectedTransparent,
       isAnchor: isAnchor,
       isLocked: isLocked ?? item.isLocked,
       isLoading: item.isRegenerating,
@@ -92,7 +87,7 @@ class AhviUnifiedOutfitGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
-    final visibleItems = items.take(8).toList(growable: false);
+    final visibleItems = items;
     if (showItemLabels) {
       return KeyedSubtree(
         key: gridKey,
@@ -108,7 +103,19 @@ class AhviUnifiedOutfitGrid extends StatelessWidget {
         5 => _layout5(context, visibleItems),
         6 => _layout6(context, visibleItems),
         7 => _layout7(context, visibleItems),
-        _ => _layout8(context, visibleItems),
+        8 => _layout8(context, visibleItems),
+        _ => Column(
+          children: [
+            _layout8(context, visibleItems.sublist(0, 8)),
+            for (var i = 8; i < visibleItems.length; i += 2) ...[
+              const SizedBox(height: gap),
+              _layoutSmall(
+                context,
+                visibleItems.sublist(i, (i + 2).clamp(0, visibleItems.length)),
+              ),
+            ],
+          ],
+        ),
       },
     );
   }
@@ -125,8 +132,12 @@ class AhviUnifiedOutfitGrid extends StatelessWidget {
     final theme = Theme.of(context);
     final tokens = theme.extension<AppThemeTokens>();
     final textColor = tokens?.textPrimary ?? theme.colorScheme.onSurface;
-    final labelStyle = (theme.textTheme.labelMedium ?? const TextStyle(fontSize: 12))
-        .copyWith(color: textColor, fontWeight: FontWeight.w600, height: 1.2);
+    final labelStyle =
+        (theme.textTheme.labelMedium ?? const TextStyle(fontSize: 12)).copyWith(
+          color: textColor,
+          fontWeight: FontWeight.w600,
+          height: 1.2,
+        );
     // Text scales with accessibility settings, so the reserved height below
     // each image must scale with it too or a 2-line name at a large text
     // scale overflows the tile instead of just wrapping.
@@ -487,18 +498,52 @@ class AhviUnifiedOutfitGrid extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(7),
                 child: LayoutBuilder(
-                  builder: (cardContext, constraints) => Image(
-                    image:
-                        imageProviderBuilder?.call(imageUrl) ??
-                        _decodeSizedProvider(cardContext, constraints, imageUrl),
-                    fit: BoxFit.contain,
-                    frameBuilder: (context, child, frame, synchronous) =>
-                        synchronous || frame != null
-                        ? child
-                            : _placeholder(accent, muted, loading: true),
-                    errorBuilder: (context, error, stackTrace) =>
-                        _placeholder(accent, muted),
-                  ),
+                  builder: (cardContext, constraints) =>
+                      item.imageCandidates.isNotEmpty
+                      ? StyleBoardNetworkImage(
+                          candidates: item.imageCandidates,
+                          itemId: item.id,
+                          placeholder: _placeholder(accent, muted),
+                          builder: (_, current, image) => Image(
+                            key: ValueKey(current.url),
+                            image:
+                                imageProviderBuilder?.call(current.url!) ??
+                                _decodeSizedProvider(
+                                  cardContext,
+                                  constraints,
+                                  current.url!,
+                                ),
+                            fit: BoxFit.contain,
+                            frameBuilder:
+                                (context, child, frame, synchronous) =>
+                                    synchronous || frame != null
+                                    ? child
+                                    : _placeholder(
+                                        accent,
+                                        muted,
+                                        loading: true,
+                                      ),
+                            // Reuse the fallback widget's deferred/stale-safe
+                            // advance while keeping the grid's bounded decode.
+                            errorBuilder: (image as Image).errorBuilder,
+                          ),
+                        )
+                      : Image(
+                          image:
+                              imageProviderBuilder?.call(imageUrl) ??
+                              _decodeSizedProvider(
+                                cardContext,
+                                constraints,
+                                imageUrl,
+                              ),
+                          fit: BoxFit.contain,
+                          frameBuilder: (context, child, frame, synchronous) =>
+                              synchronous || frame != null
+                              ? child
+                              : _placeholder(accent, muted, loading: true),
+                          errorBuilder: (context, error, stackTrace) =>
+                              _placeholder(accent, muted),
+                        ),
                 ),
               )
             else
@@ -541,7 +586,7 @@ class AhviUnifiedOutfitGrid extends StatelessWidget {
                 bottom: 6,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.95),
+                    color: accent.withValues(alpha: 0.95),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: const Padding(
@@ -606,10 +651,7 @@ class AhviUnifiedOutfitGrid extends StatelessWidget {
         ? SizedBox.square(
             key: const ValueKey<String>('unified-grid-image-loading'),
             dimension: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: accent,
-            ),
+            child: CircularProgressIndicator(strokeWidth: 2, color: accent),
           )
         : Icon(
             recommended ? Icons.auto_awesome : Icons.checkroom,

@@ -54,6 +54,7 @@ class AppwriteService extends ChangeNotifier {
   Future<List<Map<String, dynamic>>>? _wardrobeInflight;
   int _wardrobeGeneration = 0;
   int _wardrobeScopeGeneration = 0;
+  bool _logoutInProgress = false;
   static const Duration _wardrobeTtl = Duration(seconds: 60);
 
   List<Map<String, dynamic>> get cachedWardrobeItems =>
@@ -151,11 +152,17 @@ class AppwriteService extends ChangeNotifier {
   // ================= AHVI PERSISTED USER SESSION V2 END =================
 
   Future<User?> getCurrentUser() async {
+    if (_logoutInProgress) return null;
+    final scopeGeneration = _wardrobeScopeGeneration;
     try {
-      _cachedUser = await account.get();
+      final user = await account.get();
+      if (scopeGeneration != _wardrobeScopeGeneration) return null;
+      _cachedUser = user;
 
       // Canonical source of truth is Appwrite Auth account id.
       await _persistCurrentUser(_cachedUser!);
+
+      if (scopeGeneration != _wardrobeScopeGeneration) return null;
 
       return _cachedUser;
     } catch (e) {
@@ -170,9 +177,16 @@ class AppwriteService extends ChangeNotifier {
 
   // Call this after login to pre-cache user
   Future<void> cacheCurrentUser() async {
+    if (_logoutInProgress) return;
+    final scopeGeneration = _wardrobeScopeGeneration;
     try {
-      _cachedUser = await account.get();
-      await _persistCurrentUser(_cachedUser!);
+      final user = await account.get();
+      if (scopeGeneration != _wardrobeScopeGeneration) return;
+      _cachedUser = user;
+      await _persistCurrentUser(user);
+      if (scopeGeneration != _wardrobeScopeGeneration) {
+        _cachedUser = null;
+      }
     } catch (e) {
       _cachedUser = null;
     }
@@ -218,6 +232,7 @@ class AppwriteService extends ChangeNotifier {
         password: password,
       );
 
+      _logoutInProgress = false;
       await cacheCurrentUser();
       await ensureCurrentUserProfile();
       await refreshCurrentUserProfile();
@@ -234,6 +249,7 @@ class AppwriteService extends ChangeNotifier {
     try {
       clearUserCache();
       await account.createOAuth2Session(provider: OAuthProvider.google);
+      _logoutInProgress = false;
       await cacheCurrentUser();
       await ensureCurrentUserProfile();
       await refreshCurrentUserProfile();
@@ -250,6 +266,7 @@ class AppwriteService extends ChangeNotifier {
     try {
       clearUserCache();
       await account.createOAuth2Session(provider: OAuthProvider.apple);
+      _logoutInProgress = false;
       await cacheCurrentUser();
       await ensureCurrentUserProfile();
       await refreshCurrentUserProfile();
@@ -392,6 +409,7 @@ class AppwriteService extends ChangeNotifier {
 
       await account.createSession(userId: savedUserId, secret: otp);
 
+      _logoutInProgress = false;
       debugPrint('✅ Session created successfully');
 
       // ✅ Success! Cache user and profile data
@@ -511,6 +529,8 @@ class AppwriteService extends ChangeNotifier {
   Future<void> logout() async {
     // Clear local identity first so any race between the SDK call and a
     // subsequent UI rebuild can never see the previous user.
+    _logoutInProgress = true;
+    clearUserCache();
     await clearCachedUserIdentity();
     try {
       await AhviNotificationService.instance.unregisterForCurrentUser(this);
@@ -535,7 +555,6 @@ class AppwriteService extends ChangeNotifier {
     await prefs.remove('onboardingComplete');
     await prefs.remove('user_id');
     await prefs.remove('user_profile');
-    clearUserCache();
     notifyListeners();
   }
 
@@ -1065,7 +1084,16 @@ class AppwriteService extends ChangeNotifier {
         return cached;
       }
       final inflight = _wardrobeInflight;
-      if (inflight != null) return inflight;
+      if (inflight != null) {
+        final generation = _wardrobeGeneration;
+        final scopeGeneration = _wardrobeScopeGeneration;
+        final items = await inflight;
+        if (generation != _wardrobeGeneration ||
+            scopeGeneration != _wardrobeScopeGeneration) {
+          throw StateError('Wardrobe request superseded by cache invalidation');
+        }
+        return items;
+      }
     }
 
     if (forceRefresh) {
@@ -1088,12 +1116,6 @@ class AppwriteService extends ChangeNotifier {
       if (scopeGeneration != _wardrobeScopeGeneration) {
         throw StateError('Wardrobe request superseded by account change');
       }
-      final replacement = _wardrobeInflight;
-      if (replacement != null && !identical(replacement, fetch)) {
-        return replacement;
-      }
-      final current = _wardrobeCache;
-      if (current != null) return current;
       throw StateError('Wardrobe request superseded by cache invalidation');
     } finally {
       if (identical(_wardrobeInflight, fetch)) {
@@ -1105,40 +1127,66 @@ class AppwriteService extends ChangeNotifier {
   Future<List<Map<String, dynamic>>> _fetchWardrobeItems() async {
     try {
       final user = await getCurrentUser();
-      if (user == null) throw Exception("User not authenticated");
+      if (user == null) throw StateError('User not authenticated');
 
-      dynamic result;
-      try {
-        result = await databases.listDocuments(
-          databaseId: Env.appwriteDatabaseId,
-          collectionId: Env.outfitsCollection,
-          queries: [
-            Query.equal('userId', user.$id),
-            Query.orderDesc('\$createdAt'),
-            // Appwrite defaults to 25 docs without an explicit limit, which
-            // silently truncated larger wardrobes and dropped whole categories
-            // (e.g. footwear), so the backend saw no shoes and refused to build
-            // a complete outfit board. Lift the cap to cover full wardrobes.
-            Query.limit(100),
-          ],
-        );
-      } catch (_) {
-        result = null;
+      // Query both owner-field spellings and merge by document id. The old
+      // logic only ran the 'user_id' query when 'userId' came back totally
+      // empty -- so an account with a MIX of both schemas (e.g. one item
+      // written by a reprocessing path that used the other field name)
+      // silently lost every 'user_id'-tagged item forever, since the
+      // 'userId' query was already non-empty. That produced exactly this
+      // symptom: a board citing an item this account provably owns, which
+      // getWardrobeItems() never returns.
+      Future<List<Document>> query(String field) async {
+        const pageSize = 100;
+        final documents = <Document>[];
+        String? cursor;
+        while (true) {
+          try {
+            final result = await databases.listDocuments(
+              databaseId: Env.appwriteDatabaseId,
+              collectionId: Env.outfitsCollection,
+              queries: [
+                Query.equal(field, user.$id),
+                Query.orderDesc('\$createdAt'),
+                Query.limit(pageSize),
+                if (cursor != null) Query.cursorAfter(cursor),
+              ],
+            );
+            documents.addAll(result.documents);
+            if (result.documents.length < pageSize) return documents;
+            final nextCursor = result.documents.last.$id;
+            if (nextCursor.isEmpty || nextCursor == cursor) {
+              throw StateError('Wardrobe pagination cursor did not advance');
+            }
+            cursor = nextCursor;
+          } on AppwriteException catch (e) {
+            // Older deployments may not have the legacy owner attribute. That
+            // schema mismatch is safe to treat as an empty alternate query;
+            // transport/auth/service failures must propagate so callers can
+            // retry instead of caching an incomplete wardrobe as success.
+            final message = (e.message ?? '').toLowerCase();
+            final missingAttribute =
+                e.code == 400 &&
+                (message.contains('attribute') ||
+                    message.contains('unknown column') ||
+                    message.contains('not found'));
+            if (missingAttribute) return documents;
+            rethrow;
+          }
+        }
       }
 
-      if (result == null || result.documents.isEmpty) {
-        result = await databases.listDocuments(
-          databaseId: Env.appwriteDatabaseId,
-          collectionId: Env.outfitsCollection,
-          queries: [
-            Query.equal('user_id', user.$id),
-            Query.orderDesc('\$createdAt'),
-            Query.limit(100),
-          ],
-        );
+      final results = await Future.wait([query('userId'), query('user_id')]);
+      final byId = <String, Document>{};
+      for (final result in results) {
+        for (final doc in result) {
+          byId[doc.$id] = doc;
+        }
       }
+      final documents = byId.values.toList();
 
-      return result.documents.map<Map<String, dynamic>>((doc) {
+      return documents.map<Map<String, dynamic>>((doc) {
         return <String, dynamic>{
           ...doc.data,
           "id": doc.$id,
@@ -1168,7 +1216,7 @@ class AppwriteService extends ChangeNotifier {
       }).toList();
     } catch (e) {
       debugPrint("👕 Error fetching wardrobe items: $e");
-      return [];
+      rethrow;
     }
   }
 

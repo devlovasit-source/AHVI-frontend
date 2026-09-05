@@ -8,6 +8,156 @@ import 'package:myapp/util/wardrobe_image_resolver.dart';
 void main() {
   setUp(resetWardrobeImageDiagnosticCache);
 
+  test(
+    'P0 board admission checks every raw provenance field across records',
+    () {
+      for (final field in [
+        'image_url',
+        'imageUrl',
+        'original_image_url',
+        'originalImageUrl',
+        'raw_url',
+        'rawUrl',
+        'preview_url',
+        'previewUrl',
+        'url',
+        'thumbnailUrl',
+      ]) {
+        for (final inWardrobe in [false, true]) {
+          for (final suffix in ['', '?token=other#preview']) {
+            final result = resolveWardrobeImage(
+              {
+                if (!inWardrobe) field: 'https://test/upload.jpg',
+                'catalog_image_url': 'https://test/upload.jpg$suffix',
+                'masked_url': 'https://test/safe-mask.png',
+              },
+              wardrobeRecord: inWardrobe
+                  ? {field: 'https://test/upload.jpg'}
+                  : null,
+              surface: 'style_board_render',
+              emitDiagnostic: false,
+            );
+            expect(result.url, 'https://test/safe-mask.png');
+            expect(result.candidates.map((c) => c.url), [
+              'https://test/safe-mask.png',
+            ]);
+          }
+        }
+      }
+    },
+  );
+
+  for (final field in [
+    'catalog_image_url',
+    'catalogImageUrl',
+    'display_image_url',
+    'displayImageUrl',
+    'normalized_url',
+    'processed_asset_url',
+    'processedImageUrl',
+    'asset_cutout_url',
+    'asset_masked_url',
+    'board_image_url',
+    'cutout_url',
+    'masked_url',
+    'rmbg_url',
+    'transparent_image_url',
+    'processed_url',
+    'safe_image_url',
+  ]) {
+    test('P0 board rejects raw identity in $field, including fallbacks', () {
+      for (final source in ['wardrobe', 'style_asset']) {
+        for (final surface in [
+          'style_board_render',
+          'style_this_unified_grid',
+        ]) {
+          for (final safeAlternative in [false, true]) {
+            final result = resolveWardrobeImage(
+              {
+                'source': source,
+                'image_url': 'https://test/catalog_upload.png?token=raw',
+                field: 'https://test/catalog_upload.png?token=alias#preview',
+                'cutout_status': 'ready',
+                'board_status': 'cutout_ready',
+                'image_status': 'rmbg_complete',
+                if (safeAlternative)
+                  'normalized_image_url': 'https://test/safe.png',
+              },
+              surface: surface,
+              emitDiagnostic: false,
+            );
+            expect(
+              result.candidates.any((c) => c.url!.contains('catalog_upload')),
+              isFalse,
+            );
+            expect(result.url?.contains('catalog_upload') ?? false, isFalse);
+          }
+        }
+      }
+    });
+  }
+
+  for (final source in [
+    'catalog_fallback',
+    'style_asset_processed',
+    'validated_cutout',
+  ]) {
+    test(
+      'P0 frozen $source rejects explicit raw provenance but retains safe snapshot',
+      () {
+        for (final wardrobeAlias in [false, true]) {
+          final result = resolveWardrobeImage(
+            {
+              'image_url': 'https://test/frozen.png?token=saved',
+              'selected_field': 'normalized_url',
+              'source_kind': source,
+              'expected_transparent': source == 'validated_cutout',
+              if (!wardrobeAlias)
+                'original_image_url': 'https://test/frozen.png?token=raw',
+            },
+            wardrobeRecord: wardrobeAlias
+                ? {'image_url': 'https://test/frozen.png?token=raw'}
+                : null,
+            surface: 'style_board_saved',
+            emitDiagnostic: false,
+          );
+          expect(result.url, isNull);
+          expect(result.candidates, isEmpty);
+        }
+        final safe = resolveWardrobeImage(
+          {
+            'image_url': 'https://test/frozen.png',
+            'selected_field': 'normalized_url',
+            'source_kind': source,
+            'expected_transparent': source == 'validated_cutout',
+            'original_image_url': 'https://test/raw.png',
+          },
+          surface: 'style_board_saved',
+          emitDiagnostic: false,
+        );
+        expect(safe.url, 'https://test/frozen.png');
+        expect(safe.candidates.first.url, safe.url);
+      },
+    );
+  }
+
+  test('P0 Style This fallback list starts with selected normalized asset', () {
+    final result = resolveWardrobeImage(
+      {
+        'normalized_url': 'https://test/normalized.png',
+        'masked_url': 'https://test/masked.png',
+        'image_url': 'https://test/raw.png',
+      },
+      surface: 'style_this_unified_grid',
+      emitDiagnostic: false,
+    );
+    expect(result.url, 'https://test/normalized.png');
+    expect(result.candidates.map((c) => c.url), [
+      result.url,
+      'https://test/masked.png',
+    ]);
+  });
+
   test('validated wardrobe cutout wins over board and every fallback', () {
     final board = resolveWardrobeImage({
       'item_id': 'item-1',
@@ -475,6 +625,18 @@ void main() {
     }, surface: 'style_board_daily_wear_unified_grid');
 
     expect(result.url, isNull);
+  });
+
+  test('catalog and display aliases of the upload are rejected on boards', () {
+    for (final field in ['catalog_image_url', 'display_image_url']) {
+      final result = resolveWardrobeImage({
+        'image_url': 'https://test/upload.jpg',
+        field: 'https://test/upload.jpg',
+      }, surface: 'style_board_active_unified_grid');
+
+      expect(result.url, isNull, reason: field);
+      expect(result.sourceKind, isNot('catalog_fallback'), reason: field);
+    }
   });
 
   test('share reparse preserves resolution, stable id, and layout', () {

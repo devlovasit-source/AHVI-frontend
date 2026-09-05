@@ -220,20 +220,33 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
       ).difference(next.keys.toSet());
       if (missingIds.isNotEmpty && !_wardrobeFetchTriggered) {
         _wardrobeFetchTriggered = true;
-        // Fire-and-forget, but a failed fetch must not permanently latch
-        // _wardrobeFetchTriggered -- a transient auth/network hiccup (or a
-        // StateError from a concurrent cache invalidation elsewhere in the
-        // app) would otherwise strand this board on unresolved images for
-        // its entire lifetime with no way to retry.
-        appwrite
-            .getWardrobeItems()
-            .catchError((Object e) {
-              debugPrint('AHVI_BOARD_WARDROBE_FETCH_FAILED error=$e');
-              if (mounted) _wardrobeFetchTriggered = false;
-              return <Map<String, dynamic>>[];
-            });
+        // A fresh request is required when the current cache is non-empty but
+        // still misses this board's ids. Empty/partial success must also
+        // release the latch so a later dependency update can retry.
+        unawaited(_fetchWardrobeForBoard(appwrite));
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('AHVI_BOARD_WARDROBE_HYDRATION_FAILED error=$e');
+    }
+  }
+
+  Future<void> _fetchWardrobeForBoard(AppwriteService appwrite) async {
+    try {
+      final items = await appwrite.getWardrobeItems(forceRefresh: true);
+      if (!mounted) return;
+      final required = _requiredWardrobeIds(widget.direction);
+      final fetched = buildWardrobeImageMap(items).keys.toSet();
+      if (_wardrobeFetchNeedsRetry(required, fetched)) {
+        _wardrobeFetchTriggered = false;
+        debugPrint(
+          'AHVI_BOARD_WARDROBE_FETCH_INCOMPLETE '
+          'required=${required.length} available=${fetched.length}',
+        );
+      }
+    } catch (e) {
+      debugPrint('AHVI_BOARD_WARDROBE_FETCH_FAILED error=$e');
+      if (mounted) _wardrobeFetchTriggered = false;
+    }
   }
 
   @override
@@ -544,18 +557,42 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
       final isNewBoard = pending.boardId != current.boardId;
       final isNewerRevision = pending.revision > current.revision;
       if (!isNewBoard && !isNewerRevision) return;
+      final controller = _controller;
+      final state = controller?.state;
+      final model = OutfitBoardModel.fromPayload(
+        widget.direction,
+        editorialCover: widget.editorialCover,
+      );
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
+        // A parent replacement or local mutation can supersede this queued work.
+        if (!mounted ||
+            !identical(_controller, controller) ||
+            !identical(_controller?.state, state)) {
+          return;
+        }
         _replaceBoard((
-          model: OutfitBoardModel.fromPayload(
-            widget.direction,
-            editorialCover: widget.editorialCover,
-          ),
+          model: model,
           board: pending,
         ));
         setState(() {});
+        widget.onBoardStateChanged?.call(_currentDirection);
       });
     }
+  }
+
+  bool get _reasoningMatchesComposition {
+    final items = _controller?.state.items ?? _initialBoard.items;
+    if (items.length != _initialBoard.items.length) return false;
+    for (var i = 0; i < items.length; i++) {
+      final original = _initialBoard.items[i];
+      final current = items[i];
+      if (original.itemId != current.itemId ||
+          original.source != current.source ||
+          original.slot != current.slot) {
+        return false;
+      }
+    }
+    return true;
   }
 
   StyleBoardData get _currentBoard {
@@ -571,10 +608,10 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
       styleArchetype: _initialBoard.styleArchetype,
       boardRole: _initialBoard.boardRole,
       occasion: _initialBoard.occasion,
-      whyItWorks: _initialBoard.whyItWorks,
+      whyItWorks: _reasoningMatchesComposition ? _model.intelligenceText : '',
       items: state.items,
-      story: _initialBoard.story,
-      stylingTip: _initialBoard.stylingTip,
+      story: _reasoningMatchesComposition ? _initialBoard.story : null,
+      stylingTip: _reasoningMatchesComposition ? _model.stylingTip : '',
     );
   }
 
@@ -589,8 +626,33 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
       'allow_wardrobe_fallback': board.allowWardrobeFallback,
       'title': board.title,
       'occasion': board.occasion,
-      'why_it_works': board.whyItWorks,
-      'styling_tip': board.stylingTip,
+      // Copy belongs to the composition, not the board ID or revision. Undo
+      // automatically restores it when the corresponding items return.
+      if (!_reasoningMatchesComposition)
+        for (final key in const [
+          'rationale',
+          'reason',
+          'why',
+          'short_note',
+          'shortNote',
+          'whyItWorks',
+          'whyThisWorks',
+          'why_this_works',
+          'explanation',
+          'description',
+          'styling_note',
+          'stylingNote',
+          'style_tip',
+          'style_note',
+          'styleNote',
+          'stylingTip',
+          'board_story',
+          'boardStory',
+          'style_strategy',
+        ])
+          key: '',
+      'why_it_works': _reasoningMatchesComposition ? _model.intelligenceText : '',
+      'styling_tip': _reasoningMatchesComposition ? _model.stylingTip : '',
       'locked_item_ids':
           _controller?.state.lockedItemIds.toList(growable: false) ??
           board.items
@@ -701,11 +763,12 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
                           ),
                         ),
                     ),
-                    OutfitReasoningStrip(
-                      key: const ValueKey('active-chat-board-reasoning'),
-                      model: _model,
-                      mode: mode,
-                    ),
+                    if (_reasoningMatchesComposition)
+                      OutfitReasoningStrip(
+                        key: const ValueKey('active-chat-board-reasoning'),
+                        model: _model,
+                        mode: mode,
+                      ),
                   ],
                 ),
               ),
@@ -1288,7 +1351,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
   String _boardIdentity([OutfitActionBar? value]) {
     final source = value == null
         ? _activeDirection
-        : value.currentDirectionOverride?.call() ?? value.direction;
+        : value.direction;
     final boardId = _text(source['board_id'] ?? source['boardId']);
     final revision = source['revision']?.toString() ?? '0';
     final rawTitle = _text(source['title'] ?? source['direction_name']);
@@ -1511,7 +1574,23 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
     final items = _maps(
       direction['board_items'] ?? direction['boardItems'] ?? direction['items'],
     );
-    return items;
+    // Match the actual grid surface, then freeze that decision for persistence.
+    final surface = widget.interactionMode == BoardInteractionMode.styleThis
+        ? 'style_this_unified_grid'
+        : 'style_board_active_unified_grid';
+    return items
+        .map((item) {
+          final resolved = resolveWardrobeImage(
+            item,
+            surface: surface,
+            emitDiagnostic: false,
+          );
+          return <String, dynamic>{
+            ...item,
+            savedBoardAuthoritativeImageKey: resolved,
+          };
+        })
+        .toList(growable: false);
   }
 
   List<String> _saveItemIds() {
@@ -1547,11 +1626,12 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
     ];
     for (final item in _saveItems()) {
       candidates.add(
-        resolveWardrobeImage(
-          item,
-          surface: 'style_board_cover',
-          itemId: _text(item['item_id'] ?? item['id'] ?? item[r'$id']),
-        ),
+        item[savedBoardAuthoritativeImageKey] as ResolvedWardrobeImage? ??
+            resolveWardrobeImage(
+              item,
+              surface: 'style_board_cover',
+              itemId: _text(item['item_id'] ?? item['id'] ?? item[r'$id']),
+            ),
       );
     }
     candidates.sort((a, b) => a.tier.compareTo(b.tier));
@@ -2338,6 +2418,17 @@ Set<String> _requiredWardrobeIds(Map<String, dynamic> direction) {
   }
   return ids;
 }
+
+bool _wardrobeFetchNeedsRetry(
+  Set<String> requiredIds,
+  Set<String> availableIds,
+) => requiredIds.difference(availableIds).isNotEmpty;
+
+@visibleForTesting
+bool wardrobeFetchNeedsRetryForTesting(
+  Set<String> requiredIds,
+  Set<String> availableIds,
+) => _wardrobeFetchNeedsRetry(requiredIds, availableIds);
 
 @visibleForTesting
 Map<String, dynamic> mergeWardrobeRecordsForTesting(

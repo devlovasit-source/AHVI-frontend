@@ -8,9 +8,13 @@ import 'package:myapp/feature/chat/models/ahvi_response_block.dart';
 import 'package:myapp/services/style_board_api_service.dart';
 import 'package:myapp/style_board/board_models.dart';
 import 'package:myapp/style_board/style_board_state.dart';
+import 'package:myapp/style_board/saved_board_persistence.dart';
+import 'package:myapp/style_board/saved_board_thumb.dart';
+import 'package:myapp/widgets/ahvi_unified_outfit_grid.dart';
 import 'package:myapp/theme/accent_palette.dart';
 import 'package:myapp/theme/theme_tokens.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:myapp/feature/chat/services/saved_boards_store.dart';
 
 const _accent = AccentPalette(
   primary: Color(0xFFFF8EC7),
@@ -86,7 +90,287 @@ StyleBoardShuffleResult _success(StyleBoardState request) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    SavedBoardsStore.resetForTest();
+  });
+
+  testWidgets(
+    'mutation regression: saved identity resets after shuffle3 undo',
+    (tester) async {
+      final saved = <List<String>>[];
+      final readbacks = <Map<String, dynamic>>[];
+      await _pumpCard(
+        tester,
+        board: _board()
+          ..['why_it_works'] = 'The original trousers balance this shirt.',
+        shuffleCall: (state) async => _success(state),
+        saveBoardOverride:
+            ({
+              required occasion,
+              required outfitDescription,
+              required imageUrl,
+              required title,
+              required itemIds,
+              required items,
+              required isFavourite,
+            }) async {
+              saved.add(List<String>.from(itemIds));
+              final bar = tester.widget<OutfitActionBar>(
+                find.byType(OutfitActionBar),
+              );
+              final content = buildSavedBoardContent(
+                board: bar.currentDirectionOverride!(),
+                items: items,
+                selection: SavedBoardSelection(bucket: occasion),
+                title: title,
+                originalOccasion: 'office',
+              );
+              readbacks.add(
+                expandSavedBoardData(
+                  buildSavedBoardPayload(
+                    userId: 'user-test',
+                    imageUrl: imageUrl,
+                    content: content,
+                  ),
+                ),
+              );
+              return 'doc-${saved.length}';
+            },
+      );
+      Future<void> save() async {
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Save look'));
+        await tester.pumpAndSettle();
+      }
+
+      await save();
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(find.text('Shuffle unlocked pieces'));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('Undo shuffle'));
+      await tester.pump();
+      final controller = tester
+          .widget<BoardMutationBar>(find.byType(BoardMutationBar))
+          .controller;
+      expect(controller.state.revision, 3);
+      expect(controller.state.lockedItemIds, {'anchor'});
+      expect(find.text('Save'), findsOneWidget);
+      await save();
+      expect(saved, [
+        ['anchor', 'bottom-1', 'shoe-1'],
+        ['anchor', 'bottom-1-new-new', 'shoe-1-new-new'],
+      ]);
+      expect(
+        readbacks.first['why_it_works'],
+        'The original trousers balance this shirt.',
+      );
+      expect(readbacks.last['why_it_works'], isNull);
+      expect(readbacks.last['revision'], 3);
+      expect(
+        (readbacks.last['items'] as List).map((item) => item['item_id']),
+        saved.last,
+      );
+    },
+  );
+
+  testWidgets(
+    'mutation regression: Style This saves visible normalized image and copy',
+    (tester) async {
+      final board = _board(scenario: 'style_this')
+        ..['anchor_item_id'] = 'anchor'
+        ..['why_it_works'] = 'The anchor balances these trousers.'
+        ..['styling_tip'] = 'Roll the anchor sleeves.';
+      for (final item
+          in (board['board_items'] as List).cast<Map<String, dynamic>>()) {
+        item['normalized_url'] =
+            'https://example.test/catalog_${item['item_id']}.jpg';
+      }
+      Map<String, dynamic>? reopened;
+      await _pumpCard(
+        tester,
+        board: board,
+        shuffleCall: (state) async => _success(state),
+        saveBoardOverride:
+            ({
+              required occasion,
+              required outfitDescription,
+              required imageUrl,
+              required title,
+              required itemIds,
+              required items,
+              required isFavourite,
+            }) async {
+              final bar = tester.widget<OutfitActionBar>(
+                find.byType(OutfitActionBar),
+              );
+              final content = buildSavedBoardContent(
+                board: bar.currentDirectionOverride!(),
+                items: items,
+                selection: SavedBoardSelection(bucket: occasion),
+                title: title,
+                originalOccasion: 'office',
+              );
+              reopened = expandSavedBoardData(
+                buildSavedBoardPayload(
+                  userId: 'user-test',
+                  imageUrl: imageUrl,
+                  content: content,
+                ),
+              );
+              return 'doc-parity';
+            },
+      );
+      final visible = tester
+          .widget<AhviUnifiedOutfitGrid>(find.byType(AhviUnifiedOutfitGrid))
+          .items;
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save look'));
+      await tester.pumpAndSettle();
+      expect(
+        (reopened!['items'] as List).map((item) => item['image_url']),
+        visible.map((item) => item.resolvedImageUrl),
+      );
+      expect(reopened!['why_it_works'], 'The anchor balances these trousers.');
+      expect(reopened!['styling_tip'], 'Roll the anchor sleeves.');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 320,
+            height: 400,
+            child: SavedBoardThumb(source: reopened!, wardrobeById: const {}),
+          ),
+        ),
+      );
+      await tester.pump();
+      final readback = tester
+          .widget<AhviUnifiedOutfitGrid>(find.byType(AhviUnifiedOutfitGrid))
+          .items;
+      expect(
+        readback.map((item) => item.resolvedImageUrl),
+        visible.map((item) => item.resolvedImageUrl),
+      );
+    },
+  );
+
+  testWidgets(
+    'mutation regression: reasoning clears on composition change and returns on undo',
+    (tester) async {
+      final board = _board()
+        ..['short_note'] = 'The original trousers balance this shirt.'
+        ..['why'] = 'Old alternate reasoning.'
+        ..['styling_tip'] = 'Cuff the original trousers.';
+      await _pumpCard(
+        tester,
+        board: board,
+        shuffleCall: (state) async => _success(state),
+      );
+      expect(
+        find.text('The original trousers balance this shirt.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Shuffle unlocked pieces'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('style-why-it-works')), findsNothing);
+      expect(find.byKey(const ValueKey('style-styling-tip')), findsNothing);
+      final bar = tester.widget<OutfitActionBar>(find.byType(OutfitActionBar));
+      final direction = bar.currentDirectionOverride!();
+      expect(direction['why_it_works'], isEmpty);
+      expect(
+        direction['short_note'],
+        isNot('The original trousers balance this shirt.'),
+      );
+      expect(direction['why'], isNot('Old alternate reasoning.'));
+      await tester.tap(find.text('Undo shuffle'));
+      await tester.pump();
+      expect(
+        find.text('The original trousers balance this shirt.'),
+        findsOneWidget,
+      );
+      expect(find.text('Cuff the original trousers.'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'mutation regression: pending replacement publishes accepted state',
+    (tester) async {
+      final pending = Completer<StyleBoardShuffleResult>();
+      final observed = <Map<String, dynamic>>[];
+      await _pumpCard(
+        tester,
+        board: _board(),
+        shuffleCall: (_) => pending.future,
+        onBoardStateChanged: observed.add,
+      );
+      final controller = tester
+          .widget<BoardMutationBar>(find.byType(BoardMutationBar))
+          .controller;
+      final request = controller.state;
+      final shuffle = controller.shuffle();
+      await _pumpCard(
+        tester,
+        board: _board(revision: 3),
+        shuffleCall: (_) => pending.future,
+        onBoardStateChanged: observed.add,
+      );
+      pending.complete(_success(request));
+      await shuffle;
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester
+            .widget<BoardMutationBar>(find.byType(BoardMutationBar))
+            .controller
+            .state
+            .revision,
+        3,
+      );
+      expect(observed.last['revision'], 3);
+    },
+  );
+
+  testWidgets(
+    'mutation regression: queued replacement cannot overwrite newer board',
+    (tester) async {
+      final pending = Completer<StyleBoardShuffleResult>();
+      await _pumpCard(
+        tester,
+        board: _board(),
+        shuffleCall: (_) => pending.future,
+      );
+      final controller = tester
+          .widget<BoardMutationBar>(find.byType(BoardMutationBar))
+          .controller;
+      final request = controller.state;
+      final shuffle = controller.shuffle();
+      await _pumpCard(
+        tester,
+        board: _board(revision: 3),
+        shuffleCall: (_) => pending.future,
+      );
+      pending.complete(_success(request));
+      await shuffle;
+      await _pumpCard(
+        tester,
+        board: _board(revision: 4),
+        shuffleCall: (state) async => _success(state),
+      );
+      await tester.pump();
+      expect(
+        tester
+            .widget<BoardMutationBar>(find.byType(BoardMutationBar))
+            .controller
+            .state
+            .revision,
+        4,
+      );
+      final bar = tester.widget<OutfitActionBar>(find.byType(OutfitActionBar));
+      expect(bar.currentDirectionOverride!()['revision'], 4);
+    },
+  );
 
   test(
     'interaction mode is explicit and never inferred from source policy',
@@ -308,8 +592,10 @@ void main() {
       isNot('https://example.test/catalog_anchor.jpg'),
     );
     // Stale catalog removed; item reverts to its own masked cutout.
-    expect(savedTop['source_kind'],
-        anyOf('validated_cutout', 'legacy_masked_cutout'));
+    expect(
+      savedTop['source_kind'],
+      anyOf('validated_cutout', 'legacy_masked_cutout'),
+    );
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -735,6 +1021,7 @@ Future<void> _pumpCard(
   shuffleCall,
   ValueChanged<String>? onSendMessage,
   BoardSaveFn? saveBoardOverride,
+  OutfitBoardStateChanged? onBoardStateChanged,
   Map<String, Map<String, dynamic>> wardrobeById = const {},
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 900));
@@ -753,6 +1040,7 @@ Future<void> _pumpCard(
             onSendMessage: onSendMessage ?? (_) {},
             shuffleCall: shuffleCall,
             saveBoardOverride: saveBoardOverride,
+            onBoardStateChanged: onBoardStateChanged,
             wardrobeById: wardrobeById,
           ),
         ),
