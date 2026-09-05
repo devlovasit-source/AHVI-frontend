@@ -181,11 +181,15 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (widget.wardrobeById.isNotEmpty) return;
     try {
       final appwrite = Provider.of<AppwriteService>(context);
-      final cached = appwrite.cachedWardrobeItems;
-      final next = buildWardrobeImageMap(cached);
+      final cached = buildWardrobeImageMap(appwrite.cachedWardrobeItems);
+      // widget.wardrobeById.isNotEmpty used to short-circuit this whole
+      // method -- but a non-empty widget map can still be a THIN one (e.g.
+      // only the footwear item), silently starving the session's own richer
+      // wardrobe cache from ever merging in. Always merge; never gate on
+      // emptiness.
+      final next = _effectiveWardrobeMap(_wardrobeById, cached);
       if (!mapEquals(_wardrobeById, next)) {
         _wardrobeById = next;
         final incoming = _parseBoard(widget);
@@ -201,15 +205,20 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
           _refreshBoardImages(incoming);
         }
       }
-      // A board can render before anything else this session has ever
-      // populated the wardrobe cache (e.g. the user opened Style chat
-      // without visiting the Wardrobe tab first). Without a fetch trigger
-      // here, items whose backend payload didn't embed an image field stay
-      // permanently unresolved instead of just until the cache warms up.
-      // Provider.of(context) above already subscribes this widget to
-      // AppwriteService, so its notifyListeners() on fetch completion reruns
-      // didChangeDependencies and picks up the now-populated cache above.
-      if (cached.isEmpty && !_wardrobeFetchTriggered) {
+      // A board can render before the wardrobe cache carries every item this
+      // specific board needs -- either nothing has fetched yet this session
+      // (cache empty), or an earlier fetch happened before this board's
+      // items existed (cache non-empty but still missing these ids). Compare
+      // required ids, not just cache emptiness, so the second case also
+      // triggers a fetch instead of leaving those items permanently
+      // unresolved. Provider.of(context) above already subscribes this
+      // widget to AppwriteService, so its notifyListeners() on fetch
+      // completion reruns didChangeDependencies and picks up the
+      // now-populated cache above.
+      final missingIds = _requiredWardrobeIds(
+        widget.direction,
+      ).difference(next.keys.toSet());
+      if (missingIds.isNotEmpty && !_wardrobeFetchTriggered) {
         _wardrobeFetchTriggered = true;
         // Fire-and-forget, but a failed fetch must not permanently latch
         // _wardrobeFetchTriggered -- a transient auth/network hiccup (or a
@@ -231,9 +240,12 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
   void didUpdateWidget(covariant AhviOutfitBoardCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     final previousWardrobe = _wardrobeById;
-    if (widget.wardrobeById.isNotEmpty || oldWidget.wardrobeById.isNotEmpty) {
-      _wardrobeById = widget.wardrobeById;
-    }
+    // Merge, never overwrite: an incoming widget.wardrobeById can be a
+    // thinner snapshot (e.g. only the anchor/footwear item) than what this
+    // card's own didChangeDependencies has already merged in from the
+    // session wardrobe cache. Replacing wholesale would downgrade a richer
+    // local map back to a partial one on every parent rebuild.
+    _wardrobeById = _effectiveWardrobeMap(_wardrobeById, widget.wardrobeById);
     final incoming = _parseBoard(widget);
     final wardrobeChanged = !mapEquals(previousWardrobe, _wardrobeById);
     final modeChanged =
@@ -1030,8 +1042,6 @@ class OutfitReasoningStrip extends StatelessWidget {
             Text(
               why,
               key: const ValueKey('style-why-it-works'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colors.onSurface,
                 fontWeight: FontWeight.w500,
@@ -2271,6 +2281,79 @@ bool outfitBoardViable(
       .length;
   return classicViable || dressViable || knownRoleImages >= 3;
 }
+
+/// Merges two wardrobe records for the same stable id, keeping every field
+/// present in either. Callers merge the session cache into the widget map
+/// (and vice versa), so an enrichment field (masked_url, normalized_url,
+/// catalog_image_url, cutout_url, rmbg_url, board_image_url, processing
+/// metadata, ...) already known to one source is never lost just because
+/// the other source doesn't carry it. Never fabricates a value -- only
+/// fills a field that is genuinely absent/blank on the base record.
+Map<String, dynamic> _mergeWardrobeRecord(
+  Map<String, dynamic>? base,
+  Map<String, dynamic>? other,
+) {
+  if (base == null) {
+    return other == null ? const {} : Map<String, dynamic>.from(other);
+  }
+  if (other == null) return Map<String, dynamic>.from(base);
+  final merged = Map<String, dynamic>.from(base);
+  other.forEach((key, value) {
+    if (value == null) return;
+    if (value is String && value.trim().isEmpty) return;
+    final existing = merged[key];
+    final existingBlank =
+        existing == null || (existing is String && existing.trim().isEmpty);
+    if (existingBlank) merged[key] = value;
+  });
+  return merged;
+}
+
+/// One effective wardrobe map built from two sources (e.g. the board's own
+/// carried wardrobe payload and AppwriteService's session cache). A record
+/// present in only one source passes through untouched; a record present in
+/// both is field-merged so neither source can downgrade the other -- see
+/// AhviOutfitBoardCard.didChangeDependencies / didUpdateWidget.
+Map<String, Map<String, dynamic>> _effectiveWardrobeMap(
+  Map<String, Map<String, dynamic>> a,
+  Map<String, Map<String, dynamic>> b,
+) {
+  if (a.isEmpty) return b;
+  if (b.isEmpty) return a;
+  final ids = {...a.keys, ...b.keys};
+  return {for (final id in ids) id: _mergeWardrobeRecord(a[id], b[id])};
+}
+
+/// Wardrobe item ids referenced by the incoming board/direction's items --
+/// used to decide whether a wardrobe fetch is still needed even when the
+/// effective map is already non-empty (a non-empty map can still miss the
+/// specific items this particular board needs).
+Set<String> _requiredWardrobeIds(Map<String, dynamic> direction) {
+  final ids = <String>{};
+  for (final item in _maps(
+    direction['board_items'] ?? direction['boardItems'] ?? direction['items'],
+  )) {
+    final id = wardrobeItemStableId(item);
+    if (id.isNotEmpty) ids.add(id);
+  }
+  return ids;
+}
+
+@visibleForTesting
+Map<String, dynamic> mergeWardrobeRecordsForTesting(
+  Map<String, dynamic>? base,
+  Map<String, dynamic>? other,
+) => _mergeWardrobeRecord(base, other);
+
+@visibleForTesting
+Map<String, Map<String, dynamic>> effectiveWardrobeMapForTesting(
+  Map<String, Map<String, dynamic>> a,
+  Map<String, Map<String, dynamic>> b,
+) => _effectiveWardrobeMap(a, b);
+
+@visibleForTesting
+Set<String> requiredWardrobeIdsForTesting(Map<String, dynamic> direction) =>
+    _requiredWardrobeIds(direction);
 
 StyleBoardData _toStyleBoardData(
   OutfitBoardModel model,
