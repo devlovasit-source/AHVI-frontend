@@ -465,34 +465,39 @@ class _ItemDetailModal extends StatelessWidget {
     showDialog<void>(
       context: appContext,
       barrierDismissible: false,
-      builder: (dialogContext) => Center(
-        child: mode == 'style_this'
-            ? ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(dialogContext).size.width * 0.82,
-                ),
-                child: AhviStyleThisProcessingCard(itemName: item.name),
-              )
-            : ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 300),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.20),
-                        blurRadius: 28,
-                        offset: const Offset(0, 10),
+      builder: (dialogContext) => SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: mode == 'style_this'
+                ? ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(dialogContext).size.width * 0.82,
+                    ),
+                    child: AhviStyleThisProcessingCard(itemName: item.name),
+                  )
+                : ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 300),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.20),
+                            blurRadius: 28,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: AhviProcessingBubble(
-                    message: ahviProcessingMessage(
-                      AhviProcessingContext.buildOutfit,
+                      child: AhviProcessingBubble(
+                        message: ahviProcessingMessage(
+                          AhviProcessingContext.buildOutfit,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
+          ),
+        ),
       ),
     );
 

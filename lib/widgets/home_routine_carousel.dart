@@ -130,6 +130,7 @@ class _RoutineCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = palette;
     final overdue = data.overdue && !data.done;
+    final compact = MediaQuery.sizeOf(context).height < 700.0;
     // Subtle red/pink tint only when medicine is overdue.
     final bg = overdue
         ? Color.alphaBlend(const Color(0x22E5484D), p.cardColor)
@@ -147,7 +148,9 @@ class _RoutineCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: borderColor, width: 1),
         ),
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        padding: compact
+            ? const EdgeInsets.fromLTRB(10, 6, 10, 6)
+            : const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.max,
@@ -234,25 +237,27 @@ class _RoutineCard extends StatelessWidget {
                   },
                 ),
               ),
-            const SizedBox(height: 6),
-            // 5 — always-visible CTA
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  data.cta,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: p.accent,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
+            if (!compact) ...[
+              const SizedBox(height: 6),
+              // 5 — always-visible CTA
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    data.cta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: p.accent,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 3),
-                Icon(Icons.arrow_forward_rounded, size: 14, color: p.accent),
-              ],
-            ),
+                  const SizedBox(width: 3),
+                  Icon(Icons.arrow_forward_rounded, size: 14, color: p.accent),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -291,8 +296,8 @@ class _StatusPill extends StatelessWidget {
             done
                 ? Icons.check_circle_rounded
                 : (overdue
-                    ? Icons.error_outline_rounded
-                    : Icons.access_time_rounded),
+                      ? Icons.error_outline_rounded
+                      : Icons.access_time_rounded),
             size: 13,
             color: fg,
           ),

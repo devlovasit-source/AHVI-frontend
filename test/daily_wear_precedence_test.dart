@@ -6,10 +6,14 @@ void main() {
     test('board_items takes top precedence over items', () {
       final outfit = {
         'items': [
-          {'id': 'item_raw', 'name': 'Raw Top', 'image_url': 'http://raw.png'}
+          {'id': 'item_raw', 'name': 'Raw Top', 'image_url': 'http://raw.png'},
         ],
         'board_items': [
-          {'id': 'board_1', 'name': 'Enriched Top', 'image_url': 'http://board.png'}
+          {
+            'id': 'board_1',
+            'name': 'Enriched Top',
+            'image_url': 'http://board.png',
+          },
         ],
       };
 
@@ -22,7 +26,11 @@ void main() {
       final outfit = {
         'items': <dynamic>[],
         'board_items': [
-          {'id': 'board_2', 'name': 'Enriched Pants', 'image_url': 'http://pants.png'}
+          {
+            'id': 'board_2',
+            'name': 'Enriched Pants',
+            'image_url': 'http://pants.png',
+          },
         ],
       };
 
@@ -34,11 +42,15 @@ void main() {
     test('composition_items used when board_items is missing/empty', () {
       final outfit = {
         'items': [
-          {'id': 'item_raw', 'name': 'Raw Top', 'image_url': 'http://raw.png'}
+          {'id': 'item_raw', 'name': 'Raw Top', 'image_url': 'http://raw.png'},
         ],
         'board_items': <dynamic>[],
         'composition_items': [
-          {'id': 'comp_1', 'name': 'Composition Dress', 'image_url': 'http://comp.png'}
+          {
+            'id': 'comp_1',
+            'name': 'Composition Dress',
+            'image_url': 'http://comp.png',
+          },
         ],
       };
 
@@ -47,22 +59,33 @@ void main() {
       expect(items.first['id'], 'comp_1');
     });
 
-    test('used_wardrobe_items used when board_items and composition_items are empty', () {
-      final outfit = {
-        'items': [
-          {'id': 'item_raw', 'name': 'Raw Top', 'image_url': 'http://raw.png'}
-        ],
-        'board_items': <dynamic>[],
-        'composition_items': <dynamic>[],
-        'used_wardrobe_items': [
-          {'id': 'wardrobe_1', 'name': 'Wardrobe Shoes', 'image_url': 'http://shoes.png'}
-        ],
-      };
+    test(
+      'used_wardrobe_items used when board_items and composition_items are empty',
+      () {
+        final outfit = {
+          'items': [
+            {
+              'id': 'item_raw',
+              'name': 'Raw Top',
+              'image_url': 'http://raw.png',
+            },
+          ],
+          'board_items': <dynamic>[],
+          'composition_items': <dynamic>[],
+          'used_wardrobe_items': [
+            {
+              'id': 'wardrobe_1',
+              'name': 'Wardrobe Shoes',
+              'image_url': 'http://shoes.png',
+            },
+          ],
+        };
 
-      final items = DailyWearScreen.firstNonEmptyBoardItems(outfit);
-      expect(items.length, 1);
-      expect(items.first['id'], 'wardrobe_1');
-    });
+        final items = DailyWearScreen.firstNonEmptyBoardItems(outfit);
+        expect(items.length, 1);
+        expect(items.first['id'], 'wardrobe_1');
+      },
+    );
 
     test('items fallback used only when higher priority lists are empty', () {
       final outfit = {
@@ -70,13 +93,67 @@ void main() {
         'composition_items': <dynamic>[],
         'used_wardrobe_items': <dynamic>[],
         'items': [
-          {'id': 'item_fallback', 'name': 'Fallback Hat', 'image_url': 'http://hat.png'}
+          {
+            'id': 'item_fallback',
+            'name': 'Fallback Hat',
+            'image_url': 'http://hat.png',
+          },
         ],
       };
 
       final items = DailyWearScreen.firstNonEmptyBoardItems(outfit);
       expect(items.length, 1);
       expect(items.first['id'], 'item_fallback');
+    });
+
+    test(
+      'display merge fills missing roles from a fuller lower-priority alias',
+      () {
+        final outfit = {
+          'board_items': [
+            {'id': 'shoe-board', 'role': 'footwear', 'image_url': 'shoe.png'},
+          ],
+          'items': [
+            {'id': 'top-raw', 'role': 'top', 'image_url': 'top.png'},
+            {'id': 'bottom-raw', 'role': 'bottom', 'image_url': 'bottom.png'},
+            {'id': 'shoe-raw', 'role': 'footwear', 'image_url': 'shoe.png'},
+          ],
+        };
+
+        final items = DailyWearScreen.mergedBoardItemsForDisplay(outfit);
+        expect(items.map((item) => item['id']), [
+          'shoe-board',
+          'top-raw',
+          'bottom-raw',
+        ]);
+      },
+    );
+
+    test('card selection prefers the alias with fuller item coverage', () {
+      final cards = DailyWearScreen.selectDailyBoardCards({
+        'data': {
+          'cards': [
+            {
+              'id': 'partial',
+              'board_items': [
+                {'id': 'shoe', 'role': 'footwear'},
+              ],
+            },
+          ],
+        },
+        'rendered_boards': [
+          {
+            'id': 'complete',
+            'items': [
+              {'id': 'top', 'role': 'top'},
+              {'id': 'bottom', 'role': 'bottom'},
+              {'id': 'shoe', 'role': 'footwear'},
+            ],
+          },
+        ],
+      });
+
+      expect(cards.single['id'], 'complete');
     });
   });
 

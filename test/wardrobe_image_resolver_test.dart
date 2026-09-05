@@ -47,31 +47,37 @@ void main() {
     expect(processed.sourceKind, 'processed_cutout');
   });
 
-  test('grid stays catalog-first; board is cutout-first for a masked cutout', () {
-    final raw = {
-      'item_id': 'wp-shirt',
-      'masked_url': 'https://test/wardrobe_wp.png',
-      'image_status': 'rmbg_complete',
-      'normalized_url': 'https://test/catalog_wp.png',
-      'selected_field': 'masked_url',
-      'source_kind': 'legacy_masked_cutout',
-      'expected_transparent': true,
-    };
-    // Wardrobe grid keeps catalog-first (polished, consistent photography).
-    final grid = resolveWardrobeImage(raw, surface: 'wardrobe_grid');
-    expect(grid.url, 'https://test/catalog_wp.png');
-    expect(grid.sourceKind, 'catalog_fallback');
-    // Board surfaces are cutout-first: the transparent masked cutout wins so
-    // the garment renders frameless and full-size (policy: prefer cutouts on
-    // boards; rawCutoutIsSafe already filters genuinely broken cutouts).
-    for (final surface in ['style_board_render', 'style_this_request']) {
-      final r = resolveWardrobeImage(raw, surface: surface);
-      expect(r.url, 'https://test/wardrobe_wp.png', reason: surface);
-      expect(r.sourceKind,
-          anyOf('validated_cutout', 'legacy_masked_cutout'), reason: surface);
-      expect(r.shouldFrame, isFalse, reason: surface);
-    }
-  });
+  test(
+    'grid stays catalog-first; board is cutout-first for a masked cutout',
+    () {
+      final raw = {
+        'item_id': 'wp-shirt',
+        'masked_url': 'https://test/wardrobe_wp.png',
+        'image_status': 'rmbg_complete',
+        'normalized_url': 'https://test/catalog_wp.png',
+        'selected_field': 'masked_url',
+        'source_kind': 'legacy_masked_cutout',
+        'expected_transparent': true,
+      };
+      // Wardrobe grid keeps catalog-first (polished, consistent photography).
+      final grid = resolveWardrobeImage(raw, surface: 'wardrobe_grid');
+      expect(grid.url, 'https://test/catalog_wp.png');
+      expect(grid.sourceKind, 'catalog_fallback');
+      // Board surfaces are cutout-first: the transparent masked cutout wins so
+      // the garment renders frameless and full-size (policy: prefer cutouts on
+      // boards; rawCutoutIsSafe already filters genuinely broken cutouts).
+      for (final surface in ['style_board_render', 'style_this_request']) {
+        final r = resolveWardrobeImage(raw, surface: surface);
+        expect(r.url, 'https://test/wardrobe_wp.png', reason: surface);
+        expect(
+          r.sourceKind,
+          anyOf('validated_cutout', 'legacy_masked_cutout'),
+          reason: surface,
+        );
+        expect(r.shouldFrame, isFalse, reason: surface);
+      }
+    },
+  );
 
   test('grid catalog-first only fires for a real catalog_* object', () {
     // A non-catalog normalized url must NOT hijack the masked cutout.
@@ -397,36 +403,78 @@ void main() {
   // raw upload as image_url (a cropped mirror/floor photo). Live-reproduced
   // on the "Refined Ease" style board: the raw photo was labeled
   // catalog_fallback and rendered directly on the board.
-  test('a normalized_url aliasing the raw upload is never admitted on a board surface', () {
-    final result = resolveWardrobeImage(
-      {
+  test(
+    'a normalized_url aliasing the raw upload is never admitted on a board surface',
+    () {
+      final result = resolveWardrobeImage({
         'item_id': 'footwear-bad-data',
         'image_url': 'https://test/raw-shoe-photo.jpg',
         'normalized_url': 'https://test/raw-shoe-photo.jpg',
-      },
-      surface: 'style_board_active_unified_grid',
-    );
+      }, surface: 'style_board_active_unified_grid');
 
-    // Board surfaces drop raw/original candidates entirely -- with no other
-    // safe source, the item must resolve to no image (renderer omits it),
-    // never the raw photo mislabeled as a safe catalog fallback.
-    expect(result.url, isNull);
-    expect(result.sourceKind, isNot('catalog_fallback'));
-  });
+      // Board surfaces drop raw/original candidates entirely -- with no other
+      // safe source, the item must resolve to no image (renderer omits it),
+      // never the raw photo mislabeled as a safe catalog fallback.
+      expect(result.url, isNull);
+      expect(result.sourceKind, isNot('catalog_fallback'));
+    },
+  );
 
-  test('a genuinely distinct normalized_url is still admitted on a board surface', () {
-    final result = resolveWardrobeImage(
-      {
+  test(
+    'a genuinely distinct normalized_url is still admitted on a board surface',
+    () {
+      final result = resolveWardrobeImage({
         'item_id': 'footwear-good-data',
         'image_url': 'https://test/raw-shoe-photo.jpg',
         'normalized_url': 'https://test/processed-shoe-cutout.jpg',
-      },
-      surface: 'style_board_active_unified_grid',
-    );
+      }, surface: 'style_board_active_unified_grid');
 
-    expect(result.field, 'normalized_url');
-    expect(result.url, 'https://test/processed-shoe-cutout.jpg');
-    expect(result.sourceKind, 'catalog_fallback');
+      expect(result.field, 'normalized_url');
+      expect(result.url, 'https://test/processed-shoe-cutout.jpg');
+      expect(result.sourceKind, 'catalog_fallback');
+    },
+  );
+
+  test('Daily Wear uses safe_image_url when normalized aliases the upload', () {
+    final items = [
+      (
+        role: 'top',
+        safe: 'https://test/top-cutout.png',
+        raw: 'https://test/top-upload.jpg',
+      ),
+      (
+        role: 'bottom',
+        safe: 'https://test/bottom-cutout.png',
+        raw: 'https://test/bottom-upload.jpg',
+      ),
+      (role: 'footwear', safe: null, raw: 'https://test/shoes-upload.jpg'),
+    ];
+
+    final resolved = [
+      for (final item in items)
+        resolveWardrobeImage({
+          'item_id': item.role,
+          'role': item.role,
+          'image_url': item.raw,
+          'normalized_url': item.safe ?? item.raw,
+          if (item.safe != null) 'safe_image_url': item.safe,
+        }, surface: 'style_board_daily_wear_unified_grid'),
+    ];
+
+    expect(resolved[0].url, items[0].safe);
+    expect(resolved[1].url, items[1].safe);
+    // A raw-only item remains fail-closed; safe_image_url is the missing
+    // processed representation, not permission to render an upload.
+    expect(resolved[2].url, isNull);
+  });
+
+  test('safe_image_url aliasing the upload is still rejected on boards', () {
+    final result = resolveWardrobeImage({
+      'image_url': 'https://test/upload.jpg',
+      'safe_image_url': 'https://test/upload.jpg',
+    }, surface: 'style_board_daily_wear_unified_grid');
+
+    expect(result.url, isNull);
   });
 
   test('share reparse preserves resolution, stable id, and layout', () {
@@ -461,6 +509,32 @@ void main() {
     expect(shareItem.shouldFrame, isTrue);
     expect(shareItem.position?.x, 0.1);
     expect(shareItem.position?.rotation, -0.02);
+  });
+
+  test('shuffle round trip preserves the selected processed image', () {
+    final parsed = StyleBoardItem.fromJson({
+      'item_id': 'shuffle-shirt',
+      'role': 'top',
+      'source': 'wardrobe',
+      'name': 'Shuffle shirt',
+      'image_url': 'https://test/raw-shirt.jpg',
+      'normalized_url': 'https://test/catalog-shirt.png',
+    });
+
+    final contract = parsed.toContractJson();
+    expect(contract['selected_field'], 'normalized_url');
+    expect(contract['source_kind'], 'catalog_fallback');
+
+    final resolved = resolveStyleBoardItemImage(
+      contract,
+      const {},
+      surface: 'style_board_live',
+      emitDiagnostic: false,
+    );
+    final reparsed = StyleBoardItem.fromJson(resolved);
+
+    expect(reparsed.displayImageUrl, 'https://test/catalog-shirt.png');
+    expect(reparsed.resolveImage().sourceKind, 'catalog_fallback');
   });
 
   test('all board surfaces preserve the same selected image decision', () {

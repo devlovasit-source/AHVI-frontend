@@ -23,7 +23,6 @@ class AhviStyleThisProcessingCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: t.cardBorder),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.18),

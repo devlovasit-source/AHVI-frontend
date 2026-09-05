@@ -42,6 +42,7 @@ void main() {
 
     expect(request, contains("domain: 'style'"));
     expect(request, contains("'request': 'daily_board'"));
+    expect(request, contains("What should I wear today using my wardrobe?"));
   });
 
   test('Daily Wear saves use canonical Saved Board v2 content', () {

@@ -146,6 +146,7 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
       final wardrobe = await appwrite.getWardrobeItems();
       final seenIds = <String>{};
       final List<_SavedBoardEntry> loadedBoards = [];
+      debugPrint('AHVI_SAVED_BOARDS_TRACE server=${allDocs.length}');
 
       for (var doc in allDocs) {
         if (!seenIds.add(doc.$id)) continue;
@@ -177,6 +178,10 @@ class _EverythingElseScreenState extends State<EverythingElseScreen> {
       ];
 
       if (mounted) {
+        debugPrint(
+          'AHVI_SAVED_BOARDS_TRACE parsed=${loadedBoards.length} '
+          'wardrobe=${wardrobe.length}',
+        );
         setState(() {
           _boards = loadedBoards;
           _wardrobeById = _buildIdMap(wardrobe);

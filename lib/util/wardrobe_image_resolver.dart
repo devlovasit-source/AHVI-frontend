@@ -353,6 +353,13 @@ ResolvedWardrobeImage resolveWardrobeImage(
         'masked',
         'processed_cutout',
       }.contains(frozenSource);
+  // The backend's canonical Style This anchor contract publishes the winning
+  // presentation URL separately from image_url, which remains provenance for
+  // the original upload. Treat safe_image_url as a board-safe candidate, but
+  // still reject it when the backend accidentally aliases the raw upload.
+  final safeImage = _clean(raw['safe_image_url'] ?? raw['safeImageUrl']);
+  final safeExpected = raw['expected_transparent'] == true;
+  final safeSourceKind = safeExpected ? 'validated_cutout' : 'catalog_fallback';
 
   String fallbackKind(String? url) =>
       _isCatalogObject(url) ? 'catalog_fallback' : 'original';
@@ -365,7 +372,8 @@ ResolvedWardrobeImage resolveWardrobeImage(
     _ => 4,
   };
   final isStyleThisPresentation = _isStyleThisPresentationSurface(surface);
-  final isBoardSurface = _isStyleBoardSurface(surface) || isStyleThisPresentation;
+  final isBoardSurface =
+      _isStyleBoardSurface(surface) || isStyleThisPresentation;
   bool explicitMaskIsSafeForBoard(String? url) =>
       isBoardSurface &&
       url != null &&
@@ -418,6 +426,15 @@ ResolvedWardrobeImage resolveWardrobeImage(
         3,
         false,
         false,
+      ),
+    if (safeImage != null && !isOriginalAlias(safeImage))
+      _Candidate(
+        'safe_image_url',
+        safeImage,
+        safeSourceKind,
+        safeExpected ? 0 : 3,
+        safeExpected,
+        safeExpected,
       ),
     if (frozenUrl != null &&
         (!frozenValidated ||

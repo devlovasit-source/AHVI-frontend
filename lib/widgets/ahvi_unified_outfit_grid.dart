@@ -35,13 +35,23 @@ class AhviUnifiedOutfitGridItem {
     String surface = 'unified_outfit_grid',
   }) {
     final resolved = item.resolveImage(surface: surface);
+    final parsedField = item.raw['_image_field']?.toString().trim() ?? '';
+    final useParsedImage =
+        resolved.url == null &&
+        parsedField.isNotEmpty &&
+        parsedField != 'none' &&
+        item.imageUrl.isNotEmpty;
     return AhviUnifiedOutfitGridItem(
       id: item.itemId,
       name: item.name,
       category: item.category.isNotEmpty ? item.category : item.slot,
-      resolvedImageUrl: resolved.url ?? '',
-      sourceKind: resolved.sourceKind,
-      isTransparent: resolved.expectedTransparent,
+      resolvedImageUrl: resolved.url ?? (useParsedImage ? item.imageUrl : ''),
+      sourceKind: useParsedImage
+          ? (item.raw['_image_source_kind']?.toString() ?? '')
+          : resolved.sourceKind,
+      isTransparent: useParsedImage
+          ? item.raw['_image_expected_transparent'] == true
+          : resolved.expectedTransparent,
       isAnchor: isAnchor,
       isLocked: isLocked ?? item.isLocked,
       isLoading: item.isRegenerating,
@@ -65,18 +75,30 @@ class AhviUnifiedOutfitGrid extends StatelessWidget {
   final ValueChanged<String>? onToggleLock;
   final ImageProvider<Object> Function(String url)? imageProviderBuilder;
 
+  /// Shows the item name (max 2 lines) below each tile. Off by default so
+  /// Style Boards / Saved Boards / Style This keep their existing collage
+  /// appearance unchanged -- only Daily Wear opts in.
+  final bool showItemLabels;
+
   const AhviUnifiedOutfitGrid({
     super.key,
     required this.items,
     this.onItemTap,
     this.onToggleLock,
     this.imageProviderBuilder,
+    this.showItemLabels = false,
   });
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
     final visibleItems = items.take(8).toList(growable: false);
+    if (showItemLabels) {
+      return KeyedSubtree(
+        key: gridKey,
+        child: _labeledGrid(context, visibleItems),
+      );
+    }
     return KeyedSubtree(
       key: gridKey,
       child: switch (visibleItems.length) {
@@ -89,6 +111,78 @@ class AhviUnifiedOutfitGrid extends StatelessWidget {
         _ => _layout8(context, visibleItems),
       },
     );
+  }
+
+  /// Plain uniform grid used only when [showItemLabels] is true. The
+  /// collage layouts below (_layout3.._layout8) pack tiles into
+  /// irregular, tightly-cropped shapes with no room for text -- retrofitting
+  /// per-item labels into them would mean clipped/overlaid names, so labelled
+  /// surfaces get simple equal-size tiles instead.
+  Widget _labeledGrid(
+    BuildContext context,
+    List<AhviUnifiedOutfitGridItem> items,
+  ) {
+    final theme = Theme.of(context);
+    final tokens = theme.extension<AppThemeTokens>();
+    final textColor = tokens?.textPrimary ?? theme.colorScheme.onSurface;
+    final labelStyle = (theme.textTheme.labelMedium ?? const TextStyle(fontSize: 12))
+        .copyWith(color: textColor, fontWeight: FontWeight.w600, height: 1.2);
+    // Text scales with accessibility settings, so the reserved height below
+    // each image must scale with it too or a 2-line name at a large text
+    // scale overflows the tile instead of just wrapping.
+    final textScaler = MediaQuery.textScalerOf(context);
+    final lineHeight = (labelStyle.fontSize ?? 12) * (labelStyle.height ?? 1.2);
+    const labelTopGap = 6.0;
+    // +2 buffer: TextPainter's actual line-box height can round up a
+    // fraction of a pixel past this estimate, which would otherwise trip a
+    // RenderFlex overflow by well under a pixel.
+    final labelReserve = textScaler.scale(lineHeight) * 2 + labelTopGap + 2;
+    return LayoutBuilder(
+      builder: (_, box) {
+        final columns = items.length <= 1 ? 1 : 2;
+        final cellWidth = _cappedCellWidth(box.maxWidth, gap, columns);
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: gap,
+            mainAxisSpacing: gap,
+            mainAxisExtent: cellWidth + labelReserve,
+          ),
+          itemCount: items.length,
+          itemBuilder: (_, i) => SizedBox(
+            width: cellWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: cellWidth,
+                  child: _itemCard(context, items[i]),
+                ),
+                const SizedBox(height: labelTopGap),
+                Text(
+                  _labelFor(items[i]),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: labelStyle,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// display_name/name/title already resolved by StyleBoardItem.fromJson;
+  /// category is the only remaining fallback when no usable name exists.
+  String _labelFor(AhviUnifiedOutfitGridItem item) {
+    final name = item.name.trim();
+    if (name.isNotEmpty && name.toLowerCase() != 'item') return name;
+    final category = item.category.trim();
+    return category.isNotEmpty ? category : 'Item';
   }
 
   double _cappedCellWidth(double totalWidth, double gap, int columns) {

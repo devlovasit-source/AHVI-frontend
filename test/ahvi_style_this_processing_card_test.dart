@@ -16,20 +16,40 @@ Future<void> _pumpCard(
   required String itemName,
   bool dark = false,
   double width = 412,
+  double height = 900,
+  double textScale = 1.0,
 }) async {
-  await tester.binding.setSurfaceSize(Size(width, 900));
+  await tester.binding.setSurfaceSize(Size(width, height));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  tester.platformDispatcher.textScaleFactorTestValue = textScale;
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   await tester.pumpWidget(
-    MaterialApp(
-      theme: ThemeData(
-        useMaterial3: true,
-        extensions: [dark ? AppThemeTokens.dark(_accent) : AppThemeTokens.light(_accent)],
+    MediaQuery(
+      data: MediaQueryData(
+        size: Size(width, height),
+        textScaler: TextScaler.linear(textScale),
       ),
-      home: Scaffold(
-        body: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: width * 0.82),
-            child: AhviStyleThisProcessingCard(itemName: itemName),
+      child: MaterialApp(
+        theme: ThemeData(
+          useMaterial3: true,
+          extensions: [
+            dark ? AppThemeTokens.dark(_accent) : AppThemeTokens.light(_accent),
+          ],
+        ),
+        home: Scaffold(
+          body: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 24,
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: width * 0.82),
+                  child: AhviStyleThisProcessingCard(itemName: itemName),
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -61,7 +81,9 @@ void main() {
       expect(find.textContaining('Styling around'), findsNothing);
     });
 
-    testWidgets('shows wardrobe-sourced wording, not technical copy', (tester) async {
+    testWidgets('shows wardrobe-sourced wording, not technical copy', (
+      tester,
+    ) async {
       await _pumpCard(tester, itemName: 'Blazer');
       expect(
         find.text('Finding the best pieces from your wardrobe…'),
@@ -76,8 +98,40 @@ void main() {
       expect(find.text('Styling your piece'), findsOneWidget);
     });
 
-    testWidgets('renders without overflow at a narrow Android width', (tester) async {
+    testWidgets('renders without overflow at a narrow Android width', (
+      tester,
+    ) async {
       await _pumpCard(tester, itemName: 'Charcoal Wool Overcoat', width: 360);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('renders without overflow at the physical smoke size', (
+      tester,
+    ) async {
+      await _pumpCard(
+        tester,
+        itemName: 'White Textured Short Sleeve Shirt',
+        width: 360,
+        height: 640,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('is centered in the available dialog space', (tester) async {
+      await _pumpCard(tester, itemName: 'White Shirt', width: 360, height: 640);
+      final center = tester.getCenter(find.byType(AhviStyleThisProcessingCard));
+      expect(center.dx, closeTo(180, 1));
+      expect(center.dy, closeTo(320, 1));
+    });
+
+    testWidgets('renders without overflow at 1.3 text scale', (tester) async {
+      await _pumpCard(
+        tester,
+        itemName: 'White Textured Short Sleeve Shirt',
+        width: 360,
+        height: 640,
+        textScale: 1.3,
+      );
       expect(tester.takeException(), isNull);
     });
 
@@ -89,8 +143,9 @@ void main() {
   });
 
   group('Style This processing dialog branch', () {
-    testWidgets('style_this mode renders the branded card, not the bubble',
-        (tester) async {
+    testWidgets('style_this mode renders the branded card, not the bubble', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: ThemeData(
@@ -105,15 +160,18 @@ void main() {
       expect(find.byType(AhviProcessingBubble), findsNothing);
     });
 
-    testWidgets('build_outfit mode keeps the original bubble unchanged',
-        (tester) async {
+    testWidgets('build_outfit mode keeps the original bubble unchanged', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: ThemeData(
             useMaterial3: true,
             extensions: [AppThemeTokens.light(_accent)],
           ),
-          home: Scaffold(body: _dialogContentFor('build_outfit', 'White Shirt')),
+          home: Scaffold(
+            body: _dialogContentFor('build_outfit', 'White Shirt'),
+          ),
         ),
       );
       await tester.pump();

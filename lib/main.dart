@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:myapp/navigation/ahvi_back_navigation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -38,8 +39,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; // 🆕 Localization
 import 'package:myapp/app_localizations.dart'; // 🆕 Localization
 
-final GlobalKey<NavigatorState> ahviNavigatorKey =
-    GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> ahviNavigatorKey = GlobalKey<NavigatorState>();
 
 void _openMediFromNotification(Map<String, String> data) {
   void push() {
@@ -59,6 +59,12 @@ void _openMediFromNotification(Map<String, String> data) {
 Future<void> main() async {
   // Ensure Flutter bindings are initialized before calling async methods
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Keep Flutter's baseline diagnostics out of debug APK screenshots.
+  assert(() {
+    debugPaintBaselinesEnabled = false;
+    return true;
+  }());
 
   // Load the .env file
   await dotenv.load(fileName: ".env");
@@ -145,11 +151,13 @@ class _MyAppState extends State<MyApp> {
           create: (_) => ConnectivityWatcher()..init(),
         ),
         ChangeNotifierProvider<OfflineCache>(create: (_) => OfflineCache()),
-        ChangeNotifierProxyProvider2<AppwriteService, BackendService,
-            HomeCardSummaryProvider>(
+        ChangeNotifierProxyProvider2<
+          AppwriteService,
+          BackendService,
+          HomeCardSummaryProvider
+        >(
           create: (_) => HomeCardSummaryProvider(),
-          update: (_, appwrite, backend, p) =>
-              p!..configure(backend, appwrite),
+          update: (_, appwrite, backend, p) => p!..configure(backend, appwrite),
         ),
       ],
       child: Consumer<ThemeController>(
@@ -223,8 +231,7 @@ class _MyAppState extends State<MyApp> {
                   AppRoutes.wardrobe: (_) => const WardrobeScreen(),
                   AppRoutes.calendar: (_) => const CalendarShell(),
                   AppRoutes.boards: (_) => const BoardsScreen(),
-                  AppRoutes.medi: (_) =>
-                      const MediTrackScreen(fromHome: true),
+                  AppRoutes.medi: (_) => const MediTrackScreen(fromHome: true),
                 },
 
                 // DailyWear uses PageRouteBuilder to skip the default
@@ -300,7 +307,7 @@ class _MainNavigationShellState extends State<MainNavigationShell>
 
     _navRiseCtrls = List.generate(
       5,
-          (i) => AnimationController(vsync: this, duration: _A.normal, value: 0.0),
+      (i) => AnimationController(vsync: this, duration: _A.normal, value: 0.0),
     );
 
     // Home tab (index 0) active గా start చేయి
@@ -382,16 +389,16 @@ class _MainNavigationShellState extends State<MainNavigationShell>
     final navItems = <({IconData icon, String label})>[
       (icon: Icons.home_outlined, label: l?.translate('home') ?? 'Home'),
       (
-      icon: Icons.dry_cleaning_outlined,
-      label: l?.translate('wardrobe') ?? 'Wardrobe',
+        icon: Icons.dry_cleaning_outlined,
+        label: l?.translate('wardrobe') ?? 'Wardrobe',
       ),
       (
-      icon: Icons.grid_view_rounded,
-      label: l?.translate('planner') ?? 'Planner',
+        icon: Icons.grid_view_rounded,
+        label: l?.translate('planner') ?? 'Planner',
       ),
       (
-      icon: Icons.explore_outlined,
-      label: l?.translate('explore') ?? 'Explore',
+        icon: Icons.explore_outlined,
+        label: l?.translate('explore') ?? 'Explore',
       ),
     ];
 
@@ -524,31 +531,31 @@ class _MainNavigationShellState extends State<MainNavigationShell>
                                 height: 44,
                                 decoration: active
                                     ? BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      t.accent.primary,
-                                      t.accent.secondary,
-                                    ],
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: t.accent.primary.withValues(
-                                        alpha: 0.45,
-                                      ),
-                                      blurRadius: 16,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                    BoxShadow(
-                                      color: t.accent.primary.withValues(
-                                        alpha: 0.25,
-                                      ),
-                                      blurRadius: 28,
-                                    ),
-                                  ],
-                                )
+                                        shape: BoxShape.circle,
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            t.accent.primary,
+                                            t.accent.secondary,
+                                          ],
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: t.accent.primary.withValues(
+                                              alpha: 0.45,
+                                            ),
+                                            blurRadius: 16,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                          BoxShadow(
+                                            color: t.accent.primary.withValues(
+                                              alpha: 0.25,
+                                            ),
+                                            blurRadius: 28,
+                                          ),
+                                        ],
+                                      )
                                     : null,
                                 child: Icon(
                                   item.icon,
@@ -890,12 +897,12 @@ class _LensOptionState extends State<_LensOption> {
           boxShadow: _pressed
               ? []
               : [
-            BoxShadow(
-              color: widget.color.withValues(alpha: 0.07),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+                  BoxShadow(
+                    color: widget.color.withValues(alpha: 0.07),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
         ),
         child: Row(
           children: [
@@ -1103,10 +1110,10 @@ class _NavPillPainter extends CustomPainter {
   @override
   bool shouldRepaint(_NavPillPainter old) =>
       old.activeIdx != activeIdx ||
-          old.bulgeT != bulgeT ||
-          old.fillColor != fillColor ||
-          old.glowColor != glowColor ||
-          old.borderColor != borderColor;
+      old.bulgeT != bulgeT ||
+      old.fillColor != fillColor ||
+      old.glowColor != glowColor ||
+      old.borderColor != borderColor;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

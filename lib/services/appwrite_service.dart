@@ -1338,7 +1338,6 @@ class AppwriteService extends ChangeNotifier {
           collectionId: Env.savedBoardsCollection,
           queries: [
             Query.equal('userId', user.$id),
-            Query.orderDesc('\$createdAt'),
             Query.limit(pageSize),
             if (cursor != null) Query.cursorAfter(cursor),
           ],
@@ -1347,6 +1346,11 @@ class AppwriteService extends ChangeNotifier {
         if (result.documents.length < pageSize) break;
         cursor = result.documents.last.$id;
       }
+      // Do not require a custom index for Appwrite's system timestamp. The
+      // collection query is the authoritative read; ordering is presentation
+      // only and is safe to perform after pagination.
+      documents.sort((a, b) => b.$createdAt.compareTo(a.$createdAt));
+      debugPrint('AHVI_SAVED_BOARDS_READ server_count=${documents.length}');
       return documents;
     } catch (e) {
       debugPrint("Error fetching all boards: $e");

@@ -215,6 +215,7 @@ class BackendService {
     // login, registration). AppwriteService.clearUserCache() fires this slot
     // on all those paths, so the cache is never shared across users.
     _appwriteService.addSessionInvalidationListener(clearTodayWorkoutCache);
+    _appwriteService.addSessionInvalidationListener(clearWeatherCache);
   }
 
   Future<Map<String, dynamic>> _locationContext(String userId) async {
@@ -224,8 +225,42 @@ class BackendService {
     );
   }
 
+  // Canonical weather cache shared across every BackendService instance (Home
+  // and Daily Wear each construct their own `BackendService()`, so this must
+  // be static to actually be shared). Home and Daily Wear both call
+  // getCurrentWeather() -- whichever resolves first populates this cache so
+  // the other reuses the same reading instead of racing its own independent
+  // network/location fetch and risking a spurious "unavailable".
+  static const Duration _weatherFreshness = Duration(minutes: 10);
+  static const Duration _weatherStaleLimit = Duration(hours: 2);
+  static final Map<String, ({Map<String, dynamic> weather, DateTime capturedAt})>
+  _weatherCache = {};
+
+  @visibleForTesting
+  static void clearWeatherCache() => _weatherCache.clear();
+
   Future<Map<String, dynamic>> getCurrentWeather() async {
     final userId = await _currentUserId();
+    final now = DateTime.now();
+    final cached = _weatherCache[userId];
+    if (cached != null && now.difference(cached.capturedAt) < _weatherFreshness) {
+      return cached.weather;
+    }
+
+    final result = await _fetchWeatherFromNetwork(userId);
+    if (result['status'] == 'available') {
+      _weatherCache[userId] = (weather: result, capturedAt: now);
+      return result;
+    }
+    // Fetch failed or came back unavailable -- prefer a recent known-good
+    // reading over a spurious "unavailable" rather than fabricating a value.
+    if (cached != null && now.difference(cached.capturedAt) < _weatherStaleLimit) {
+      return cached.weather;
+    }
+    return result;
+  }
+
+  Future<Map<String, dynamic>> _fetchWeatherFromNetwork(String userId) async {
     final location = await _locationContext(userId);
     final lat = location['lat'];
     final lon = location['lon'];
@@ -370,7 +405,7 @@ class BackendService {
       // garment -- see services.style_item_contract._extract_my_phrases).
       // The resolver fix is the real defense; this wording is belt-and-
       // braces so a future backend regression fails softer for this call.
-      message: "Show me today's outfit from my wardrobe",
+      message: "What should I wear today using my wardrobe?",
       context: const {'surface': 'daily_wear', 'request': 'daily_board'},
     );
     final rawData = response['data'];

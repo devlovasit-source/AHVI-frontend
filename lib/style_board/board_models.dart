@@ -77,6 +77,7 @@ class StyleBoardItem {
       emitDiagnostic: false,
     );
     final raw = Map<String, dynamic>.from(json)
+      ..['_image_field'] = resolved.field
       ..['_image_should_frame'] = resolved.shouldFrame
       ..['_image_source_kind'] = resolved.sourceKind
       ..['_image_expected_transparent'] = resolved.expectedTransparent;
@@ -92,6 +93,7 @@ class StyleBoardItem {
         'accessoryType',
       ]),
       name: _firstText(json, const [
+        'display_name',
         'name',
         'title',
         'label',
@@ -179,6 +181,9 @@ class StyleBoardItem {
 
   Map<String, dynamic> toContractJson() {
     final value = Map<String, dynamic>.from(raw);
+    final resolvedField = raw['_image_field'];
+    final resolvedSource = raw['_image_source_kind'];
+    final resolvedExpected = raw['_image_expected_transparent'];
     value.addAll({
       'item_id': id,
       'slot': slot,
@@ -197,8 +202,20 @@ class StyleBoardItem {
       'asset_masked_url': assetMaskedUrl,
       'locked': isLocked,
     });
+    if (resolvedField is String &&
+        resolvedField.isNotEmpty &&
+        resolvedField != 'none') {
+      value['selected_field'] = resolvedField;
+    }
+    if (resolvedSource is String && resolvedSource.isNotEmpty) {
+      value['source_kind'] = resolvedSource;
+    }
+    if (resolvedExpected is bool) {
+      value['expected_transparent'] = resolvedExpected;
+    }
     if (position != null) value['position'] = position!.toJson();
     value.remove('_image_should_frame');
+    value.remove('_image_field');
     value.remove('_image_source_kind');
     value.remove('_image_expected_transparent');
     value.removeWhere((_, item) => item == null || item == '');

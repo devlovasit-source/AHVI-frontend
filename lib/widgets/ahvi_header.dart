@@ -100,7 +100,12 @@ class AhviHeader extends StatelessWidget {
             child: SizedBox(
               height: 33.0,
               child: Padding(
-                padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 0),
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  0,
+                  horizontalPadding,
+                  0,
+                ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -117,16 +122,29 @@ class AhviHeader extends StatelessWidget {
                         ),
                       ),
                     ],
-                    logo,
+                    Flexible(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: logo,
+                        ),
+                      ),
+                    ),
                     const Spacer(),
                     // 🔧 FIX: Removed FittedBox + logoSize SizedBox that was
                     // squeezing the right widget (notification bell + profile
                     // avatar) from 48px down to 26-30px.
                     // Now right widget renders at its own natural 48px size.
                     if (right != null)
-                      UnconstrainedBox(
-                        alignment: Alignment.center,
-                        child: right!,
+                      Flexible(
+                        fit: FlexFit.loose,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: right!,
+                        ),
                       ),
                   ],
                 ),

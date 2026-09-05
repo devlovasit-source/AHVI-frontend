@@ -136,6 +136,19 @@ void main() {
     await _drainHomeBackground(tester);
   });
 
+  testWidgets('Home Style card fits a short 360dp phone without overflow', (
+    tester,
+  ) async {
+    await _pumpHome(
+      tester,
+      _HomeStyleBackend(),
+      _RecordingNavigatorObserver(),
+      size: const Size(360, 640),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Home Style Me rapid double tap does not duplicate routes', (
     tester,
   ) async {
@@ -442,10 +455,11 @@ Future<void> _popChatWithBack(WidgetTester tester) async {
 Future<void> _pumpHome(
   WidgetTester tester,
   _HomeStyleBackend backend,
-  NavigatorObserver observer,
-) async {
+  NavigatorObserver observer, {
+  Size size = const Size(1920, 2700),
+}) async {
   final appwrite = AppwriteService();
-  await tester.binding.setSurfaceSize(const Size(1920, 2700));
+  await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MultiProvider(

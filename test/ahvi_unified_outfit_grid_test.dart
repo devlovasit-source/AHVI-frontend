@@ -53,6 +53,97 @@ void main() {
     }
   });
 
+  group('showItemLabels (Daily Wear only)', () {
+    testWidgets('default (Style Board) surfaces render no item names', (
+      tester,
+    ) async {
+      await _pumpGrid(tester, width: 390, items: _items(3));
+      expect(find.text('Item 0'), findsNothing);
+    });
+
+    testWidgets('labelled surface shows the item name below each tile', (
+      tester,
+    ) async {
+      await _pumpGrid(
+        tester,
+        width: 390,
+        items: _items(3),
+        showItemLabels: true,
+      );
+      expect(find.text('Item 0'), findsOneWidget);
+      expect(find.text('Item 1'), findsOneWidget);
+      expect(find.text('Item 2'), findsOneWidget);
+    });
+
+    testWidgets('falls back to category when no usable name exists', (
+      tester,
+    ) async {
+      await _pumpGrid(
+        tester,
+        width: 390,
+        items: [
+          const AhviUnifiedOutfitGridItem(
+            id: 'i0',
+            name: '',
+            category: 'Top',
+            resolvedImageUrl: 'https://example.test/i0.png',
+          ),
+        ],
+        showItemLabels: true,
+      );
+      expect(find.text('Top'), findsOneWidget);
+    });
+
+    testWidgets('never exposes the raw item id as a label', (tester) async {
+      await _pumpGrid(
+        tester,
+        width: 390,
+        items: [
+          const AhviUnifiedOutfitGridItem(
+            id: 'wardrobe_item_9f2c1',
+            name: '',
+            category: '',
+            resolvedImageUrl: 'https://example.test/i0.png',
+          ),
+        ],
+        showItemLabels: true,
+      );
+      expect(find.text('wardrobe_item_9f2c1'), findsNothing);
+    });
+
+    for (final size in [
+      Size(360, 640),
+      Size(360, 800),
+      Size(412, 915),
+    ]) {
+      for (final scale in [1.0, 1.3]) {
+        testWidgets(
+          'no overflow at ${size.width.toInt()}x${size.height.toInt()} '
+          '@${scale}x text scale',
+          (tester) async {
+            await _pumpGrid(
+              tester,
+              width: size.width,
+              height: size.height,
+              items: [
+                for (var i = 0; i < 3; i++)
+                  AhviUnifiedOutfitGridItem(
+                    id: 'item-$i',
+                    name: 'A Genuinely Long Wardrobe Item Name Number $i',
+                    category: 'Top',
+                    resolvedImageUrl: 'https://example.test/long-$i.png',
+                  ),
+              ],
+              showItemLabels: true,
+              textScale: scale,
+            );
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
+    }
+  });
+
   testWidgets('anchor remains visible and locked', (tester) async {
     await _pumpGrid(
       tester,
@@ -174,6 +265,52 @@ void main() {
       expect(after.category, before.category);
     },
   );
+
+  test('grid retains a previously validated parsed board image', () {
+    const url = 'https://example.test/parsed-catalog.png';
+    const item = StyleBoardItem(
+      id: 'parsed-1',
+      name: 'Top',
+      imageUrl: url,
+      category: 'top',
+      role: BoardItemRole.top,
+      raw: {
+        'image_url': url,
+        'original_image_url': url,
+        '_image_field': 'normalized_url',
+        '_image_source_kind': 'catalog_fallback',
+        '_image_expected_transparent': false,
+      },
+    );
+
+    final gridItem = AhviUnifiedOutfitGridItem.fromStyleBoardItem(
+      item,
+      surface: 'style_board_daily_wear_unified_grid',
+    );
+
+    expect(gridItem.resolvedImageUrl, url);
+  });
+
+  test('grid does not retain an unvalidated raw image', () {
+    const item = StyleBoardItem(
+      id: 'raw-1',
+      name: 'Top',
+      imageUrl: 'https://example.test/raw-upload.png',
+      category: 'top',
+      role: BoardItemRole.top,
+      raw: {
+        'image_url': 'https://example.test/raw-upload.png',
+        '_image_field': 'none',
+      },
+    );
+
+    final gridItem = AhviUnifiedOutfitGridItem.fromStyleBoardItem(
+      item,
+      surface: 'style_board_daily_wear_unified_grid',
+    );
+
+    expect(gridItem.resolvedImageUrl, isEmpty);
+  });
 }
 
 List<AhviUnifiedOutfitGridItem> _items(
@@ -195,28 +332,37 @@ Future<void> _pumpGrid(
   required List<AhviUnifiedOutfitGridItem> items,
   ValueChanged<String>? onToggleLock,
   ImageProvider? imageProvider,
+  bool showItemLabels = false,
+  double height = 700,
+  double textScale = 1.0,
 }) async {
-  await tester.binding.setSurfaceSize(Size(width, 700));
+  await tester.binding.setSurfaceSize(Size(width, height));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
       theme: BaseTheme.light.copyWith(
         extensions: [AppThemeTokens.light(_accent)],
       ),
-      home: Scaffold(
-        body: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: AhviUnifiedOutfitGrid(
-                items: items,
-                onToggleLock: onToggleLock,
-                imageProviderBuilder: imageProvider == null
-                    ? null
-                    : (_) => imageProvider,
+      home: MediaQuery(
+        data: MediaQueryData.fromView(
+          tester.view,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: Scaffold(
+          body: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: AhviUnifiedOutfitGrid(
+                  items: items,
+                  onToggleLock: onToggleLock,
+                  imageProviderBuilder: imageProvider == null
+                      ? null
+                      : (_) => imageProvider,
+                  showItemLabels: showItemLabels,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     ),
