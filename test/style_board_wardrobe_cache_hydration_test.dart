@@ -137,6 +137,17 @@ void main() {
         {'top-1', 'bottom-1'},
       );
     });
+
+    test('falls back to items when board_items is present but empty', () {
+      final direction = {
+        'board_items': const [],
+        'items': [
+          {'item_id': 'top-1', 'role': 'top'},
+          {'item_id': 'shoe-1', 'role': 'footwear'},
+        ],
+      };
+      expect(requiredWardrobeIdsForTesting(direction), {'top-1', 'shoe-1'});
+    });
   });
 
   group('wardrobe fetch retry policy', () {
