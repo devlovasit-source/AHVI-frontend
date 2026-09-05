@@ -1096,10 +1096,19 @@ class AppwriteService extends ChangeNotifier {
       }
     }
 
-    if (forceRefresh) {
-      _wardrobeGeneration++;
-    }
-
+    // NOTE: forceRefresh deliberately does NOT bump _wardrobeGeneration.
+    // That counter means "the wardrobe changed underneath us" -- it is what
+    // invalidateWardrobeCache() raises so an obsolete in-flight fetch can
+    // never be served or cached. forceRefresh means something different:
+    // "skip the TTL and go get fresh data", handled by the guard above.
+    // Conflating the two blanked the Style board. Every AhviOutfitBoardCard
+    // hydrates itself with forceRefresh, and a chat turn renders more than
+    // one card, so two forced fetches overlap routinely. Each bump made the
+    // other fetch look invalidated, so it threw instead of publishing; the
+    // card then released its retry latch, re-fetched on the next
+    // notifyListeners(), bumped the counter again, and _wardrobeCache was
+    // never assigned -- cachedWardrobeItems stayed empty and every garment
+    // was dropped from the board.
     final generation = _wardrobeGeneration;
     final scopeGeneration = _wardrobeScopeGeneration;
     final fetch = _fetchWardrobeItems();
