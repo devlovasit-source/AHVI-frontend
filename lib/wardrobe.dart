@@ -41,6 +41,20 @@ import 'package:appwrite/appwrite.dart';
 // ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¡ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Environment Variables
 import 'package:myapp/config/env.dart';
 
+@visibleForTesting
+bool shouldClearWardrobeForAccountSwitchForTesting(
+  String? previousUserId,
+  String nextUserId,
+) =>
+    previousUserId != null &&
+    previousUserId.isNotEmpty &&
+    nextUserId.isNotEmpty &&
+    previousUserId != nextUserId;
+
+@visibleForTesting
+bool shouldClearWardrobeForSessionForTesting(String? currentUserId) =>
+    currentUserId == null || currentUserId.trim().isEmpty;
+
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ COLORS ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
 Color _accent4(AppThemeTokens t) =>
@@ -490,9 +504,28 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   Timer? _wardrobeInvalidationDebounce;
 
   void _onAppwriteServiceChanged() {
-    final current = AppwriteService().wardrobeGeneration;
+    final appwrite = AppwriteService();
+    final current = appwrite.wardrobeGeneration;
     if (current == _lastSeenWardrobeGeneration) return;
     _lastSeenWardrobeGeneration = current;
+    final serviceUserId = appwrite.currentUserId;
+    final userChanged =
+        serviceUserId != null &&
+        shouldClearWardrobeForAccountSwitchForTesting(
+          _currentUserId,
+          serviceUserId,
+        );
+    final sessionCleared = shouldClearWardrobeForSessionForTesting(
+      serviceUserId,
+    );
+    if ((userChanged || sessionCleared) && mounted) {
+      setState(() {
+        _wardrobe.clear();
+        _loadedCache = false;
+        _isLoading = true;
+        if (sessionCleared) _currentUserId = null;
+      });
+    }
     _wardrobeInvalidationDebounce?.cancel();
     _wardrobeInvalidationDebounce = Timer(
       const Duration(milliseconds: 400),
@@ -701,6 +734,18 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       final account = Account(client);
 
       final user = await account.get();
+      final previousUserId = _currentUserId;
+      final accountChanged = shouldClearWardrobeForAccountSwitchForTesting(
+        previousUserId,
+        user.$id,
+      );
+      if (accountChanged && mounted) {
+        setState(() {
+          _wardrobe.clear();
+          _loadedCache = false;
+          _isLoading = true;
+        });
+      }
       _currentUserId = user.$id;
       if (!_loadedCache) {
         await _loadCachedWardrobe(userId: user.$id);
