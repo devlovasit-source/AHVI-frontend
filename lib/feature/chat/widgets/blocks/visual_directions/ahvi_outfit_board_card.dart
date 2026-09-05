@@ -2349,7 +2349,16 @@ StyleBoardData _toStyleBoardData(
         imageUrl: selectedImage,
         maskedUrl: canonical?.maskedUrl ?? '',
         boardImageUrl: canonical?.boardImageUrl ?? image,
-        normalizedUrl: canonical?.normalizedUrl ?? '',
+        // Raw board_items can omit normalized_url even when the wardrobe
+        // record has it (e.g. request-carried items reconstructed above);
+        // fall back to the wardrobe record so toContractJson() round-trips
+        // the same normalized_url the resolver used to pick selectedImage.
+        normalizedUrl: (canonical?.normalizedUrl ?? '').isNotEmpty
+            ? canonical!.normalizedUrl
+            : _text(
+                wardrobeById[item.id]?['normalized_url'] ??
+                    wardrobeById[item.id]?['normalizedUrl'],
+              ),
         assetCutoutUrl: canonical?.assetCutoutUrl ?? '',
         assetMaskedUrl: canonical?.assetMaskedUrl ?? '',
         category: canonical?.category ?? item.role.name,
