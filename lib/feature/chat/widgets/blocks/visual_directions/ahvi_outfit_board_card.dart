@@ -2412,11 +2412,7 @@ Set<String> _requiredWardrobeIds(Map<String, dynamic> direction) {
   final ids = <String>{};
   final sourceItems = <Map<String, dynamic>>[];
   for (final key in const ['board_items', 'boardItems', 'items', 'pieces']) {
-    final items = _maps(direction[key]);
-    if (items.isNotEmpty) {
-      sourceItems.addAll(items);
-      break;
-    }
+    sourceItems.addAll(_maps(direction[key]));
   }
   for (final item in sourceItems) {
     final id = wardrobeItemStableId(item);

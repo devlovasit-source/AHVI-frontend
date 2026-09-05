@@ -148,6 +148,23 @@ void main() {
       };
       expect(requiredWardrobeIdsForTesting(direction), {'top-1', 'shoe-1'});
     });
+
+    test('unions partial board_items with the complete items payload', () {
+      final direction = {
+        'board_items': [
+          {'item_id': 'shoe-1', 'role': 'footwear'},
+        ],
+        'items': [
+          {'item_id': 'top-1', 'role': 'top'},
+          {'item_id': 'bottom-1', 'role': 'bottom'},
+          {'item_id': 'shoe-1', 'role': 'footwear'},
+        ],
+      };
+      expect(
+        requiredWardrobeIdsForTesting(direction),
+        {'top-1', 'bottom-1', 'shoe-1'},
+      );
+    });
   });
 
   group('wardrobe fetch retry policy', () {
