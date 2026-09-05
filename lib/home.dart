@@ -1057,8 +1057,10 @@ class _Screen4State extends State<Screen4>
           ? rawIsDay
           : (rawIsDay == null ? true : rawIsDay == 1);
       final description = (temp != null && code != null)
-          ? _WeatherService.getWeatherDescription(code, isDay: isDay)
-                .toLowerCase()
+          ? _WeatherService.getWeatherDescription(
+              code,
+              isDay: isDay,
+            ).toLowerCase()
           : '';
 
       if (mounted) {
@@ -2306,10 +2308,10 @@ class _Screen4State extends State<Screen4>
                                   // ── PREP & PLAN: Reduced by ~17px vs previous formula ──
                                   // The saved height flows to Routine cards (flex 38 vs 35)
                                   // which eliminates the 1px bottom overflow on all screens.
-                                  final prepH = (availableH * 0.22).clamp(
-                                    95.0,
-                                    120.0,
-                                  );
+                                  final compactCards = availableH < 400.0;
+                                  final prepH = compactCards
+                                      ? (availableH * 0.24).clamp(78.0, 95.0)
+                                      : (availableH * 0.22).clamp(95.0, 120.0);
 
                                   // ── HERO + ROUTINE: guaranteed-minimum allocation ───────
                                   // Strategy: routine cards always get at least routineMinH
@@ -2336,7 +2338,27 @@ class _Screen4State extends State<Screen4>
                                   );
                                   // If the natural split gives routine less than its minimum,
                                   // pin routine at its min and give hero the rest (floored).
-                                  final heroH = naturalRoutineH < routineMinH
+                                  final compactRoutineH = compactCards
+                                      ? math.min(
+                                          104.0,
+                                          math.max(
+                                            0.0,
+                                            availableH -
+                                                prepH -
+                                                (cardSpacing * 2) -
+                                                80.0,
+                                          ),
+                                        )
+                                      : routineMinH;
+                                  final heroH = compactCards
+                                      ? math.max(
+                                          0.0,
+                                          availableH -
+                                              prepH -
+                                              compactRoutineH -
+                                              (cardSpacing * 2),
+                                        )
+                                      : naturalRoutineH < routineMinH
                                       ? math.max(
                                           heroMinH,
                                           flexibleH -
@@ -2365,13 +2387,25 @@ class _Screen4State extends State<Screen4>
                                       // ── ROUTINE CARDS ───────────────────────────────────
                                       // Expanded absorbs all remaining space, which now
                                       // includes the full 4px recovered above.
-                                      Expanded(
-                                        child: ValueListenableBuilder<int>(
-                                          valueListenable: _cardContextVersion,
-                                          builder: (context, _, __) =>
-                                              _buildRoutineCardsSection(),
+                                      if (compactCards)
+                                        SizedBox(
+                                          height: compactRoutineH,
+                                          child: ValueListenableBuilder<int>(
+                                            valueListenable:
+                                                _cardContextVersion,
+                                            builder: (context, _, __) =>
+                                                _buildRoutineCardsSection(),
+                                          ),
+                                        )
+                                      else
+                                        Expanded(
+                                          child: ValueListenableBuilder<int>(
+                                            valueListenable:
+                                                _cardContextVersion,
+                                            builder: (context, _, __) =>
+                                                _buildRoutineCardsSection(),
+                                          ),
                                         ),
-                                      ),
                                       SizedBox(height: cardSpacing),
 
                                       // ── PREP & PLAN CARD ────────────────────────────────
@@ -3504,61 +3538,69 @@ class _Screen4State extends State<Screen4>
                             const SizedBox(
                               height: 8,
                             ), // 🆕 More space before button
-                            _AnimatedPressable(
-                              liftY: -3.0,
-                              scalePressed: 0.93,
-                              onTap: () => _openModuleChat('style'),
-                              child: Container(
-                                key: const ValueKey('home-style-me-cta'),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  // 🆕 ENHANCED: Stronger gradient for better visibility
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [_accent, _accentSecondary],
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: _AnimatedPressable(
+                                  liftY: -3.0,
+                                  scalePressed: 0.93,
+                                  onTap: () => _openModuleChat('style'),
+                                  child: Container(
+                                    key: const ValueKey('home-style-me-cta'),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 10,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      // 🆕 ENHANCED: Stronger gradient for better visibility
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [_accent, _accentSecondary],
+                                      ),
+                                      borderRadius: BorderRadius.circular(100),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: _accent.withOpacity(0.45),
+                                          blurRadius: 18,
+                                          offset: const Offset(0, 6),
+                                        ),
+                                        BoxShadow(
+                                          color: _accent.withOpacity(0.15),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          AppLocalizations.t(
+                                            context,
+                                            'cta_style_me',
+                                          ),
+                                          style: TextStyle(
+                                            color: _onAccent,
+                                            fontSize: ctaFontSize,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0.3,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        // 🆕 Animated arrow for better UX
+                                        Icon(
+                                          Icons.arrow_forward_rounded,
+                                          color: _onAccent,
+                                          size: ctaIconSize,
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  borderRadius: BorderRadius.circular(100),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: _accent.withOpacity(0.45),
-                                      blurRadius: 18,
-                                      offset: const Offset(0, 6),
-                                    ),
-                                    BoxShadow(
-                                      color: _accent.withOpacity(0.15),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      AppLocalizations.t(
-                                        context,
-                                        'cta_style_me',
-                                      ),
-                                      style: TextStyle(
-                                        color: _onAccent,
-                                        fontSize: ctaFontSize,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.3,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    // 🆕 Animated arrow for better UX
-                                    Icon(
-                                      Icons.arrow_forward_rounded,
-                                      color: _onAccent,
-                                      size: ctaIconSize,
-                                    ),
-                                  ],
                                 ),
                               ),
                             ),
@@ -3775,7 +3817,8 @@ class _Screen4State extends State<Screen4>
         () {
           final r = routines[i];
           final overdue =
-              r.page is MediTrackScreen && r.status.toLowerCase().contains('overdue');
+              r.page is MediTrackScreen &&
+              r.status.toLowerCase().contains('overdue');
           return HomeRoutineCardData(
             icon: r.icon,
             color: r.color,
@@ -3815,10 +3858,7 @@ class _Screen4State extends State<Screen4>
       width: double.infinity,
       height: double.infinity,
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      child: HomeRoutineCarousel(
-        cards: cards,
-        palette: palette,
-      ),
+      child: HomeRoutineCarousel(cards: cards, palette: palette),
     );
   }
 
@@ -3894,144 +3934,151 @@ class _Screen4State extends State<Screen4>
                       // button below stays fully visible, never overflows.
                       Flexible(
                         child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              AppLocalizations.t(context, 'prep_card_title'),
-                              style: TextStyle(
-                                color: _textHeading,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.3,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                AppLocalizations.t(context, 'prep_card_title'),
+                                style: TextStyle(
+                                  color: _textHeading,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.3,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            AppLocalizations.t(context, 'prep_card_subtitle'),
-                            style: TextStyle(
-                              color: _textMuted,
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w400,
+                            const SizedBox(height: 1),
+                            Text(
+                              AppLocalizations.t(context, 'prep_card_subtitle'),
+                              style: TextStyle(
+                                color: _textMuted,
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 3),
-                          // Flexible + LayoutBuilder — on a short card this
-                          // hides cleanly once there's no room for even one
-                          // full line, instead of painting a clipped sliver.
-                          Flexible(
-                            child: LayoutBuilder(
-                              builder: (context, descConstraints) {
-                                const oneLineHeight = 9.0 * 1.15;
-                                if (descConstraints.maxHeight <
-                                    oneLineHeight) {
-                                  return const SizedBox.shrink();
-                                }
-                                return Text(
-                                  AppLocalizations.t(context, 'prep_card_desc'),
-                                  style: TextStyle(
-                                    // 🆕 Blended a bit toward _textHeading (from plain
-                                    // _textMuted) + bumped size/weight so the subtitle
-                                    // is clearly legible instead of fading into the
-                                    // background, while staying visually secondary
-                                    // to the "Prep & Plan" title above it.
-                                    color: Color.lerp(
-                                      _textMuted,
-                                      _textHeading,
-                                      0.35,
+                            const SizedBox(height: 3),
+                            // Flexible + LayoutBuilder — on a short card this
+                            // hides cleanly once there's no room for even one
+                            // full line, instead of painting a clipped sliver.
+                            Flexible(
+                              child: LayoutBuilder(
+                                builder: (context, descConstraints) {
+                                  const oneLineHeight = 9.0 * 1.15;
+                                  if (descConstraints.maxHeight <
+                                      oneLineHeight) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Text(
+                                    AppLocalizations.t(
+                                      context,
+                                      'prep_card_desc',
                                     ),
-                                    fontSize:
-                                        9.0, // 🔧 Reduced from 9.5 to fit better
-                                    fontWeight: FontWeight.w500,
-                                    height:
-                                        1.15, // 🔧 Reduced line height from 1.2
-                                  ),
-                                  // 🔧 FIX: Back to maxLines: 2 to prevent overflow
-                                  // This shows key info without bottom overflow
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  softWrap: true,
-                                );
-                              },
+                                    style: TextStyle(
+                                      // 🆕 Blended a bit toward _textHeading (from plain
+                                      // _textMuted) + bumped size/weight so the subtitle
+                                      // is clearly legible instead of fading into the
+                                      // background, while staying visually secondary
+                                      // to the "Prep & Plan" title above it.
+                                      color: Color.lerp(
+                                        _textMuted,
+                                        _textHeading,
+                                        0.35,
+                                      ),
+                                      fontSize:
+                                          9.0, // 🔧 Reduced from 9.5 to fit better
+                                      fontWeight: FontWeight.w500,
+                                      height:
+                                          1.15, // 🔧 Reduced line height from 1.2
+                                    ),
+                                    // 🔧 FIX: Back to maxLines: 2 to prevent overflow
+                                    // This shows key info without bottom overflow
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: true,
+                                  );
+                                },
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
                         ),
                       ),
                       Semantics(
                         button: true,
                         enabled: true,
                         label: 'Prepare and plan: ${content.cta}',
-                        child: _AnimatedPressable(
-                          liftY: -2.0,
-                          scalePressed: 0.95,
-                          // "Prep & Plan" opens the planner module with a
-                          // clean composer — no seeded/auto-sent message, so
-                          // the user's first typed request is the real one.
-                          // The adaptive meal/workout/weekly recommendation
-                          // still rides along as non-routing context_hint so
-                          // backend routing is decided by the explicit
-                          // module, never by keywords in the recommendation
-                          // text (which would deflect to Diet/Fitness/Calendar).
-                          onTap: () {
-                            final req = prepPlanCardRequest(content.prompt);
-                            showAhviStylistChatSheet(
-                              context,
-                              moduleContext: req.module,
-                              contextData: req.context,
-                            );
-                          },
-                          child: Container(
-                            key: const ValueKey('home-prepare-cta'),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [accentColor, accentTertiary],
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: _AnimatedPressable(
+                            liftY: -2.0,
+                            scalePressed: 0.95,
+                            // "Prep & Plan" opens the planner module with a
+                            // clean composer — no seeded/auto-sent message, so
+                            // the user's first typed request is the real one.
+                            // The adaptive meal/workout/weekly recommendation
+                            // still rides along as non-routing context_hint so
+                            // backend routing is decided by the explicit
+                            // module, never by keywords in the recommendation
+                            // text (which would deflect to Diet/Fitness/Calendar).
+                            onTap: () {
+                              final req = prepPlanCardRequest(content.prompt);
+                              showAhviStylistChatSheet(
+                                context,
+                                moduleContext: req.module,
+                                contextData: req.context,
+                              );
+                            },
+                            child: Container(
+                              key: const ValueKey('home-prepare-cta'),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 5,
                               ),
-                              borderRadius: BorderRadius.circular(100),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: accentColor.withOpacity(0.38),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 4),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [accentColor, accentTertiary],
                                 ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    AppLocalizations.t(
-                                      context,
-                                      'prep_card_cta',
-                                    ),
-                                    style: TextStyle(
-                                      color: _onAccent,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0.1,
+                                borderRadius: BorderRadius.circular(100),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: accentColor.withOpacity(0.38),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      AppLocalizations.t(
+                                        context,
+                                        'prep_card_cta',
+                                      ),
+                                      style: TextStyle(
+                                        color: _onAccent,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.1,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 1),
-                                Icon(
-                                  Icons.arrow_forward_rounded,
-                                  color: _onAccent,
-                                  size: 8,
-                                ),
-                              ],
+                                  const SizedBox(width: 1),
+                                  Icon(
+                                    Icons.arrow_forward_rounded,
+                                    color: _onAccent,
+                                    size: 8,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),

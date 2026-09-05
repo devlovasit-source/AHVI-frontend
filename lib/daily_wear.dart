@@ -25,6 +25,7 @@ import 'package:myapp/widgets/basic_markdown_text.dart';
 import 'package:myapp/widgets/clear_chat_dialog.dart';
 import 'package:myapp/widgets/try_on_coming_soon.dart';
 import 'package:myapp/widgets/ahvi_unified_outfit_grid.dart';
+import 'package:myapp/util/wardrobe_image_resolver.dart';
 
 enum _TryOnStage { preview, loading, camera, captured }
 
@@ -95,6 +96,97 @@ class DailyWearScreen extends StatefulWidget {
       }
     }
     return const [];
+  }
+
+  /// Merges board aliases for display when a higher-priority alias is only
+  /// partially populated. Higher-priority entries win by stable id and role;
+  /// lower-priority aliases can only fill roles that are still missing.
+  static List<dynamic> mergedBoardItemsForDisplay(Map<String, dynamic> outfit) {
+    final merged = <dynamic>[];
+    final seenIds = <String>{};
+    final seenRoles = <String>{};
+    const coreRoles = {'top', 'bottom', 'footwear', 'dress', 'outerwear'};
+
+    String roleOf(Map<String, dynamic> item) {
+      final value = (item['role'] ?? item['slot'] ?? item['category'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      return switch (value) {
+        'shoe' || 'shoes' => 'footwear',
+        'top' || 'tops' => 'top',
+        'bottom' || 'bottoms' => 'bottom',
+        'dress' || 'dresses' => 'dress',
+        _ => value,
+      };
+    }
+
+    for (final key in [
+      'board_items',
+      'composition_items',
+      'used_wardrobe_items',
+      'items',
+    ]) {
+      final value = outfit[key];
+      if (value is! List) continue;
+      for (final entry in value) {
+        if (entry is! Map) continue;
+        final item = Map<String, dynamic>.from(entry);
+        final id =
+            (item['item_id'] ??
+                    item['id'] ??
+                    item[r'$id'] ??
+                    item['image_id'] ??
+                    '')
+                .toString()
+                .trim();
+        final role = roleOf(item);
+        if (id.isNotEmpty && !seenIds.add(id)) continue;
+        if (role.isNotEmpty &&
+            coreRoles.contains(role) &&
+            !seenRoles.add(role)) {
+          if (id.isNotEmpty) seenIds.remove(id);
+          continue;
+        }
+        merged.add(item);
+      }
+    }
+    return merged;
+  }
+
+  /// Select the richest mirrored card collection. A backend response can
+  /// expose partial and complete copies under different aliases.
+  static List<dynamic> selectDailyBoardCards(Map<String, dynamic> response) {
+    final data = response['data'];
+    final dataMap = data is Map
+        ? Map<String, dynamic>.from(data)
+        : const <String, dynamic>{};
+    final candidates = <dynamic>[
+      dataMap['cards'],
+      dataMap['rendered_boards'],
+      dataMap['outfits'],
+      response['cards'],
+      response['rendered_boards'],
+      response['style_boards'],
+      response['outfits'],
+    ];
+    List<dynamic> best = const [];
+    var bestScore = -1;
+    for (final candidate in candidates) {
+      if (candidate is! List || candidate.isEmpty) continue;
+      final cards = candidate.whereType<Map>().toList(growable: false);
+      final itemCount = cards.fold<int>(0, (sum, card) {
+        return sum + mergedBoardItemsForDisplay(
+          Map<String, dynamic>.from(card),
+        ).length;
+      });
+      final score = cards.length * 100 + itemCount;
+      if (score > bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+    return best;
   }
 
   /// Resolves the coordinates DailyWear's weather request should use.
@@ -275,7 +367,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         AppLocalizations.t(context, 'tag_warm_weather'),
       ],
       'img':
-      'https://i.pinimg.com/736x/dc/f4/05/dcf405a9b3fa1734bf1a68c689295012.jpg',
+          'https://i.pinimg.com/736x/dc/f4/05/dcf405a9b3fa1734bf1a68c689295012.jpg',
       'localImg': 'assets/images/outfit_linen_air.jpg',
     },
     {
@@ -317,7 +409,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         AppLocalizations.t(context, 'tag_comfortable'),
       ],
       'img':
-      'https://i.pinimg.com/736x/a3/f2/18/a3f218d89461024773e4b0c0a0b52de2.jpg',
+          'https://i.pinimg.com/736x/a3/f2/18/a3f218d89461024773e4b0c0a0b52de2.jpg',
       'localImg': 'assets/images/outfit_coffee_run.jpg',
     },
     {
@@ -359,7 +451,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         AppLocalizations.t(context, 'tag_work_ready'),
       ],
       'img':
-      'https://i.pinimg.com/736x/e0/c1/9d/e0c19d4fc4c0afe55a832318c50c5b8a.jpg',
+          'https://i.pinimg.com/736x/e0/c1/9d/e0c19d4fc4c0afe55a832318c50c5b8a.jpg',
       'localImg': 'assets/images/outfit_office_hours.jpg',
     },
     {
@@ -401,7 +493,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         AppLocalizations.t(context, 'tag_date_night'),
       ],
       'img':
-      'https://i.pinimg.com/474x/33/f8/a6/33f8a65105a50fbc1948e176221182d0.jpg',
+          'https://i.pinimg.com/474x/33/f8/a6/33f8a65105a50fbc1948e176221182d0.jpg',
       'localImg': 'assets/images/outfit_golden_hour.jpg',
     },
   ];
@@ -507,10 +599,10 @@ class _DailyWearScreenState extends State<DailyWearScreen>
 
   void _applyOutfits(List<Map<String, dynamic>> outfits) {
     final currentId = _displayedOutfits.isNotEmpty
-        ? _displayedOutfits[_carouselIndex.clamp(
-      0,
-      _displayedOutfits.length - 1,
-    ).toInt()]['id']?.toString()
+        ? _displayedOutfits[_carouselIndex
+                  .clamp(0, _displayedOutfits.length - 1)
+                  .toInt()]['id']
+              ?.toString()
         : null;
 
     _displayedOutfits = outfits;
@@ -525,8 +617,8 @@ class _DailyWearScreenState extends State<DailyWearScreen>
           ? 0
           : _displayedOutfits.indexWhere((o) => o['id'] == currentId);
       _carouselIndexNotifier.value = nextIndex >= 0 ? nextIndex : 0;
-      _tryOnOutfitId = _displayedOutfits[_carouselIndexNotifier.value]['id']
-      as String;
+      _tryOnOutfitId =
+          _displayedOutfits[_carouselIndexNotifier.value]['id'] as String;
     } else {
       _carouselIndexNotifier.value = 0;
       _tryOnOutfitId = null;
@@ -542,9 +634,9 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   }
 
   Map<String, dynamic> _normalizeDailyBoardCard(
-      Map<String, dynamic> card,
-      int index,
-      ) {
+    Map<String, dynamic> card,
+    int index,
+  ) {
     // The backend's board contract carries garments under `board_items`
     // (sometimes `composition_items`) — the same field the canonical chat
     // board renderer (ahvi_outfit_board_card.dart) prefers first. Raw
@@ -557,34 +649,40 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     // precedence (see DailyWearScreen.firstNonEmptyBoardItems) for cards
     // shaped by the wardrobe-recommendation response path.
     final rawItems = DailyWearScreen.firstNonEmptyBoardItems(card);
+    final displayItems = DailyWearScreen.mergedBoardItemsForDisplay(card);
     final items = List<Map<String, dynamic>>.from(
-      rawItems.whereType<Map>().map((e) => Map<String, dynamic>.from(e)),
+      (displayItems.isNotEmpty ? displayItems : rawItems).whereType<Map>().map(
+        (e) => Map<String, dynamic>.from(e),
+      ),
     );
-    final cover = (card['image_url'] ??
-        card['imageUrl'] ??
-        card['thumbnailUrl'] ??
-        card['cover_url'] ??
-        card['coverUrl'] ??
-        (items.isNotEmpty ? items.first['image_url'] : null) ??
-        (items.isNotEmpty ? items.first['imageUrl'] : null) ??
-        '')
-        .toString()
-        .trim();
-    final title = (card['title'] ??
-        card['name'] ??
-        card['direction_name'] ??
-        card['occasion'] ??
-        'Daily Look ${index + 1}')
-        .toString()
-        .trim();
-    final desc = (card['description'] ??
-        card['desc'] ??
-        card['reason'] ??
-        card['context'] ??
-        card['outfitDescription'] ??
-        '')
-        .toString()
-        .trim();
+    final cover =
+        (card['image_url'] ??
+                card['imageUrl'] ??
+                card['thumbnailUrl'] ??
+                card['cover_url'] ??
+                card['coverUrl'] ??
+                (items.isNotEmpty ? items.first['image_url'] : null) ??
+                (items.isNotEmpty ? items.first['imageUrl'] : null) ??
+                '')
+            .toString()
+            .trim();
+    final title =
+        (card['title'] ??
+                card['name'] ??
+                card['direction_name'] ??
+                card['occasion'] ??
+                'Daily Look ${index + 1}')
+            .toString()
+            .trim();
+    final desc =
+        (card['description'] ??
+                card['desc'] ??
+                card['reason'] ??
+                card['context'] ??
+                card['outfitDescription'] ??
+                '')
+            .toString()
+            .trim();
     final rawId = (card['id'] ?? card['board_id'] ?? card['boardId'] ?? title)
         .toString()
         .trim();
@@ -612,6 +710,15 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   }
 
   StyleBoardItem _styleBoardItemFromMap(Map<String, dynamic> item) {
+    final wardrobeById = buildWardrobeImageMap(
+      AppwriteService().cachedWardrobeItems,
+    );
+    item = resolveStyleBoardItemImage(
+      item,
+      wardrobeById,
+      surface: 'style_board_daily_wear_parse',
+      emitDiagnostic: false,
+    );
     return StyleBoardItem.fromJson(item);
   }
 
@@ -621,13 +728,28 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   /// outfit yet — the UI treats that as "still loading" and shows the bare
   /// layout shell instead.
   StyleBoardData? _styleBoardFromOutfit(Map<String, dynamic> outfit) {
-    final rawItems = outfit['items'];
-    if (rawItems is! List || rawItems.isEmpty) return null;
-    final items = rawItems
+    final rawItems = DailyWearScreen.firstNonEmptyBoardItems(outfit);
+    if (rawItems.isEmpty) return null;
+    final displayItems = DailyWearScreen.mergedBoardItemsForDisplay(outfit);
+    final candidates = (displayItems.isNotEmpty ? displayItems : rawItems)
         .whereType<Map>()
-        .map((e) => _styleBoardItemFromMap(Map<String, dynamic>.from(e)))
-        .where((i) => i.imageUrl.isNotEmpty)
-        .toList();
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList(growable: false);
+    final items = <StyleBoardItem>[];
+    for (final candidate in candidates) {
+      final item = _styleBoardItemFromMap(candidate);
+      debugPrint(
+        'AHVI_DAILY_ITEM_NORMALIZATION '
+        'item_id=${item.id} role=${item.role.name} '
+        'has_board_image=${candidate['board_image_url'] != null} '
+        'has_masked=${candidate['masked_url'] != null || candidate['maskedUrl'] != null} '
+        'has_normalized=${candidate['normalized_url'] != null || candidate['normalizedUrl'] != null} '
+        'has_safe_image=${candidate['safe_image_url'] != null || candidate['safeImageUrl'] != null} '
+        'has_image=${candidate['image_url'] != null || candidate['imageUrl'] != null} '
+        'accepted=${item.imageUrl.isNotEmpty}',
+      );
+      if (item.imageUrl.isNotEmpty) items.add(item);
+    }
     if (items.isEmpty) return null;
 
     final storyRaw = outfit['story'];
@@ -665,21 +787,29 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     return _buildUnifiedOutfitGrid(styleBoard);
   }
 
-  Widget _buildUnifiedOutfitGrid(StyleBoardData board) =>
-      AhviUnifiedOutfitGrid(
-        items: board.items
-            .map(
-              (item) => AhviUnifiedOutfitGridItem.fromStyleBoardItem(
-                item,
-                // 'style_board' prefix is required for
-                // wardrobe_image_resolver's board-safe, cutout-first
-                // candidate ordering to apply to the canonical Daily Wear
-                // board.
-                surface: 'style_board_daily_wear_unified_grid',
-              ),
-            )
-            .toList(growable: false),
-      );
+  // showLabels defaults false: _buildOptCard's "Other good options" thumbnails
+  // FittedBox-scale this grid down into a fixed 115px preview, which was
+  // designed around the plain image collage -- turning labels on there too
+  // would squeeze illegibly small text into that scaled-down preview. Only
+  // the full-size hero carousel slide opts in.
+  Widget _buildUnifiedOutfitGrid(
+    StyleBoardData board, {
+    bool showLabels = false,
+  }) => AhviUnifiedOutfitGrid(
+    items: board.items
+        .map(
+          (item) => AhviUnifiedOutfitGridItem.fromStyleBoardItem(
+            item,
+            // 'style_board' prefix is required for
+            // wardrobe_image_resolver's board-safe, cutout-first
+            // candidate ordering to apply to the canonical Daily Wear
+            // board.
+            surface: 'style_board_daily_wear_unified_grid',
+          ),
+        )
+        .toList(growable: false),
+    showItemLabels: showLabels,
+  );
 
   List<Map<String, dynamic>> _normalizeDailyBoardCards(List<dynamic> cards) {
     return cards
@@ -701,7 +831,8 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     // required role coverage). Do NOT infer this from cards.isEmpty alone --
     // any other board-generation hiccup must fall through to a neutral
     // retry state instead of falsely claiming the wardrobe is too small.
-    bool isFlag(dynamic v) => v?.toString().toLowerCase().trim() == 'insufficient_wardrobe';
+    bool isFlag(dynamic v) =>
+        v?.toString().toLowerCase().trim() == 'insufficient_wardrobe';
     return isFlag(response?['type']) ||
         isFlag(response?['reason']) ||
         isFlag(response?['status']) ||
@@ -739,8 +870,11 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       return;
     }
 
-    final cards = dataMap['cards'] ??
-        (response is Map<String, dynamic> ? response['cards'] as List? : null);
+    final cards = DailyWearScreen.selectDailyBoardCards(
+      response is Map<String, dynamic>
+          ? response
+          : <String, dynamic>{'data': dataMap},
+    );
     final outfits = cards is List && cards.isNotEmpty
         ? _normalizeDailyBoardCards(cards)
         : const <Map<String, dynamic>>[];
@@ -757,7 +891,10 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       setState(() {
         _isLoading = false;
         _loadUnavailable = true;
-        _emptyStateMessage = AppLocalizations.t(context, 'daily_wear_unavailable_retry');
+        _emptyStateMessage = AppLocalizations.t(
+          context,
+          'daily_wear_unavailable_retry',
+        );
       });
       return;
     }
@@ -885,7 +1022,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     _liveDayNotifier.value = days[now.weekday % 7];
     _liveDateNotifier.value = '${months[now.month - 1]} ${now.day}';
     _liveTimeNotifier.value =
-    '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   }
 
   void _onPageScroll() {
@@ -1094,16 +1231,16 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         : '🧣';
     final banner = score(hero) == 2
         ? AppLocalizations.t(context, 'banner_perfect_fit')
-        .replaceAll('{icon}', tempIcon)
-        .replaceAll(
-      '{name}',
-      AppLocalizations.t(context, hero['nameKey'] as String),
-    )
-        .replaceAll('{temp}', '$temp')
+              .replaceAll('{icon}', tempIcon)
+              .replaceAll(
+                '{name}',
+                AppLocalizations.t(context, hero['nameKey'] as String),
+              )
+              .replaceAll('{temp}', '$temp')
         : AppLocalizations.t(
-      context,
-      'banner_sorted_for',
-    ).replaceAll('{icon}', tempIcon).replaceAll('{temp}', '$temp');
+            context,
+            'banner_sorted_for',
+          ).replaceAll('{icon}', tempIcon).replaceAll('{temp}', '$temp');
 
     // Single postFrameCallback — ONE setState for both weather + outfit data.
     // Previously: setState (weather) → _sortOutfitsForWeather → setState (outfits)
@@ -1231,7 +1368,10 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   /// Notify HomeCardSummaryProvider that today's outfit has been picked.
   void _pushWearToHome(Map<String, dynamic> outfit) {
     try {
-      final outfitName = AppLocalizations.t(context, outfit['nameKey'] as String);
+      final outfitName = AppLocalizations.t(
+        context,
+        outfit['nameKey'] as String,
+      );
       context.read<HomeCardSummaryProvider>().markWearDone(
         done: true,
         outfitName: outfitName,
@@ -1268,7 +1408,8 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       if (bytes != null && bytes.isNotEmpty) {
         final file = await BoardExporter.writeToTempFile(
           bytes,
-          filename: 'ahvi_daily_board_${outfitId.isEmpty ? DateTime.now().millisecondsSinceEpoch : outfitId}.png',
+          filename:
+              'ahvi_daily_board_${outfitId.isEmpty ? DateTime.now().millisecondsSinceEpoch : outfitId}.png',
         );
         if (file != null) {
           await SharePlus.instance.share(
@@ -1323,34 +1464,43 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     // Canonical precedence (board_items > composition_items >
     // used_wardrobe_items > items), same helper Daily Board card
     // normalization uses -- never falls back to demo/fallback ids.
-    addFrom(DailyWearScreen.firstNonEmptyBoardItems(outfit));
+    final displayItems = DailyWearScreen.mergedBoardItemsForDisplay(outfit);
+    addFrom(
+      displayItems.isNotEmpty
+          ? displayItems
+          : DailyWearScreen.firstNonEmptyBoardItems(outfit),
+    );
     addFrom(outfit['item_ids']);
     if (ids.isEmpty) return; // demo outfit — nothing real to record.
 
     if (outfitId.isNotEmpty) _wearInFlight.add(outfitId);
     BackendService()
         .wearToday(
-      itemIds: ids,
-      boardId: outfitId,
-      occasion: (outfit['occasion'] ?? '').toString(),
-    )
+          itemIds: ids,
+          boardId: outfitId,
+          occasion: (outfit['occasion'] ?? '').toString(),
+        )
         .then((ok) {
-      if (outfitId.isNotEmpty) _wearInFlight.remove(outfitId);
-      if (!mounted) return;
-      _showToast(
-        ok
-            ? AppLocalizations.t(context, 'daily_wear_toast_style_history_added')
-            : AppLocalizations.t(context, 'daily_wear_toast_update_failed'),
-        green: ok,
-      );
-    }).catchError((_) {
-      if (outfitId.isNotEmpty) _wearInFlight.remove(outfitId);
-      if (!mounted) return;
-      _showToast(
-        AppLocalizations.t(context, 'daily_wear_toast_update_failed'),
-        green: false,
-      );
-    });
+          if (outfitId.isNotEmpty) _wearInFlight.remove(outfitId);
+          if (!mounted) return;
+          _showToast(
+            ok
+                ? AppLocalizations.t(
+                    context,
+                    'daily_wear_toast_style_history_added',
+                  )
+                : AppLocalizations.t(context, 'daily_wear_toast_update_failed'),
+            green: ok,
+          );
+        })
+        .catchError((_) {
+          if (outfitId.isNotEmpty) _wearInFlight.remove(outfitId);
+          if (!mounted) return;
+          _showToast(
+            AppLocalizations.t(context, 'daily_wear_toast_update_failed'),
+            green: false,
+          );
+        });
   }
 
   void _openChat() {
@@ -1495,7 +1645,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     _tryOnStageTimer = Timer(const Duration(milliseconds: 700), () {
       if (!mounted) return;
       setState(
-            () => _tryOnLoadingMessage = AppLocalizations.t(
+        () => _tryOnLoadingMessage = AppLocalizations.t(
           context,
           'daily_wear_initialising_ar',
         ),
@@ -1575,10 +1725,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     final outfitItems = _savedDailyWearItems(board);
     final imageUrl = board.items
         .map((item) => item.displayImageUrl.trim())
-        .firstWhere(
-          (url) => url.isNotEmpty,
-          orElse: () => '',
-        );
+        .firstWhere((url) => url.isNotEmpty, orElse: () => '');
     if (imageUrl.isEmpty) {
       _showToast(AppLocalizations.t(context, 'daily_wear_save_failed'));
       return;
@@ -1616,7 +1763,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              '${AppLocalizations.t(context, 'daily_wear_save_error')}: $e'
+            '${AppLocalizations.t(context, 'daily_wear_save_error')}: $e',
           ),
         ),
       );
@@ -1670,9 +1817,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: () => Navigator.of(sheetContext).pop(
-                      categories
-                          .firstWhere((c) => c.$2 == selectedLabel)
-                          .$1,
+                      categories.firstWhere((c) => c.$2 == selectedLabel).$1,
                     ),
                     child: const Text('Save look'),
                   ),
@@ -1700,10 +1845,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     final outfitItems = _savedDailyWearItems(board);
     final imageUrl = board.items
         .map((item) => item.displayImageUrl.trim())
-        .firstWhere(
-          (url) => url.isNotEmpty,
-          orElse: () => '',
-        );
+        .firstWhere((url) => url.isNotEmpty, orElse: () => '');
     if (imageUrl.isEmpty) return false;
 
     try {
@@ -1776,7 +1918,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         .where((m) => !m.excludeFromSemanticHistory)
         .map(
           (m) => {'role': m.isUser ? 'user' : 'assistant', 'content': m.text},
-    )
+        )
         .toList();
 
     try {
@@ -1798,11 +1940,11 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       if (!mounted) return;
       final rawMessage = response?['message'];
       final replyText =
-      (response?['message_text'] ??
-          (rawMessage is Map ? rawMessage['content'] : rawMessage) ??
-          '')
-          .toString()
-          .trim();
+          (response?['message_text'] ??
+                  (rawMessage is Map ? rawMessage['content'] : rawMessage) ??
+                  '')
+              .toString()
+              .trim();
       final message = _ChatMessage(
         id: DateTime.now().microsecondsSinceEpoch,
         text: replyText.isNotEmpty
@@ -1857,7 +1999,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
         ? '${userMessages.first.text.substring(0, 40)}…'
         : userMessages.first.text;
     final existingIdx = _chatHistory.indexWhere(
-          (s) => s.id == _currentSessionId,
+      (s) => s.id == _currentSessionId,
     );
     final session = _ChatSession(
       id: _currentSessionId,
@@ -2002,112 +2144,112 @@ class _DailyWearScreenState extends State<DailyWearScreen>
             Expanded(
               child: _chatHistory.isEmpty
                   ? Center(
-                child: Text(
-                  AppLocalizations.t(context, 'chat_no_history'),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: t.mutedText, fontSize: 13),
-                ),
-              )
-                  : ListView.separated(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _chatHistory.length,
-                separatorBuilder: (_, __) => Divider(
-                  color: t.cardBorder,
-                  height: 1,
-                  indent: 16,
-                  endIndent: 16,
-                ),
-                itemBuilder: (_, i) {
-                  final session = _chatHistory[i];
-                  final isActive = session.id == _currentSessionId;
-                  return GestureDetector(
-                    onTap: () => _loadSession(session),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
+                      child: Text(
+                        AppLocalizations.t(context, 'chat_no_history'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: t.mutedText, fontSize: 13),
                       ),
-                      color: isActive
-                          ? t.accent.primary.withValues(alpha: 0.08)
-                          : Colors.transparent,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: isActive
-                                  ? t.accent.primary.withValues(
-                                alpha: 0.15,
-                              )
-                                  : t.panel,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isActive
-                                    ? t.accent.primary.withValues(
-                                  alpha: 0.4,
-                                )
-                                    : t.cardBorder,
-                              ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _chatHistory.length,
+                      separatorBuilder: (_, __) => Divider(
+                        color: t.cardBorder,
+                        height: 1,
+                        indent: 16,
+                        endIndent: 16,
+                      ),
+                      itemBuilder: (_, i) {
+                        final session = _chatHistory[i];
+                        final isActive = session.id == _currentSessionId;
+                        return GestureDetector(
+                          onTap: () => _loadSession(session),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
                             ),
-                            child: Center(
-                              child: Text(
-                                '',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: isActive
-                                      ? t.accent.primary
-                                      : t.mutedText,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                            color: isActive
+                                ? t.accent.primary.withValues(alpha: 0.08)
+                                : Colors.transparent,
+                            child: Row(
                               children: [
-                                Text(
-                                  session.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: isActive
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
                                     color: isActive
-                                        ? t.accent.primary
-                                        : t.textPrimary,
+                                        ? t.accent.primary.withValues(
+                                            alpha: 0.15,
+                                          )
+                                        : t.panel,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: isActive
+                                          ? t.accent.primary.withValues(
+                                              alpha: 0.4,
+                                            )
+                                          : t.cardBorder,
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isActive
+                                            ? t.accent.primary
+                                            : t.mutedText,
+                                      ),
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${session.messages.length} ${AppLocalizations.t(context, 'wear_messages')}',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: t.mutedText,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        session.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: isActive
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                          color: isActive
+                                              ? t.accent.primary
+                                              : t.textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${session.messages.length} ${AppLocalizations.t(context, 'wear_messages')}',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: t.mutedText,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
+                                if (isActive)
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: t.accent.primary,
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
-                          if (isActive)
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: t.accent.primary,
-                              ),
-                            ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
           ],
         ),
@@ -2125,7 +2267,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     if (_displayedOutfits.isEmpty) return <String, dynamic>{};
     final id = _tryOnOutfitId ?? _currentOutfit['id'];
     return _displayedOutfits.firstWhere(
-          (outfit) => outfit['id'] == id,
+      (outfit) => outfit['id'] == id,
       orElse: () => _currentOutfit,
     );
   }
@@ -2174,9 +2316,9 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                     _buildWeatherBar(),
                     _suggestionBanner != null
                         ? Padding(
-                      padding: const EdgeInsets.only(top: 14),
-                      child: _buildSuggestionBanner(),
-                    )
+                            padding: const EdgeInsets.only(top: 14),
+                            child: _buildSuggestionBanner(),
+                          )
                         : const SizedBox.shrink(),
                     const SizedBox(height: 16),
                     if (_isLoading)
@@ -2184,12 +2326,12 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                     else if (_needsMoreClothes || _loadUnavailable)
                       _buildDailyBoardEmptyState()
                     else ...[
-                        _buildCarousel(),
-                        const SizedBox(height: 24),
-                        _buildSectionTitle(),
-                        const SizedBox(height: 14),
-                        _buildOptionCards(),
-                      ],
+                      _buildCarousel(),
+                      const SizedBox(height: 24),
+                      _buildSectionTitle(),
+                      const SizedBox(height: 14),
+                      _buildOptionCards(),
+                    ],
                     const SizedBox(height: 100),
                   ],
                 ),
@@ -2289,7 +2431,9 @@ class _DailyWearScreenState extends State<DailyWearScreen>
               shape: BoxShape.circle,
             ),
             child: Icon(
-              _loadUnavailable ? Icons.refresh_rounded : Icons.checkroom_rounded,
+              _loadUnavailable
+                  ? Icons.refresh_rounded
+                  : Icons.checkroom_rounded,
               color: accentColor,
               size: 28,
             ),
@@ -2310,11 +2454,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
             _emptyStateMessage.isNotEmpty
                 ? _emptyStateMessage
                 : AppLocalizations.t(context, 'daily_wear_add_clothes_unlock'),
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.5,
-              color: mutedColor,
-            ),
+            style: TextStyle(fontSize: 13, height: 1.5, color: mutedColor),
           ),
           const SizedBox(height: 18),
           SizedBox(
@@ -2331,7 +2471,11 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                       onSaved: (_) =>
                           AppwriteService().invalidateWardrobeCache(),
                     ),
-              icon: Icon(_loadUnavailable ? Icons.refresh_rounded : Icons.add_a_photo_outlined),
+              icon: Icon(
+                _loadUnavailable
+                    ? Icons.refresh_rounded
+                    : Icons.add_a_photo_outlined,
+              ),
               label: Text(
                 _loadUnavailable
                     ? AppLocalizations.t(context, 'daily_wear_retry')
@@ -2511,33 +2655,33 @@ class _DailyWearScreenState extends State<DailyWearScreen>
               Text(_weatherIcon, style: const TextStyle(fontSize: 30)),
               const SizedBox(width: 14),
               Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _weatherLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: mutedColor,
-                        ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _weatherLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: mutedColor,
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        _weatherDetail,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w400,
-                          color: mutedColor,
-                          letterSpacing: 0.2,
-                        ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _weatherDetail,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w400,
+                        color: mutedColor,
+                        letterSpacing: 0.2,
                       ),
-                    ],
-                  )
+                    ),
+                  ],
+                ),
               ),
             ],
           );
@@ -2619,7 +2763,12 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   Widget _buildCarousel() => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16),
     child: SizedBox(
-      height: 340,
+      // Was 340 when the title/description/tags/button were Stack-overlaid
+      // directly on the image. They now sit below it in normal flow instead
+      // (see _buildCarouselSlide), so the card needs real room for both
+      // sections. Each slide still scrolls internally as a safety net for
+      // outfits with more items than this comfortably fits.
+      height: 500,
       child: Stack(
         children: [
           ClipRRect(
@@ -2707,18 +2856,18 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                 onTap: disabled
                     ? null
                     : () {
-                  if (left) {
-                    _pageController.previousPage(
-                      duration: const Duration(milliseconds: 450),
-                      curve: Curves.easeInOut,
-                    );
-                  } else {
-                    _pageController.nextPage(
-                      duration: const Duration(milliseconds: 450),
-                      curve: Curves.easeInOut,
-                    );
-                  }
-                },
+                        if (left) {
+                          _pageController.previousPage(
+                            duration: const Duration(milliseconds: 450),
+                            curve: Curves.easeInOut,
+                          );
+                        } else {
+                          _pageController.nextPage(
+                            duration: const Duration(milliseconds: 450),
+                            curve: Curves.easeInOut,
+                          );
+                        }
+                      },
                 child: Container(
                   width: 40,
                   height: 40,
@@ -2763,238 +2912,217 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       return _buildStyleBoardLoadingShell();
     }
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(10),
-          child: RepaintBoundary(
-            key: _boardCanvasKeyFor(outfitId),
-            child: _buildUnifiedOutfitGrid(styleBoard),
-          ),
-        ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                // Bottom-only darkening so the white outfit name +
-                // counter chip stay legible. Previous gradient leaked
-                // ~2 % alpha at the very top + 10 % at the midpoint,
-                // which read as a permanent faded grey overlay across
-                // the whole image. The top half is now fully clear.
-                stops: const [0.0, 0.55, 0.78, 1.0],
-                colors: [
-                  Colors.transparent,
-                  Colors.transparent,
-                  Colors.black.withValues(alpha: 0.18),
-                  Colors.black.withValues(alpha: 0.32),
-                ],
-              ),
+    // The "AHVI's pick" badge and the title/description/tags/button used to
+    // sit Stack-overlaid on top of the image (with a bottom gradient scrim
+    // for the title's legibility). Now that the grid also renders an
+    // item-name label under each tile, that overlay text collided with the
+    // labels. Both moved into normal flow instead -- badge above the grid,
+    // title block below it -- so the card grows to fit all three sections
+    // rather than cropping or overlapping any of them.
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: panel2Color,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: cardBorderColor),
+                  ),
+                  child: Text(
+                    AppLocalizations.t(context, 'daily_wear_ahvi_pick'),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: textColor,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    _circleAction(saved ? '❤️' : '🤍', () async {
+                      if (saved) {
+                        setState(() => _savedCarouselById[outfitId] = false);
+                        return;
+                      }
+                      final bucket = await _showSaveOccasionSheet(outfit);
+                      if (bucket == null || !mounted) return;
+                      final ok = await _saveOutfitToBoards(
+                        outfit,
+                        occasionBucket: bucket,
+                      );
+                      if (!mounted) return;
+                      if (ok) {
+                        setState(() => _savedCarouselById[outfitId] = true);
+                        _showToast(
+                          AppLocalizations.t(
+                            context,
+                            'daily_wear_toast_saved_wardrobe',
+                          ),
+                        );
+                      } else {
+                        _showToast(
+                          AppLocalizations.t(
+                            context,
+                            'daily_wear_save_failed',
+                          ),
+                          green: false,
+                        );
+                      }
+                    }),
+                    const SizedBox(width: 8),
+                    _circleShare(outfit),
+                  ],
+                ),
+              ],
             ),
           ),
-        ),
-        Positioned(
-          top: 18,
-          left: 18,
-          right: 18,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.32),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
-                  ),
-                ),
-                child: Text(
-                  AppLocalizations.t(context, 'daily_wear_ahvi_pick'),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-              ),
-              Row(
-                children: [
-                  _circleAction(saved ? '❤️' : '🤍', () async {
-                    if (saved) {
-                      setState(() => _savedCarouselById[outfitId] = false);
-                      return;
-                    }
-                    final bucket = await _showSaveOccasionSheet(outfit);
-                    if (bucket == null || !mounted) return;
-                    final ok = await _saveOutfitToBoards(
-                      outfit,
-                      occasionBucket: bucket,
-                    );
-                    if (!mounted) return;
-                    if (ok) {
-                      setState(() => _savedCarouselById[outfitId] = true);
-                      _showToast(
-                        AppLocalizations.t(
-                          context,
-                          'daily_wear_toast_saved_wardrobe',
-                        ),
-                      );
-                    } else {
-                      _showToast(
-                        AppLocalizations.t(context, 'daily_wear_save_failed'),
-                        green: false,
-                      );
-                    }
-                  }),
-                  const SizedBox(width: 8),
-                  _circleShare(outfit),
-                ],
-              ),
-            ],
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: RepaintBoundary(
+              key: _boardCanvasKeyFor(outfitId),
+              child: _buildUnifiedOutfitGrid(styleBoard, showLabels: true),
+            ),
           ),
-        ),
-        Positioned(
-          left: 20,
-          right: 20,
-          bottom: 20,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          AppLocalizations.t(
-                            context,
-                            outfit['nameKey'] as String,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AppLocalizations.t(
+                              context,
+                              outfit['nameKey'] as String,
+                            ),
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w600,
+                              color: textColor,
+                              letterSpacing: -0.3,
+                              height: 1.05,
+                            ),
                           ),
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                            letterSpacing: -0.3,
-                            height: 1.05,
+                          const SizedBox(height: 4),
+                          Text(
+                            AppLocalizations.t(
+                              context,
+                              outfit['descKey'] as String,
+                            ),
+                            style: TextStyle(fontSize: 11, color: mutedColor),
                           ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: panel2Color,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: cardBorderColor),
+                      ),
+                      child: Text(
+                        '${index + 1} / ${_displayedOutfits.length}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: textColor,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          AppLocalizations.t(
-                            context,
-                            outfit['descKey'] as String,
-                          ),
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.white70,
-                          ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 5,
+                  runSpacing: 5,
+                  children:
+                      ((outfit['tags'] as List?)?.cast<String>() ?? <String>[])
+                          .map(
+                            (t) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 11,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: panel2Color,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: cardBorderColor),
+                              ),
+                              child: Text(
+                                t,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: textColor,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                ),
+                const SizedBox(height: 14),
+                _PressScaleButton(
+                  scaleDown: 0.98,
+                  opacityDown: 0.85,
+                  onTap: () => _openTryOn(outfitId),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [accentColor, accent3Color],
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: accentColor.withValues(alpha: 0.35),
+                          blurRadius: 24,
+                          offset: const Offset(0, 6),
                         ),
                       ],
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.32),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    child: Text(
-                      '${index + 1} / ${_displayedOutfits.length}',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 5,
-                runSpacing: 5,
-                children:
-                ((outfit['tags'] as List?)?.cast<String>() ?? <String>[])
-                    .map(
-                      (t) => Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 11,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.35),
-                      ),
-                    ),
-                    child: Text(
-                      t,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                )
-                    .toList(),
-              ),
-              const SizedBox(height: 14),
-              _PressScaleButton(
-                scaleDown: 0.98,
-                opacityDown: 0.85,
-                onTap: () => _openTryOn(outfitId),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [accentColor, accent3Color],
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: accentColor.withValues(alpha: 0.35),
-                        blurRadius: 24,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Try-On',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: tileTextColor,
+                    child: Center(
+                      child: Text(
+                        'Try-On',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: tileTextColor,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -3102,10 +3230,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
           border: Border.all(color: cardBorderColor),
         ),
         clipBehavior: Clip.antiAlias,
-        child: SizedBox(
-          height: 115,
-          child: _buildStyleBoardLoadingShell(),
-        ),
+        child: SizedBox(height: 115, child: _buildStyleBoardLoadingShell()),
       );
     }
 
@@ -3192,9 +3317,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                         }
                         final outfitData = _outfitById(outfitId);
                         if (outfitData.isEmpty) return;
-                        final bucket = await _showSaveOccasionSheet(
-                          outfitData,
-                        );
+                        final bucket = await _showSaveOccasionSheet(outfitData);
                         if (bucket == null || !mounted) return;
                         final ok = await _saveOutfitToBoards(
                           outfitData,
@@ -3211,7 +3334,10 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                           );
                         } else {
                           _showToast(
-                            AppLocalizations.t(context, 'daily_wear_save_failed'),
+                            AppLocalizations.t(
+                              context,
+                              'daily_wear_save_failed',
+                            ),
                             green: false,
                           );
                         }
@@ -3290,11 +3416,11 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   );
 
   Widget _smallButton(
-      String label,
-      VoidCallback? onTap, {
-        required bool primary,
-        required Color activeLabelColor,
-      }) => _PressScaleButton(
+    String label,
+    VoidCallback? onTap, {
+    required bool primary,
+    required Color activeLabelColor,
+  }) => _PressScaleButton(
     scaleDown: 0.96,
     opacityDown: 0.7,
     onTap: onTap,
@@ -3304,10 +3430,10 @@ class _DailyWearScreenState extends State<DailyWearScreen>
       decoration: BoxDecoration(
         gradient: primary
             ? LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [accentColor, accent3Color],
-        )
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [accentColor, accent3Color],
+              )
             : null,
         color: primary ? null : panelColor,
         borderRadius: BorderRadius.circular(10),
@@ -3678,9 +3804,9 @@ class _DailyWearScreenState extends State<DailyWearScreen>
     }
     if (_tryOnStage == _TryOnStage.camera) {
       final colors =
-      ((outfit['colors'] as List?)?.cast<String>() ?? <String>[]);
+          ((outfit['colors'] as List?)?.cast<String>() ?? <String>[]);
       final tags =
-      ((outfit['arTags'] as List?)?.cast<Map<String, dynamic>>() ??
+          ((outfit['arTags'] as List?)?.cast<Map<String, dynamic>>() ??
           <Map<String, dynamic>>[]);
       return Column(
         children: [
@@ -3709,8 +3835,14 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                           const SizedBox(width: 8),
                           Text(
                             _frontCamera
-                                ? AppLocalizations.t(context, 'daily_wear_hd_front')
-                                : AppLocalizations.t(context, 'daily_wear_hd_back'),
+                                ? AppLocalizations.t(
+                                    context,
+                                    'daily_wear_hd_front',
+                                  )
+                                : AppLocalizations.t(
+                                    context,
+                                    'daily_wear_hd_back',
+                                  ),
                             style: TextStyle(fontSize: 10, color: mutedColor),
                           ),
                         ],
@@ -3746,12 +3878,12 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                     ),
                     ...List.generate(
                       math.min(_visibleArTags, tags.length),
-                          (index) => Positioned(
+                      (index) => Positioned(
                         left:
-                        constraints.maxWidth *
+                            constraints.maxWidth *
                             (tags[index]['left'] as double),
                         top:
-                        constraints.maxHeight *
+                            constraints.maxHeight *
                             (tags[index]['top'] as double),
                         child: _ArTag(
                           label: AppLocalizations.t(
@@ -3834,7 +3966,7 @@ class _DailyWearScreenState extends State<DailyWearScreen>
                 width: 56,
                 child: _actionBtn(
                   '✕',
-                      () => setState(() => _tryOnStage = _TryOnStage.preview),
+                  () => setState(() => _tryOnStage = _TryOnStage.preview),
                   primary: false,
                 ),
               ),
@@ -4046,10 +4178,10 @@ class _DailyWearScreenState extends State<DailyWearScreen>
   }
 
   Widget _actionBtn(
-      String label,
-      VoidCallback onTap, {
-        required bool primary,
-      }) => _PressScaleButton(
+    String label,
+    VoidCallback onTap, {
+    required bool primary,
+  }) => _PressScaleButton(
     scaleDown: 0.97,
     opacityDown: 0.78,
     onTap: onTap,
@@ -4126,9 +4258,9 @@ class _PressScaleButtonState extends State<_PressScaleButton>
     onTapUp: widget.onTap == null
         ? null
         : (_) {
-      _ctrl.reverse();
-      widget.onTap?.call();
-    },
+            _ctrl.reverse();
+            widget.onTap?.call();
+          },
     onTapCancel: () => _ctrl.reverse(),
     child: AnimatedBuilder(
       animation: _ctrl,
@@ -4215,15 +4347,15 @@ class _ChatBubble extends StatelessWidget {
                   decoration: isUser
                       ? null
                       : BoxDecoration(
-                    color: t.panel,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(20),
-                      topRight: const Radius.circular(20),
-                      bottomLeft: const Radius.circular(4),
-                      bottomRight: const Radius.circular(20),
-                    ),
-                    border: Border.all(color: t.cardBorder),
-                  ),
+                          color: t.panel,
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(20),
+                            topRight: const Radius.circular(20),
+                            bottomLeft: const Radius.circular(4),
+                            bottomRight: const Radius.circular(20),
+                          ),
+                          border: Border.all(color: t.cardBorder),
+                        ),
                   child: isUser
                       ? Text(
                           message.text,
@@ -4286,11 +4418,10 @@ class _ChatBubble extends StatelessWidget {
 class _TypingBubble extends StatelessWidget {
   final String message;
   const _TypingBubble({String? message})
-      : message = message ?? 'AHVI is thinking';
+    : message = message ?? 'AHVI is thinking';
 
   @override
-  Widget build(BuildContext context) =>
-      AhviProcessingBubble(message: message);
+  Widget build(BuildContext context) => AhviProcessingBubble(message: message);
 }
 
 class _LiveDot extends StatefulWidget {
@@ -4399,8 +4530,8 @@ class _ToastWidgetState extends State<_ToastWidget>
 
     _slide = Tween<Offset>(begin: const Offset(0, 1.5), end: Offset.zero)
         .animate(
-      CurvedAnimation(parent: _ctrl, curve: const Cubic(0.32, 0.72, 0, 1)),
-    );
+          CurvedAnimation(parent: _ctrl, curve: const Cubic(0.32, 0.72, 0, 1)),
+        );
 
     _fade = Tween<double>(
       begin: 0,
