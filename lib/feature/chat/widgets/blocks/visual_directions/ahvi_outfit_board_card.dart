@@ -2118,15 +2118,10 @@ class OutfitBoardModel {
         ? ''
         : stylingTipCandidate;
 
-    // Authoritative path: when the backend sends itemized board_items, render
-    // EXACTLY those. They already carry correct roles, images, completeness
-    // (top+bottom+footwear) and dedup from the backend. Re-mixing hero_piece /
-    // complete_the_look / pieces (the legacy path below) silently dropped real
-    // slots — footwear, then bottom — inconsistently across prompts/users.
-    // Fall back to legacy aggregation only when board_items is absent.
-    final backendItems = _maps(
-      direction['board_items'] ?? direction['boardItems'],
-    );
+    // Prefer itemized board payloads, merging aliases by stable item id. Some
+    // responses repeat a footwear-only board_items subset alongside the full
+    // outfit in items; treating the first alias as authoritative drops slots.
+    final backendItems = _boardPayloadItems(direction);
     if (backendItems.isNotEmpty) {
       final built = <OutfitBoardItem>[];
       final seenKeys = <String>{};
@@ -2419,6 +2414,24 @@ Set<String> _requiredWardrobeIds(Map<String, dynamic> direction) {
     if (id.isNotEmpty) ids.add(id);
   }
   return ids;
+}
+
+List<Map<String, dynamic>> _boardPayloadItems(
+  Map<String, dynamic> direction,
+) {
+  final byId = <String, Map<String, dynamic>>{};
+  final withoutId = <Map<String, dynamic>>[];
+  for (final key in const ['board_items', 'boardItems', 'items', 'pieces']) {
+    for (final item in _maps(direction[key])) {
+      final id = wardrobeItemStableId(item);
+      if (id.isEmpty) {
+        withoutId.add(item);
+      } else {
+        byId[id] = _mergeWardrobeRecord(byId[id], item);
+      }
+    }
+  }
+  return [...byId.values, ...withoutId];
 }
 
 bool _wardrobeFetchNeedsRetry(

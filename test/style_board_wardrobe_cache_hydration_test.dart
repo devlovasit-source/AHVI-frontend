@@ -165,6 +165,50 @@ void main() {
         {'top-1', 'bottom-1', 'shoe-1'},
       );
     });
+
+    test('board model keeps items omitted from a partial board_items payload', () {
+      final direction = {
+        'title': 'Weekend Edit',
+        'board_items': [
+          {
+            'item_id': 'shoe-1',
+            'name': 'White Sneakers',
+            'role': 'footwear',
+            'image_url': 'https://raw/shoe.png',
+          },
+        ],
+        'items': [
+          {
+            'item_id': 'top-1',
+            'name': 'White Shirt',
+            'role': 'top',
+            'image_url': 'https://raw/top.png',
+          },
+          {
+            'item_id': 'bottom-1',
+            'name': 'Blue Jeans',
+            'role': 'bottom',
+            'image_url': 'https://raw/bottom.png',
+          },
+          {
+            'item_id': 'shoe-1',
+            'name': 'White Sneakers',
+            'role': 'footwear',
+            'image_url': 'https://raw/shoe.png',
+          },
+        ],
+      };
+      final model = OutfitBoardModel.fromPayload(
+        direction,
+        editorialCover: const {},
+      );
+
+      expect(model.items.map((item) => item.name), [
+        'White Sneakers',
+        'White Shirt',
+        'Blue Jeans',
+      ]);
+    });
   });
 
   group('wardrobe fetch retry policy', () {
