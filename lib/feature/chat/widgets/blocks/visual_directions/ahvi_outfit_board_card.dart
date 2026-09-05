@@ -161,6 +161,9 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
   StyleBoardController? _controller;
   StyleBoardData? _pendingBoard;
   StyleBoardData? _pendingImageBoard;
+  // Guards against re-triggering a wardrobe fetch on every rebuild while one
+  // is already in flight (or has already come back empty for this session).
+  bool _wardrobeFetchTriggered = false;
   // Wraps ONLY the shareable board visual (context strip + collage), never the
   // mutation/action controls, so Share captures a clean image.
   final GlobalKey _shareBoundaryKey = GlobalKey();
@@ -181,10 +184,46 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
     if (widget.wardrobeById.isNotEmpty) return;
     try {
       final appwrite = Provider.of<AppwriteService>(context);
-      final next = buildWardrobeImageMap(appwrite.cachedWardrobeItems);
-      if (mapEquals(_wardrobeById, next)) return;
-      _wardrobeById = next;
-      _refreshBoardImages(_parseBoard(widget));
+      final cached = appwrite.cachedWardrobeItems;
+      final next = buildWardrobeImageMap(cached);
+      if (!mapEquals(_wardrobeById, next)) {
+        _wardrobeById = next;
+        final incoming = _parseBoard(widget);
+        // _refreshBoardImages only patches images on items already present
+        // in the board -- it can't resurrect items _toStyleBoardData dropped
+        // outright on an earlier pass (empty wardrobeById -> no resolvable
+        // image -> filtered out). Once the cache warms up those items can
+        // resolve now, so a changed item set means a full _replaceBoard,
+        // matching the same choice didUpdateWidget already makes below.
+        if (_isMeaningfulBoardUpdate(_initialBoard, incoming.board)) {
+          _replaceBoard(incoming);
+        } else {
+          _refreshBoardImages(incoming);
+        }
+      }
+      // A board can render before anything else this session has ever
+      // populated the wardrobe cache (e.g. the user opened Style chat
+      // without visiting the Wardrobe tab first). Without a fetch trigger
+      // here, items whose backend payload didn't embed an image field stay
+      // permanently unresolved instead of just until the cache warms up.
+      // Provider.of(context) above already subscribes this widget to
+      // AppwriteService, so its notifyListeners() on fetch completion reruns
+      // didChangeDependencies and picks up the now-populated cache above.
+      if (cached.isEmpty && !_wardrobeFetchTriggered) {
+        _wardrobeFetchTriggered = true;
+        // Fire-and-forget, but a failed fetch must not permanently latch
+        // _wardrobeFetchTriggered -- a transient auth/network hiccup (or a
+        // StateError from a concurrent cache invalidation elsewhere in the
+        // app) would otherwise strand this board on unresolved images for
+        // its entire lifetime with no way to retry.
+        appwrite
+            .getWardrobeItems()
+            .catchError((Object e) {
+              debugPrint('AHVI_BOARD_WARDROBE_FETCH_FAILED error=$e');
+              if (mounted) _wardrobeFetchTriggered = false;
+              return <Map<String, dynamic>>[];
+            });
+      }
     } catch (_) {}
   }
 

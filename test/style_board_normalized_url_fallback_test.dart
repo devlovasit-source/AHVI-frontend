@@ -105,4 +105,42 @@ void main() {
 
     expect(item.normalizedUrl, 'https://test/catalog/board-value.png');
   });
+
+  test(
+    'an item dropped for lacking any safe image is recovered once the '
+    'wardrobe cache carries a real processed image for it (regression for '
+    'AhviOutfitBoardCard never re-adding items past their first render)',
+    () {
+      final direction = _direction();
+      final model = OutfitBoardModel.fromPayload(
+        direction,
+        editorialCover: const {},
+      );
+
+      // Cold cache (e.g. Style chat opened before the Wardrobe tab ever
+      // loaded): board_items carries only the raw image_url, so the item has
+      // no safe candidate and is dropped from the rendered board entirely.
+      final coldBoard = styleBoardDataFromOutfitBoardForTesting(
+        model,
+        direction,
+        wardrobeById: const {},
+      );
+      expect(coldBoard.items.where((item) => item.id == 'top-1'), isEmpty);
+
+      // Cache warms up with a real processed image for the same item —
+      // re-parsing the same direction must now include it.
+      final warmBoard = styleBoardDataFromOutfitBoardForTesting(
+        model,
+        direction,
+        wardrobeById: {
+          'top-1': {
+            'item_id': 'top-1',
+            'image_url': 'https://test/raw/top.png',
+            'normalized_url': 'https://test/catalog/top-processed.png',
+          },
+        },
+      );
+      expect(warmBoard.items.where((item) => item.id == 'top-1'), isNotEmpty);
+    },
+  );
 }
