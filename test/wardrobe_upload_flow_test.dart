@@ -1429,7 +1429,14 @@ void main() {
           'void _onAppwriteServiceChanged() {',
         );
         expect(handlerStart, greaterThan(0));
-        final handlerBody = source.substring(handlerStart, handlerStart + 500);
+        // Read to the method's real closing brace rather than a fixed number
+        // of characters: the handler legitimately grew (account-switch and
+        // session-clear handling), which pushed the debounce Timer past an
+        // earlier hard-coded 500-char window and failed this test even though
+        // the debounce was present and correct.
+        final handlerEnd = source.indexOf('\n  }', handlerStart);
+        expect(handlerEnd, greaterThan(handlerStart));
+        final handlerBody = source.substring(handlerStart, handlerEnd);
         expect(
           handlerBody.contains(
             'if (current == _lastSeenWardrobeGeneration) return;',
