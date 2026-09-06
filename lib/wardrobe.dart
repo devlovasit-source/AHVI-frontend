@@ -751,30 +751,50 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
         await _loadCachedWardrobe(userId: user.$id);
       }
 
-      var response = await databases.listDocuments(
-        databaseId: Env.appwriteDatabaseId,
-        collectionId: Env.outfitsCollection,
-        queries: [
-          Query.equal('userId', user.$id),
-          Query.orderDesc('\$createdAt'),
-          Query.limit(100),
-        ],
-      );
-      final fetchedItems = response.documents.map((doc) {
-        return WardrobeItem(
-          id: doc.$id,
-          name: _cleanUiText(doc.data['name'], fallback: 'Item'),
-          cat: _cleanCategory(doc.data['category']),
-          occasions: _cleanStringList(doc.data['occasions']),
-          notes: _cleanUiText(doc.data['notes']),
-          worn: doc.data['worn'] ?? 0,
-          liked: doc.data['liked'] ?? false,
-          imageUrl: doc.data['image_url'],
-          maskedUrl: doc.data['masked_url'],
-          normalizedUrl: doc.data['normalized_url']?.toString(),
-          raw: Map<String, dynamic>.from(doc.data),
+      // Page through the whole wardrobe. A bare Query.limit(100) silently
+      // truncated every account with more than 100 items -- the extras were
+      // invisible to the grid AND to everything fed from _wardrobe, including
+      // PairingEngine.worksWellWith, so "Works Well With" scored against a
+      // partial wardrobe. Verified on a 136-item account: exactly 100 items
+      // reached the device and 36 never appeared anywhere.
+      const pageSize = 100;
+      final fetchedItems = <WardrobeItem>[];
+      String? cursor;
+      while (true) {
+        final page = await databases.listDocuments(
+          databaseId: Env.appwriteDatabaseId,
+          collectionId: Env.outfitsCollection,
+          queries: [
+            Query.equal('userId', user.$id),
+            Query.orderDesc('\$createdAt'),
+            Query.limit(pageSize),
+            if (cursor != null) Query.cursorAfter(cursor),
+          ],
         );
-      }).toList();
+        for (final doc in page.documents) {
+          fetchedItems.add(
+            WardrobeItem(
+              id: doc.$id,
+              name: _cleanUiText(doc.data['name'], fallback: 'Item'),
+              cat: _cleanCategory(doc.data['category']),
+              occasions: _cleanStringList(doc.data['occasions']),
+              notes: _cleanUiText(doc.data['notes']),
+              worn: doc.data['worn'] ?? 0,
+              liked: doc.data['liked'] ?? false,
+              imageUrl: doc.data['image_url'],
+              maskedUrl: doc.data['masked_url'],
+              normalizedUrl: doc.data['normalized_url']?.toString(),
+              raw: Map<String, dynamic>.from(doc.data),
+            ),
+          );
+        }
+        // Short page means we reached the end.
+        if (page.documents.length < pageSize) break;
+        final nextCursor = page.documents.last.$id;
+        // Defensive: a cursor that fails to advance would loop forever.
+        if (nextCursor.isEmpty || nextCursor == cursor) break;
+        cursor = nextCursor;
+      }
 
       if (mounted) {
         if (fetchedItems.isNotEmpty || !_loadedCache) {
