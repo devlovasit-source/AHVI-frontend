@@ -217,12 +217,12 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
       // now-populated cache above.
       final missingIds = _requiredWardrobeIds(
         widget.direction,
-      ).difference(next.keys.toSet());
+      ).difference(_wardrobeIdsWithBoardSafeImage(next));
       if (missingIds.isNotEmpty && !_wardrobeFetchTriggered) {
         _wardrobeFetchTriggered = true;
         // A fresh request is required when the current cache is non-empty but
-        // still misses this board's ids. Empty/partial success must also
-        // release the latch so a later dependency update can retry.
+        // still misses this board's ids. Keep the latch set after an incomplete
+        // response so notifyListeners cannot create a fetch/rebuild loop.
         unawaited(_fetchWardrobeForBoard(appwrite));
       }
     } catch (e) {
@@ -235,9 +235,10 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
       final items = await appwrite.getWardrobeItems(forceRefresh: true);
       if (!mounted) return;
       final required = _requiredWardrobeIds(widget.direction);
-      final fetched = buildWardrobeImageMap(items).keys.toSet();
+      final fetched = _wardrobeIdsWithBoardSafeImage(
+        buildWardrobeImageMap(items),
+      );
       if (_wardrobeFetchNeedsRetry(required, fetched)) {
-        _wardrobeFetchTriggered = false;
         debugPrint(
           'AHVI_BOARD_WARDROBE_FETCH_INCOMPLETE '
           'required=${required.length} available=${fetched.length}',
@@ -570,10 +571,7 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
             !identical(_controller?.state, state)) {
           return;
         }
-        _replaceBoard((
-          model: model,
-          board: pending,
-        ));
+        _replaceBoard((model: model, board: pending));
         setState(() {});
         widget.onBoardStateChanged?.call(_currentDirection);
       });
@@ -651,7 +649,9 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
           'style_strategy',
         ])
           key: '',
-      'why_it_works': _reasoningMatchesComposition ? _model.intelligenceText : '',
+      'why_it_works': _reasoningMatchesComposition
+          ? _model.intelligenceText
+          : '',
       'styling_tip': _reasoningMatchesComposition ? _model.stylingTip : '',
       'locked_item_ids':
           _controller?.state.lockedItemIds.toList(growable: false) ??
@@ -730,38 +730,41 @@ class _AhviOutfitBoardCardState extends State<AhviOutfitBoardCard> {
                       ),
                     ),
                     GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: widget.onTapBoard == null
-                            ? null
-                            : () => widget.onTapBoard!(_currentDirection),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                          child: AhviUnifiedOutfitGrid(
-                            items: board.items
-                                .map(
-                                  (item) => AhviUnifiedOutfitGridItem.fromStyleBoardItem(
-                                    item,
-                                    isLocked: _controller?.state.lockedItemIds
-                                            .contains(item.itemId) ??
-                                        item.isLocked,
-                                    // Style This uses its own typed,
-                                    // normalized-first presentation surface
-                                    // (wardrobe_image_resolver.dart) so a
-                                    // stale board/cutout asset can never
-                                    // outrank the correct normalized image.
-                                    // Other modes keep the generic board-safe
-                                    // cutout-first surface.
-                                    surface: mode == BoardInteractionMode.styleThis
-                                        ? 'style_this_unified_grid'
-                                        : 'style_board_active_unified_grid',
-                                  ),
-                                )
-                                .toList(growable: false),
-                            onToggleLock: mode.supportsMutation
-                                ? _controller?.toggleLock
-                                : null,
-                          ),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onTapBoard == null
+                          ? null
+                          : () => widget.onTapBoard!(_currentDirection),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                        child: AhviUnifiedOutfitGrid(
+                          items: board.items
+                              .map(
+                                (item) =>
+                                    AhviUnifiedOutfitGridItem.fromStyleBoardItem(
+                                      item,
+                                      isLocked:
+                                          _controller?.state.lockedItemIds
+                                              .contains(item.itemId) ??
+                                          item.isLocked,
+                                      // Style This uses its own typed,
+                                      // normalized-first presentation surface
+                                      // (wardrobe_image_resolver.dart) so a
+                                      // stale board/cutout asset can never
+                                      // outrank the correct normalized image.
+                                      // Other modes keep the generic board-safe
+                                      // cutout-first surface.
+                                      surface:
+                                          mode == BoardInteractionMode.styleThis
+                                          ? 'style_this_unified_grid'
+                                          : 'style_board_active_unified_grid',
+                                    ),
+                              )
+                              .toList(growable: false),
+                          onToggleLock: mode.supportsMutation
+                              ? _controller?.toggleLock
+                              : null,
                         ),
+                      ),
                     ),
                     if (_reasoningMatchesComposition)
                       OutfitReasoningStrip(
@@ -1349,9 +1352,7 @@ class _OutfitActionBarState extends State<OutfitActionBar> {
       widget.currentDirectionOverride?.call() ?? widget.direction;
 
   String _boardIdentity([OutfitActionBar? value]) {
-    final source = value == null
-        ? _activeDirection
-        : value.direction;
+    final source = value == null ? _activeDirection : value.direction;
     final boardId = _text(source['board_id'] ?? source['boardId']);
     final revision = source['revision']?.toString() ?? '0';
     final rawTitle = _text(source['title'] ?? source['direction_name']);
@@ -2416,9 +2417,27 @@ Set<String> _requiredWardrobeIds(Map<String, dynamic> direction) {
   return ids;
 }
 
-List<Map<String, dynamic>> _boardPayloadItems(
-  Map<String, dynamic> direction,
+/// An ID alone is not enough for a board: the cached record may contain only
+/// the original upload, which the board resolver correctly rejects. Treat only
+/// resolver-approved catalog/cutout images as hydrated so that such records
+/// still trigger the one forced wardrobe refresh for this card.
+Set<String> _wardrobeIdsWithBoardSafeImage(
+  Map<String, Map<String, dynamic>> wardrobeById,
 ) {
+  final available = <String>{};
+  for (final entry in wardrobeById.entries) {
+    final resolved = resolveWardrobeImage(
+      entry.value,
+      surface: 'style_board_live',
+      itemId: entry.key,
+      emitDiagnostic: false,
+    );
+    if (resolved.url != null) available.add(entry.key);
+  }
+  return available;
+}
+
+List<Map<String, dynamic>> _boardPayloadItems(Map<String, dynamic> direction) {
   final byId = <String, Map<String, dynamic>>{};
   final withoutId = <Map<String, dynamic>>[];
   for (final key in const ['board_items', 'boardItems', 'items', 'pieces']) {
@@ -2461,6 +2480,11 @@ Map<String, Map<String, dynamic>> effectiveWardrobeMapForTesting(
 Set<String> requiredWardrobeIdsForTesting(Map<String, dynamic> direction) =>
     _requiredWardrobeIds(direction);
 
+@visibleForTesting
+Set<String> wardrobeIdsWithBoardSafeImageForTesting(
+  Map<String, Map<String, dynamic>> wardrobeById,
+) => _wardrobeIdsWithBoardSafeImage(wardrobeById);
+
 StyleBoardData _toStyleBoardData(
   OutfitBoardModel model,
   Map<String, dynamic> direction, {
@@ -2469,8 +2493,7 @@ StyleBoardData _toStyleBoardData(
   final items = <StyleBoardItem>[];
   final seenIds = <String>{};
   final rawItems = <Map<String, dynamic>>[
-    ..._maps(direction['board_items'] ?? direction['boardItems']),
-    ..._maps(direction['items'] ?? direction['pieces']),
+    ..._boardPayloadItems(direction),
     ..._maps(direction['composition_items']),
   ];
   for (final item in model.items) {
@@ -2650,11 +2673,7 @@ StyleBoardData styleBoardDataFromOutfitBoardForTesting(
   OutfitBoardModel model,
   Map<String, dynamic> direction, {
   Map<String, Map<String, dynamic>> wardrobeById = const {},
-}) => _toStyleBoardData(
-  model,
-  direction,
-  wardrobeById: wardrobeById,
-);
+}) => _toStyleBoardData(model, direction, wardrobeById: wardrobeById);
 
 /// Per-role slot caps so a board never paints a random collage (e.g. three
 /// bottoms). Keeps the first item per role (hero-first order), drops extras.

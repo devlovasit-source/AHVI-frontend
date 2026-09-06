@@ -16,6 +16,7 @@
 // here.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/feature/chat/widgets/blocks/visual_directions/ahvi_outfit_board_card.dart';
+import 'package:myapp/util/wardrobe_image_resolver.dart';
 
 void main() {
   group('mergeWardrobeRecordsForTesting (field-level richness)', () {
@@ -31,27 +32,24 @@ void main() {
       expect(merged['masked_url'], 'https://processed/top.png');
     });
 
-    test(
-      'a richer record cannot be overwritten by a thinner one (F)',
-      () {
-        final rich = {
-          'item_id': 'top-1',
-          'image_url': 'https://raw/top.png',
-          'masked_url': 'https://processed/top.png',
-          'normalized_url': 'https://catalog/top.png',
-        };
-        final thin = {'item_id': 'top-1', 'image_url': 'https://raw/top.png'};
+    test('a richer record cannot be overwritten by a thinner one (F)', () {
+      final rich = {
+        'item_id': 'top-1',
+        'image_url': 'https://raw/top.png',
+        'masked_url': 'https://processed/top.png',
+        'normalized_url': 'https://catalog/top.png',
+      };
+      final thin = {'item_id': 'top-1', 'image_url': 'https://raw/top.png'};
 
-        // Regardless of which side is "base" vs "other", no populated field
-        // from the richer record is ever cleared or blanked.
-        final mergedRichBase = mergeWardrobeRecordsForTesting(rich, thin);
-        final mergedThinBase = mergeWardrobeRecordsForTesting(thin, rich);
-        expect(mergedRichBase['masked_url'], 'https://processed/top.png');
-        expect(mergedRichBase['normalized_url'], 'https://catalog/top.png');
-        expect(mergedThinBase['masked_url'], 'https://processed/top.png');
-        expect(mergedThinBase['normalized_url'], 'https://catalog/top.png');
-      },
-    );
+      // Regardless of which side is "base" vs "other", no populated field
+      // from the richer record is ever cleared or blanked.
+      final mergedRichBase = mergeWardrobeRecordsForTesting(rich, thin);
+      final mergedThinBase = mergeWardrobeRecordsForTesting(thin, rich);
+      expect(mergedRichBase['masked_url'], 'https://processed/top.png');
+      expect(mergedRichBase['normalized_url'], 'https://catalog/top.png');
+      expect(mergedThinBase['masked_url'], 'https://processed/top.png');
+      expect(mergedThinBase['normalized_url'], 'https://catalog/top.png');
+    });
 
     test('a blank string field never wins over a populated one', () {
       final merged = mergeWardrobeRecordsForTesting(
@@ -78,49 +76,43 @@ void main() {
       },
     );
 
-    test(
-      'B: partial widget map (footwear only) + already-full cache -> '
-      'complete map, footwear record not dropped',
-      () {
-        final widgetMap = {
-          'shoe-1': {'item_id': 'shoe-1', 'masked_url': 'https://p/shoe.png'},
-        };
-        final cache = {
-          'top-1': {'item_id': 'top-1', 'masked_url': 'https://p/top.png'},
-          'bottom-1': {
-            'item_id': 'bottom-1',
-            'masked_url': 'https://p/bottom.png',
-          },
-          'shoe-1': {'item_id': 'shoe-1', 'masked_url': 'https://p/shoe.png'},
-        };
-        final effective = effectiveWardrobeMapForTesting(widgetMap, cache);
-        expect(effective.keys.toSet(), {'top-1', 'bottom-1', 'shoe-1'});
-        expect(effective['shoe-1']!['masked_url'], 'https://p/shoe.png');
-      },
-    );
+    test('B: partial widget map (footwear only) + already-full cache -> '
+        'complete map, footwear record not dropped', () {
+      final widgetMap = {
+        'shoe-1': {'item_id': 'shoe-1', 'masked_url': 'https://p/shoe.png'},
+      };
+      final cache = {
+        'top-1': {'item_id': 'top-1', 'masked_url': 'https://p/top.png'},
+        'bottom-1': {
+          'item_id': 'bottom-1',
+          'masked_url': 'https://p/bottom.png',
+        },
+        'shoe-1': {'item_id': 'shoe-1', 'masked_url': 'https://p/shoe.png'},
+      };
+      final effective = effectiveWardrobeMapForTesting(widgetMap, cache);
+      expect(effective.keys.toSet(), {'top-1', 'bottom-1', 'shoe-1'});
+      expect(effective['shoe-1']!['masked_url'], 'https://p/shoe.png');
+    });
 
-    test(
-      'regression: a richer local/cache map is not downgraded by merging in '
-      'a partial incoming widget map (didUpdateWidget scenario)',
-      () {
-        final richLocalCache = {
-          'top-1': {'item_id': 'top-1', 'masked_url': 'https://p/top.png'},
-          'bottom-1': {
-            'item_id': 'bottom-1',
-            'masked_url': 'https://p/bottom.png',
-          },
-          'shoe-1': {'item_id': 'shoe-1', 'masked_url': 'https://p/shoe.png'},
-        };
-        final incomingPartialWidgetMap = {
-          'shoe-1': {'item_id': 'shoe-1', 'masked_url': 'https://p/shoe.png'},
-        };
-        final effective = effectiveWardrobeMapForTesting(
-          richLocalCache,
-          incomingPartialWidgetMap,
-        );
-        expect(effective.keys.toSet(), {'top-1', 'bottom-1', 'shoe-1'});
-      },
-    );
+    test('regression: a richer local/cache map is not downgraded by merging in '
+        'a partial incoming widget map (didUpdateWidget scenario)', () {
+      final richLocalCache = {
+        'top-1': {'item_id': 'top-1', 'masked_url': 'https://p/top.png'},
+        'bottom-1': {
+          'item_id': 'bottom-1',
+          'masked_url': 'https://p/bottom.png',
+        },
+        'shoe-1': {'item_id': 'shoe-1', 'masked_url': 'https://p/shoe.png'},
+      };
+      final incomingPartialWidgetMap = {
+        'shoe-1': {'item_id': 'shoe-1', 'masked_url': 'https://p/shoe.png'},
+      };
+      final effective = effectiveWardrobeMapForTesting(
+        richLocalCache,
+        incomingPartialWidgetMap,
+      );
+      expect(effective.keys.toSet(), {'top-1', 'bottom-1', 'shoe-1'});
+    });
   });
 
   group('requiredWardrobeIdsForTesting', () {
@@ -132,10 +124,7 @@ void main() {
           {'item_id': 'bottom-1', 'role': 'bottom'},
         ],
       };
-      expect(
-        requiredWardrobeIdsForTesting(direction),
-        {'top-1', 'bottom-1'},
-      );
+      expect(requiredWardrobeIdsForTesting(direction), {'top-1', 'bottom-1'});
     });
 
     test('falls back to items when board_items is present but empty', () {
@@ -160,15 +149,64 @@ void main() {
           {'item_id': 'shoe-1', 'role': 'footwear'},
         ],
       };
-      expect(
-        requiredWardrobeIdsForTesting(direction),
-        {'top-1', 'bottom-1', 'shoe-1'},
-      );
+      expect(requiredWardrobeIdsForTesting(direction), {
+        'top-1',
+        'bottom-1',
+        'shoe-1',
+      });
     });
 
-    test('board model keeps items omitted from a partial board_items payload', () {
+    test(
+      'board model keeps items omitted from a partial board_items payload',
+      () {
+        final direction = {
+          'title': 'Weekend Edit',
+          'board_items': [
+            {
+              'item_id': 'shoe-1',
+              'name': 'White Sneakers',
+              'role': 'footwear',
+              'image_url': 'https://raw/shoe.png',
+            },
+          ],
+          'items': [
+            {
+              'item_id': 'top-1',
+              'name': 'White Shirt',
+              'role': 'top',
+              'image_url': 'https://raw/top.png',
+            },
+            {
+              'item_id': 'bottom-1',
+              'name': 'Blue Jeans',
+              'role': 'bottom',
+              'image_url': 'https://raw/bottom.png',
+            },
+            {
+              'item_id': 'shoe-1',
+              'name': 'White Sneakers',
+              'role': 'footwear',
+              'image_url': 'https://raw/shoe.png',
+            },
+          ],
+        };
+        final model = OutfitBoardModel.fromPayload(
+          direction,
+          editorialCover: const {},
+        );
+
+        expect(model.items.map((item) => item.name), [
+          'White Sneakers',
+          'White Shirt',
+          'Blue Jeans',
+        ]);
+      },
+    );
+
+    test('complete item fields survive a partial board_items alias', () {
       final direction = {
         'title': 'Weekend Edit',
+        'source_policy': 'wardrobe',
         'board_items': [
           {
             'item_id': 'shoe-1',
@@ -183,18 +221,21 @@ void main() {
             'name': 'White Shirt',
             'role': 'top',
             'image_url': 'https://raw/top.png',
+            'normalized_url': 'https://catalog/top.png',
           },
           {
             'item_id': 'bottom-1',
             'name': 'Blue Jeans',
             'role': 'bottom',
             'image_url': 'https://raw/bottom.png',
+            'normalized_url': 'https://catalog/bottom.png',
           },
           {
             'item_id': 'shoe-1',
             'name': 'White Sneakers',
             'role': 'footwear',
             'image_url': 'https://raw/shoe.png',
+            'normalized_url': 'https://catalog/shoe.png',
           },
         ],
       };
@@ -202,104 +243,164 @@ void main() {
         direction,
         editorialCover: const {},
       );
+      final board = styleBoardDataFromOutfitBoardForTesting(model, direction);
 
-      expect(model.items.map((item) => item.name), [
-        'White Sneakers',
-        'White Shirt',
-        'Blue Jeans',
-      ]);
+      expect(board.items.map((item) => item.role.name).toSet(), {
+        'top',
+        'bottom',
+        'footwear',
+      });
+      expect(board.items.map((item) => item.raw['selected_field']).toSet(), {
+        'normalized_url',
+      });
+    });
+
+    test('an id with only the original upload is not considered hydrated', () {
+      expect(
+        wardrobeIdsWithBoardSafeImageForTesting({
+          'top-1': {'item_id': 'top-1', 'image_url': 'https://raw/top.png'},
+          'bottom-1': {
+            'item_id': 'bottom-1',
+            'image_url': 'https://raw/bottom.png',
+            'masked_url': 'https://processed/bottom.png',
+          },
+        }),
+        {'bottom-1'},
+      );
+    });
+
+    test('a distinct masked board URL is usable without the wardrobe cache', () {
+      final direction = {
+        'title': 'Lunch',
+        'board_items': [
+          {
+            'item_id': '9e45b2c2-ede4-49bc-8087-e99b8d79cb35',
+            'name': 'Light Blue Jeans',
+            'role': 'bottom',
+            'source': 'wardrobe',
+            'image_url':
+                'https://pub-d4d02883ddda4a1bba452bfe6d1be814.r2.dev/catalog_9e45b2c2-ede4-49bc-8087-e99b8d79cb35.png',
+            'masked_url':
+                'https://pub-d4d02883ddda4a1bba452bfe6d1be814.r2.dev/wardrobe_9e45b2c2-ede4-49bc-8087-e99b8d79cb35_style_this_v1.png',
+          },
+        ],
+      };
+      final model = OutfitBoardModel.fromPayload(
+        direction,
+        editorialCover: const {},
+      );
+      final board = styleBoardDataFromOutfitBoardForTesting(model, direction);
+
+      expect(board.items, hasLength(1));
+      expect(board.items.single.raw['selected_field'], 'masked_url');
+    });
+
+    test('explicit masked URL wins over generic URL aliases', () {
+      const base = {
+        'item_id': 'probe',
+        'source': 'wardrobe',
+        'image_url': 'https://example.test/catalog_probe.png',
+        'masked_url': 'https://example.test/wardrobe_probe_style_this_v1.png',
+      };
+      for (final key in const [
+        'original_image_url',
+        'preview_url',
+        'raw_url',
+        'url',
+        'thumbnailUrl',
+      ]) {
+        final raw = {...base, key: base['masked_url']};
+        final resolved = resolveWardrobeImage(
+          raw,
+          surface: 'style_board_live',
+          itemId: 'probe',
+        );
+        expect(resolved.field, isNot('none'), reason: key);
+      }
     });
   });
 
   group('wardrobe fetch retry policy', () {
     test('empty and partial successful results remain retryable', () {
       const required = {'top-1', 'bottom-1'};
-      expect(
-        wardrobeFetchNeedsRetryForTesting(required, const {}),
-        isTrue,
-      );
-      expect(
-        wardrobeFetchNeedsRetryForTesting(required, {'top-1'}),
-        isTrue,
-      );
-      expect(
-        wardrobeFetchNeedsRetryForTesting(required, required),
-        isFalse,
-      );
+      expect(wardrobeFetchNeedsRetryForTesting(required, const {}), isTrue);
+      expect(wardrobeFetchNeedsRetryForTesting(required, {'top-1'}), isTrue);
+      expect(wardrobeFetchNeedsRetryForTesting(required, required), isFalse);
     });
   });
 
-  test(
-    'D: Style This -- partial initial map (anchor only) merged with a full '
-    'cache renders all 3 items, with exactly 1 (the anchor) locked',
-    () {
-      const shirtId = 'shirt-1';
-      const trousersId = 'trousers-1';
-      const sneakersId = 'sneakers-1';
-      final direction = {
-        'title': 'Style This',
-        'scenario': 'style_this',
-        'originating_item_id': shirtId,
-        'board_items': [
-          {
-            'item_id': shirtId,
-            'name': 'White Printed Shirt',
-            'role': 'top',
-            'source': 'wardrobe',
-            'image_url': 'https://raw/shirt.png',
-          },
-          {
-            'item_id': trousersId,
-            'name': 'Navy Blue Trousers',
-            'role': 'bottom',
-            'source': 'wardrobe',
-            'image_url': 'https://raw/trousers.png',
-          },
-          {
-            'item_id': sneakersId,
-            'name': 'Sneakers',
-            'role': 'footwear',
-            'source': 'wardrobe',
-            'image_url': 'https://raw/sneakers.png',
-          },
-        ],
-      };
-      // Initial map carries only the anchor -- mirrors the ticket's example
-      // of a board rendered before the cache fully warmed.
-      final initialMap = {
-        shirtId: {
+  test('D: Style This -- partial initial map (anchor only) merged with a full '
+      'cache renders all 3 items, with exactly 1 (the anchor) locked', () {
+    const shirtId = 'shirt-1';
+    const trousersId = 'trousers-1';
+    const sneakersId = 'sneakers-1';
+    final direction = {
+      'title': 'Style This',
+      'scenario': 'style_this',
+      'originating_item_id': shirtId,
+      'board_items': [
+        {
           'item_id': shirtId,
+          'name': 'White Printed Shirt',
+          'role': 'top',
+          'source': 'wardrobe',
           'image_url': 'https://raw/shirt.png',
-          'masked_url': 'https://processed/shirt.png',
         },
-      };
-      final fullCache = {
-        shirtId: initialMap[shirtId]!,
-        trousersId: {
+        {
           'item_id': trousersId,
+          'name': 'Navy Blue Trousers',
+          'role': 'bottom',
+          'source': 'wardrobe',
           'image_url': 'https://raw/trousers.png',
-          'masked_url': 'https://processed/trousers.png',
         },
-        sneakersId: {
+        {
           'item_id': sneakersId,
+          'name': 'Sneakers',
+          'role': 'footwear',
+          'source': 'wardrobe',
           'image_url': 'https://raw/sneakers.png',
-          'masked_url': 'https://processed/sneakers.png',
         },
-      };
-      final effective = effectiveWardrobeMapForTesting(initialMap, fullCache);
+      ],
+    };
+    // Initial map carries only the anchor -- mirrors the ticket's example
+    // of a board rendered before the cache fully warmed.
+    final initialMap = {
+      shirtId: {
+        'item_id': shirtId,
+        'image_url': 'https://raw/shirt.png',
+        'masked_url': 'https://processed/shirt.png',
+      },
+    };
+    final fullCache = {
+      shirtId: initialMap[shirtId]!,
+      trousersId: {
+        'item_id': trousersId,
+        'image_url': 'https://raw/trousers.png',
+        'masked_url': 'https://processed/trousers.png',
+      },
+      sneakersId: {
+        'item_id': sneakersId,
+        'image_url': 'https://raw/sneakers.png',
+        'masked_url': 'https://processed/sneakers.png',
+      },
+    };
+    final effective = effectiveWardrobeMapForTesting(initialMap, fullCache);
 
-      final model = OutfitBoardModel.fromPayload(direction, editorialCover: const {});
-      final board = styleBoardDataFromOutfitBoardForTesting(
-        model,
-        direction,
-        wardrobeById: effective,
-      );
+    final model = OutfitBoardModel.fromPayload(
+      direction,
+      editorialCover: const {},
+    );
+    final board = styleBoardDataFromOutfitBoardForTesting(
+      model,
+      direction,
+      wardrobeById: effective,
+    );
 
-      expect(board.items, hasLength(3));
-      expect(
-        board.items.map((i) => i.role.name).toSet(),
-        {'top', 'bottom', 'footwear'},
-      );
-    },
-  );
+    expect(board.items, hasLength(3));
+    expect(board.items.map((i) => i.role.name).toSet(), {
+      'top',
+      'bottom',
+      'footwear',
+    });
+  });
 }
