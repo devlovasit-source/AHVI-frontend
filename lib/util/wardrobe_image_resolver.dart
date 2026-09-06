@@ -136,6 +136,9 @@ String? _urlIdentity(String? url) {
   return '${uri.scheme.toLowerCase()}://${uri.host.toLowerCase()}$port${uri.path}';
 }
 
+bool _urlIdentityEquals(String? a, String? b) =>
+    a != null && b != null && _urlIdentity(a) == _urlIdentity(b);
+
 List<String> wardrobeItemStableIds(Map<String, dynamic> raw) => <String>{
   for (final value in [
     raw['item_id'],
@@ -209,11 +212,41 @@ ResolvedWardrobeImage resolveWardrobeImage(
     'style-library',
     'style_library',
   }.contains(source);
+  // A frozen board snapshot is a payload this app already resolved once:
+  // _toStyleBoardData rewrites image_url to the SELECTED processed asset and
+  // moves the true upload to original_image_url, then republishes it through
+  // _currentDirection -> board_items. On the re-parse image_url is therefore
+  // NOT provenance for the raw upload, and treating it as such makes every
+  // candidate equal to it look like a fabricated alias -- the mask AND the
+  // normalized fallback both get rejected and the item vanishes on rebuild
+  // (a board renders 3 garments, then 1). The frozen-candidate path already
+  // encodes this via isFrozenOriginalAlias; the original set must agree.
+  // Safety is unchanged: original_image_url / raw_url still carry the upload,
+  // and a snapshot whose selection WAS the upload froze source_kind
+  // 'original', which is not board-safe and is rejected regardless.
+  // Only exempt image_url when the payload actually carries the upload
+  // somewhere else. _toStyleBoardData records original_image_url ONLY when the
+  // original differed from the selected asset, so its absence means image_url
+  // is still the sole provenance we have and must keep its veto -- otherwise
+  // an item whose "processed" asset is byte-identical to its upload would be
+  // dressed up as a catalog_fallback instead of degrading to the original.
+  final isFrozenSnapshot =
+      _clean(raw['selected_field']) != null &&
+      _clean(raw['source_kind']) != null &&
+      _firstClean([
+            raw['original_image_url'],
+            raw['originalImageUrl'],
+            raw['raw_url'],
+            raw['rawUrl'],
+            raw['preview_url'],
+            raw['previewUrl'],
+          ]) !=
+          null;
   final originalUrls = <String>{
     ...[
-      imageUrl,
-      raw['image_url'],
-      raw['imageUrl'],
+      if (!isFrozenSnapshot) imageUrl,
+      if (!isFrozenSnapshot) raw['image_url'],
+      if (!isFrozenSnapshot) raw['imageUrl'],
       raw['original_image_url'],
       raw['originalImageUrl'],
       raw['raw_url'],
@@ -399,10 +432,32 @@ ResolvedWardrobeImage resolveWardrobeImage(
   bool explicitMaskIsSafeForBoard(String? url) =>
       isBoardSurface &&
       url != null &&
+      // Prefer the explicit processed field over generic URL aliases. Some
+      // response adapters copy the selected asset into original_image_url,
+      // preview_url, or url; the primary image/raw URL remains the safety
+      // authority for rejecting a fabricated mask.
+      // On a frozen snapshot image_url is the selected asset, not the upload,
+      // so it must not veto the very mask it was copied from. The upload is
+      // still authoritative -- it just lives in original_image_url / raw_url /
+      // preview_url, which is exactly the set isFrozenOriginalAlias checks.
+      // Do NOT simply drop image_url from the comparison here: a snapshot
+      // whose mask genuinely IS the upload would then be admitted (a selfie
+      // on the board).
+      (isFrozenSnapshot
+          ? !isFrozenOriginalAlias(url)
+          : !_urlIdentityEquals(
+              url,
+              _firstClean([
+                imageUrl,
+                raw['image_url'],
+                raw['imageUrl'],
+                raw['raw_url'],
+                raw['rawUrl'],
+              ]),
+            )) &&
       // A masked_url that aliases the raw upload is a fabricated cutout (the
       // backend copies image_url into masked_url when RMBG produced nothing) —
       // often a selfie. Never admit it to a board surface.
-      !isOriginalAlias(url) &&
       !isCatalogAlias(url) &&
       !_isCatalogObject(url);
 
@@ -513,12 +568,7 @@ ResolvedWardrobeImage resolveWardrobeImage(
     if (isStyleAsset)
       _Candidate(
         'image_url',
-        _firstClean([
-          imageUrl,
-          raw['image_url'],
-          raw['imageUrl'],
-          raw['url'],
-        ]),
+        _firstClean([imageUrl, raw['image_url'], raw['imageUrl'], raw['url']]),
         'style_asset_original',
         4,
         false,
@@ -856,7 +906,9 @@ ResolvedWardrobeImage resolveWardrobeImage(
                   // only that candidate may ignore it, never explicit raw data.
                   (identical(c, frozenCandidate)
                       ? !isFrozenOriginalAlias(c.url)
-                      : !isOriginalAlias(c.url)),
+                      : (c.field == 'masked_url'
+                            ? explicitMaskIsSafeForBoard(c.url)
+                            : !isOriginalAlias(c.url))),
             )
             .toList()
       : available;
